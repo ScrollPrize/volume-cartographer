@@ -49,11 +49,11 @@ volumetric analysis applications.
 This fork contains the following changes compared to upstream currently:
 
 ### Changes from Whist List / Feature Requests of Segmentation Team
-- Implemented both points from #1 (*"Scan in Segment Mode"*) of the segmentation wish list ([Goole Doc](https://docs.google.com/document/d/1YFILhWVHyijU_Yky3lKPvGAjmYm2QnRTYzMM7VqcogA)):
+- Implemented both points from #1 (*"Scan in Segment Mode"*) of the segmentation wish list ([Google Doc](https://docs.google.com/document/d/1YFILhWVHyijU_Yky3lKPvGAjmYm2QnRTYzMM7VqcogA)):
   * Added new keyboard shortcuts so that now via number keys slice navigation in 1, 2, 5, 10 and 100 steps is available
   * Added option to scan through slices while in the Segmentation Tool without losing any made curve changes (when user leaves the Segmentation Tool, a warning is shown to offer to either discard the curve changes, store them or cancel)
 
-- Implemented topics #2 (*"Anchor manually annotated lines"*) and #6 (*"Pull metadata for training autosegmenters"*) of the segmentation wish list ([Goole Doc](https://docs.google.com/document/d/1YFILhWVHyijU_Yky3lKPvGAjmYm2QnRTYzMM7VqcogA)):
+- Implemented topics #2 (*"Anchor manually annotated lines"*) and #6 (*"Pull metadata for training autosegmenters"*) of the segmentation wish list ([Google Doc](https://docs.google.com/document/d/1YFILhWVHyijU_Yky3lKPvGAjmYm2QnRTYzMM7VqcogA)):
   * Implemented new `*.vcano` annotation file. It consists of 4 `double` values per point, storing the following information:
     * Slice number the annotation point belongs to
     * Bit flags to annotate each point (there is space for a lot more flags to extend further):
