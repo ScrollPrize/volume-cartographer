@@ -116,6 +116,7 @@ public:
     float pointTo(SurfacePointer *ptr, const cv::Vec3f &tgt, float th, int max_iters = 1000) override;
 
     void save(const std::string &path, const std::string &uuid);
+    void save(std::filesystem::path &path);
     void save_meta();
     Rect3D bbox();
 

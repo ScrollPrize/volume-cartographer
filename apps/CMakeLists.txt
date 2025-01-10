@@ -56,6 +56,13 @@ target_link_libraries(vc_tifxyz2obj
     VC::surface
 )
 
+add_executable(vc_tifxyz_inp_mask src/vc_tifxyz_inp_mask.cpp)
+target_link_libraries(vc_tifxyz_inp_mask
+    opencv_highgui
+    VC::slicing
+    VC::surface
+)
+
 add_executable(vc_tifxyz_winding src/vc_tifxyz_winding.cpp)
 target_link_libraries(vc_tifxyz_winding
     opencv_highgui

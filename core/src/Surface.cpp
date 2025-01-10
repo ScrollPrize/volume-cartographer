@@ -1269,6 +1269,16 @@ float clampsigned(float val, float limit)
     return val;
 }
 
+
+void QuadSurface::save(std::filesystem::path &path_)
+{
+    if (path_.filename().empty())
+        save(path_, path_.parent_path().filename());
+    else
+        save(path_, path_.filename());
+
+}
+
 void QuadSurface::save(const std::string &path_, const std::string &uuid)
 {
     path = path_;
