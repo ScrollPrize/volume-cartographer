@@ -15,6 +15,7 @@ RUN apt install -y tzdata
 RUN apt-get -y install libceres-dev libboost-system-dev libboost-program-options-dev xtensor-dev libopencv-dev
 RUN apt-get -y install libblosc-dev libspdlog-dev libsdl2-dev
 RUN apt-get -y install libgsl-dev
+RUN apt-get -y install file
 
 COPY . /src
 
@@ -23,4 +24,11 @@ WORKDIR /build
 
 RUN cmake -DVC_BUILD_JSON=on -DVC_WITH_CUDA_SPARSE=off /src
 RUN make -j$(nproc --all)
-RUN make install
+#RUN make install
+
+RUN cpack -G DEB -V
+
+RUN dpkg -i /build/pkgs/vc3d*.deb
+
+RUN apt-get -y autoremove
+RUN rm -r /src

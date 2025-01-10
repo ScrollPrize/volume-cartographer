@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.22 FATAL_ERROR)
 include(FetchContent)
 include(CMakeDependentOption)
 
-set(VC_VERSION 2.26.0)
+set(VC_VERSION 3.0.0)
 
 option(VC_VERSION_DATESTAMP "Append date stamp to version number" off)
 if(VC_VERSION_DATESTAMP)
@@ -104,3 +104,5 @@ find_package(SDL2 REQUIRED)
 
 # Look for the GNU Scientific Library (GSL) package for interpolation related functionalities
 find_package(GSL REQUIRED)
+
+include(Packing)

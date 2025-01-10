@@ -7,22 +7,11 @@ RUN add-apt-repository universe
 RUN apt-get update
 RUN apt-get -y install build-essential git cmake qt6-base-dev libceres-dev libboost-system-dev libboost-program-options-dev xtensor-dev libopencv-dev libxsimd-dev libblosc-dev libspdlog-dev libgsl-dev libsdl2-dev
 
-RUN apt-get -y install file
-
 COPY . /src
-
-RUN ls /src
 
 RUN mkdir /build
 WORKDIR /build
 
 RUN cmake -DVC_WITH_CUDA_SPARSE=off /src
 RUN make -j$(nproc --all)
-#RUN make install
-
-RUN cpack -G DEB -V
-
-RUN dpkg -i /build/pkgs/vc3d*.deb
-
-RUN apt-get -y autoremove
-RUN rm -r /src
+RUN make install
