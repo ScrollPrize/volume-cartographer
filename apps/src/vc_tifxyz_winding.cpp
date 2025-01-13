@@ -281,7 +281,6 @@ int main(int argc, char *argv[])
     }
     
     fs::path seg_path = argv[1];
-    fs::path obj_path = argv[2];
     
     QuadSurface *surf = nullptr;
     try {
