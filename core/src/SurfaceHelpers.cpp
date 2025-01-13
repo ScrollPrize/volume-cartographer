@@ -95,7 +95,7 @@ static float sdist(const cv::Vec3f &a, const cv::Vec3f &b)
 static void min_loc(const cv::Mat_<cv::Vec3f> &points, cv::Vec2f &loc, cv::Vec3f &out, cv::Vec3f tgt, bool z_search = true)
 {
     cv::Rect boundary(1,1,points.cols-2,points.rows-2);
-    if (!boundary.contains({loc[0],loc[1]})) {
+    if (!boundary.contains(cv::Point(loc))) {
         out = {-1,-1,-1};
         // loc = {-1,-1};
         return;
@@ -123,7 +123,7 @@ static void min_loc(const cv::Mat_<cv::Vec3f> &points, cv::Vec2f &loc, cv::Vec3f
         for(auto &off : search) {
             cv::Vec2f cand = loc+off*step;
             
-            if (!boundary.contains({cand[0],cand[1]})) {
+            if (!boundary.contains(cv::Point(cand))) {
                 out = {-1,-1,-1};
                 return;
             }
@@ -181,7 +181,7 @@ static float tdist_sum(const cv::Vec3f &v, const std::vector<cv::Vec3f> &tgts, c
 static void min_loc(const cv::Mat_<cv::Vec3f> &points, cv::Vec2f &loc, cv::Vec3f &out, const std::vector<cv::Vec3f> &tgts, const std::vector<float> &tds, bool z_search = true)
 {
     cv::Rect boundary(1,1,points.cols-1,points.rows-1);
-    if (!boundary.contains({loc[0],loc[1]})) {
+    if (!boundary.contains(cv::Point(loc))) {
         out = {-1,-1,-1};
         return;
     }
@@ -206,7 +206,7 @@ static void min_loc(const cv::Mat_<cv::Vec3f> &points, cv::Vec2f &loc, cv::Vec3f
         for(auto &off : search) {
             cv::Vec2f cand = loc+off*step;
             
-            if (!boundary.contains({cand[0],cand[1]})) {
+            if (!boundary.contains(cv::Point(cand))) {
                 out = {-1,-1,-1};
                 loc = {-1,-1};
                 return;
@@ -268,7 +268,7 @@ static inline cv::Vec2d mul(const cv::Vec2d &a, const cv::Vec2d &b)
 static float min_loc2(const cv::Mat_<cv::Vec3f> &points, cv::Vec2f &loc, cv::Vec3f &out, const std::vector<cv::Vec3f> &tgts, const std::vector<float> &tds, PlaneSurface *plane, cv::Vec2f init_step, float min_step_f, const std::vector<float> &ws = {}, bool robust_edge = false, const cv::Mat_<float> &used = cv::Mat())
 {
     cv::Rect boundary(1,1,points.cols-2,points.rows-2);
-    if (!boundary.contains({loc[0],loc[1]})) {
+    if (!boundary.contains(cv::Point(loc))) {
         out = {-1,-1,-1};
         return -1;
     }
@@ -294,7 +294,7 @@ static float min_loc2(const cv::Mat_<cv::Vec3f> &points, cv::Vec2f &loc, cv::Vec
         for(auto &off : search) {
             cv::Vec2f cand = loc+mul(off,step);
             
-            if (!boundary.contains({cand[0],cand[1]})) {
+            if (!boundary.contains(cv::Point(cand))) {
                 if (!robust_edge || (step[0] < min_step_f*init_step[0])) {
                     out = {-1,-1,-1};
                     loc = {-1,-1};
@@ -337,7 +337,7 @@ static float min_loc2(const cv::Mat_<cv::Vec3f> &points, cv::Vec2f &loc, cv::Vec
 static float min_loc_dbgd(const cv::Mat_<cv::Vec3f> &points, cv::Vec2d &loc, cv::Vec3d &out, const std::vector<cv::Vec3f> &tgts, const std::vector<float> &tds, PlaneSurface *plane, cv::Vec2d init_step, float min_step_f, const std::vector<float> &ws = {}, bool robust_edge = false, const cv::Mat_<float> &used = cv::Mat())
 {
     cv::Rect boundary(1,1,points.cols-2,points.rows-2);
-    if (!boundary.contains({loc[0],loc[1]})) {
+    if (!boundary.contains(cv::Point(loc))) {
         out = {-1,-1,-1};
         loc = {-1,-1};
         return -1;
@@ -365,7 +365,7 @@ static float min_loc_dbgd(const cv::Mat_<cv::Vec3f> &points, cv::Vec2d &loc, cv:
         for(auto &off : search) {
             cv::Vec2f cand = loc+mul(off,step);
 
-            if (!boundary.contains({cand[0],cand[1]})) {
+            if (!boundary.contains(cv::Point(cand))) {
                 if (!robust_edge || (step[0] < min_step_f*init_step[0])) {
                     out = {-1,-1,-1};
                     loc = {-1,-1};
@@ -1127,7 +1127,7 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *c
             if ((state(p) & STATE_LOC_VALID) == 0) {
                 if (state(p) & STATE_COORD_VALID)
                     for(auto n : neighs)
-                        if (bounds.contains(p+n)
+                        if (bounds.contains(cv::Point(p+n))
                             && (state(p+n) & (STATE_PROCESSING | STATE_LOC_VALID | STATE_COORD_VALID)) == 0) {
                             rest_ps.push_back(p+n);
                             }
@@ -1135,7 +1135,7 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *c
             }
 
             for(auto n : neighs)
-                if (bounds.contains(p+n)
+                if (bounds.contains(cv::Point(p+n))
                     && (state(p+n) & STATE_PROCESSING) == 0
                     && (state(p+n) & STATE_LOC_VALID) == 0) {
                     state(p+n) |= STATE_PROCESSING;
@@ -1319,7 +1319,7 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *c
                     succ_gen++;
 #pragma omp critical
                     {
-                        if (!used_area.contains({p[1],p[0]})) {
+                        if (!used_area.contains(cv::Point(p[1],p[0]))) {
                             used_area = used_area | cv::Rect(p[1],p[0],1,1);
                         }
                     }
@@ -1584,7 +1584,7 @@ public:
         else {
             cv::Rect bounds = {0, 0, sm->surf()->rawPoints().rows-2,sm->surf()->rawPoints().cols-2};
             cv::Vec2i li = {floor(l[0]),floor(l[1])};
-            if (bounds.contains(li))
+            if (bounds.contains(cv::Point(li)))
                 return at_int_inv(sm->surf()->rawPoints(), l);
             else
                 return {-1,-1,-1};
@@ -1601,7 +1601,7 @@ public:
         else {
             cv::Rect bounds = {0, 0, sm->surf()->rawPoints().rows-2,sm->surf()->rawPoints().cols-2};
             cv::Vec2i li = {floor(l[0]),floor(l[1])};
-            if (bounds.contains(li))
+            if (bounds.contains(cv::Point(li)))
             {
                 if (sm->surf()->rawPoints()(li[0],li[1])[0] == -1)
                     return false;
@@ -1623,7 +1623,7 @@ public:
             return {-1,-1,-1};
         else {
             cv::Rect bounds = {0, 0, sm->surf()->rawPoints().rows-2,sm->surf()->rawPoints().cols-2};
-            if (bounds.contains({l[0],l[1]}))
+            if (bounds.contains(cv::Point(l)))
                 return at_int_inv(sm->surf()->rawPoints(), l);
             else
                 return {-1,-1,-1};
@@ -1661,7 +1661,7 @@ void copy(const SurfTrackerData &src, SurfTrackerData &tgt, const cv::Rect &roi_
     {
         auto it = tgt._data.begin();
         while (it != tgt._data.end()) {
-            if (roi.contains(it->first.second))
+            if (roi.contains(cv::Point(it->first.second)))
                 it = tgt._data.erase(it);
             else
                 it++;
@@ -1671,7 +1671,7 @@ void copy(const SurfTrackerData &src, SurfTrackerData &tgt, const cv::Rect &roi_
     {
         auto it = tgt._surfs.begin();
         while (it != tgt._surfs.end()) {
-            if (roi.contains(it->first))
+            if (roi.contains(cv::Point(it->first)))
                 it = tgt._surfs.erase(it);
             else
                 it++;
@@ -1679,10 +1679,10 @@ void copy(const SurfTrackerData &src, SurfTrackerData &tgt, const cv::Rect &roi_
     }
     
     for(auto &it : src._data)
-        if (roi.contains(it.first.second))
+        if (roi.contains(cv::Point(it.first.second)))
             tgt._data[it.first] = it.second;
     for(auto &it : src._surfs)
-        if (roi.contains(it.first))
+        if (roi.contains(cv::Point(it.first)))
             tgt._surfs[it.first] = it.second;
     
     // tgt.seed_loc = src.seed_loc;
@@ -2257,7 +2257,7 @@ void optimize_surface_mapping(SurfTrackerData &data, cv::Mat_<uint8_t> &state, c
             
     for(int j=used_area.y;j<used_area.br().y;j++)
         for(int i=used_area.x;i<used_area.br().x;i++)
-            if (static_bounds.contains(cv::Vec2i(i,j))) {
+            if (static_bounds.contains(cv::Point(i,j))) {
                 if (problem.HasParameterBlock(&data_inp.loc(&sm_inp, {j,i})[0]))
                     problem.SetParameterBlockConstant(&data_inp.loc(&sm_inp, {j,i})[0]);
                 if (problem.HasParameterBlock(&points_new(j, i)[0]))
@@ -2285,7 +2285,7 @@ void optimize_surface_mapping(SurfTrackerData &data, cv::Mat_<uint8_t> &state, c
 #pragma omp parallel for
     for(int j=used_area.y;j<used_area.br().y;j++)
         for(int i=used_area.x;i<used_area.br().x;i++)
-            if (static_bounds.contains(cv::Vec2i(i,j))) {
+            if (static_bounds.contains(cv::Point(i,j))) {
                 points_out(j, i) = points(j, i);
                 state_out(j, i) = state(j, i);
                 //FIXME copy surfs and locs
@@ -2340,7 +2340,7 @@ void optimize_surface_mapping(SurfTrackerData &data, cv::Mat_<uint8_t> &state, c
     //now filter by consistency
     for(int j=used_area.y;j<used_area.br().y-1;j++)
         for(int i=used_area.x;i<used_area.br().x-1;i++)
-            if (!static_bounds.contains(cv::Vec2i(i,j)) && state_out(j,i) & STATE_VALID) {
+            if (!static_bounds.contains(cv::Point(i,j)) && state_out(j,i) & STATE_VALID) {
                 std::set<SurfaceMeta*> surf_src = data_out.surfs({j,i});
                 for (auto s : surf_src) {
                     int count;
@@ -2365,7 +2365,7 @@ void optimize_surface_mapping(SurfTrackerData &data, cv::Mat_<uint8_t> &state, c
 #pragma omp parallel for collapse(2) schedule(dynamic)
         for(int j=used_area.y;j<used_area.br().y-1;j++)
             for(int i=used_area.x;i<used_area.br().x-1;i++)
-                if (!static_bounds.contains(cv::Vec2i(i,j)) && state_out(j,i) & STATE_LOC_VALID && (fringe(j, i) || fringe_next(j, i))) {
+                if (!static_bounds.contains(cv::Point(i,j)) && state_out(j,i) & STATE_LOC_VALID && (fringe(j, i) || fringe_next(j, i))) {
                     mutex.lock_shared();
                     std::set<SurfaceMeta*> surf_cands = data_out.surfs({j,i});
                     for(auto s : data_out.surfs({j,i}))
@@ -2415,7 +2415,7 @@ void optimize_surface_mapping(SurfTrackerData &data, cv::Mat_<uint8_t> &state, c
 #pragma omp parallel for
     for(int j=used_area.y;j<used_area.br().y-1;j++)
         for(int i=used_area.x;i<used_area.br().x-1;i++)
-            if (!static_bounds.contains(cv::Vec2i(i,j))) {
+            if (!static_bounds.contains(cv::Point(i,j))) {
                 if (state_out(j,i) & STATE_LOC_VALID) {
                     if (data_out.surfs({j,i}).size() < 1) {
                         state_out(j,i) = 0;
@@ -2589,14 +2589,14 @@ QuadSurface *grow_surf_from_surfs(SurfaceMeta *seed, const std::vector<SurfaceMe
 
                 for(auto n : neighs) {
                     cv::Vec2i pn = p+n;
-                    if (save_bounds_inv.contains(pn)
+                    if (save_bounds_inv.contains(cv::Point(pn))
                         && (state(pn) & STATE_PROCESSING) == 0
                         && (state(pn) & STATE_LOC_VALID) == 0)
                     {
                         state(pn) |= STATE_PROCESSING;
                         cands.insert(pn);
                     }
-                    else if (!save_bounds_inv.contains(pn) && save_bounds_inv.br().y <= pn[1]) {
+                    else if (!save_bounds_inv.contains(cv::Point(pn)) && save_bounds_inv.br().y <= pn[1]) {
                         at_right_border = true;
                     }
                 }
@@ -2843,7 +2843,7 @@ QuadSurface *grow_surf_from_surfs(SurfaceMeta *seed, const std::vector<SurfaceMe
                 for(int t=0;t<omp_get_max_threads();t++)
                     added_points_threads[t].push_back(p);
                 
-                if (!used_area.contains({p[1],p[0]})) {
+                if (!used_area.contains(cv::Point(p[1],p[0]))) {
                     used_area = used_area | cv::Rect(p[1],p[0],1,1);
                     used_area_hr = {used_area.x*step, used_area.y*step, used_area.width*step, used_area.height*step};
                 }

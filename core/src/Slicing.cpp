@@ -500,7 +500,7 @@ static float sdist(const cv::Vec3f &a, const cv::Vec3f &b)
 static void min_loc(const cv::Mat_<cv::Vec3f> &points, cv::Vec2f &loc, cv::Vec3f &out, cv::Vec3f tgt, bool z_search = true)
 {
     cv::Rect boundary(1,1,points.cols-2,points.rows-2);
-    if (!boundary.contains({loc[0],loc[1]})) {
+    if (!boundary.contains(cv::Point(loc))) {
         out = {-1,-1,-1};
         loc = {-1,-1};
         return;
@@ -527,7 +527,7 @@ static void min_loc(const cv::Mat_<cv::Vec3f> &points, cv::Vec2f &loc, cv::Vec3f
         for(auto &off : search) {
             cv::Vec2f cand = loc+off*step;
             
-            if (!boundary.contains({cand[0],cand[1]})) {
+            if (!boundary.contains(cv::Point(cand))) {
                 out = {-1,-1,-1};
                 loc = {-1,-1};
                 return;

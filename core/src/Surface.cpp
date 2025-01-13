@@ -270,7 +270,7 @@ bool QuadSurface::valid(SurfacePointer *ptr, const cv::Vec3f &offset)
     assert(ptr_inst);
     cv::Vec3f p = internal_loc(offset+_center, ptr_inst->loc, _scale);
     
-    return _bounds.contains({p[0],p[1]});
+    return _bounds.contains(cv::Point(p[0],p[1]));
 }
 
 cv::Vec3f QuadSurface::coord(SurfacePointer *ptr, const cv::Vec3f &offset)
@@ -280,7 +280,7 @@ cv::Vec3f QuadSurface::coord(SurfacePointer *ptr, const cv::Vec3f &offset)
     cv::Vec3f p = internal_loc(offset+_center, ptr_inst->loc, _scale);
 
     cv::Rect bounds = {0,0,_points.cols-2,_points.rows-2};
-    if (!bounds.contains({p[0],p[1]}))
+    if (!bounds.contains(cv::Point(p[0],p[1])))
         return {-1,-1,-1};
         
     return at_int(_points, {p[0],p[1]});
@@ -417,7 +417,7 @@ template <typename E>
 static float search_min_loc(const cv::Mat_<E> &points, cv::Vec2f &loc, cv::Vec3f &out, cv::Vec3f tgt, cv::Vec2f init_step, float min_step_x)
 {
     cv::Rect boundary(1,1,points.cols-2,points.rows-2);
-    if (!boundary.contains({loc[0],loc[1]})) {
+    if (!boundary.contains(cv::Point(loc))) {
         out = {-1,-1,-1};
         return -1;
     }
@@ -440,7 +440,7 @@ static float search_min_loc(const cv::Mat_<E> &points, cv::Vec2f &loc, cv::Vec3f
             cv::Vec2f cand = loc+mul(off,step);
             
             //just skip if out of bounds
-            if (!boundary.contains({cand[0],cand[1]}))
+            if (!boundary.contains(cv::Point(cand)))
                 continue;
             
             val = at_int(points, cand);
@@ -481,7 +481,7 @@ template <typename E>
 static float search_min_line(const cv::Mat_<E> &points, cv::Vec2f &loc, cv::Vec3f &out, cv::Vec3f tgt_o, cv::Vec3f tgt_v, cv::Vec2f init_step, float min_step_x)
 {
     cv::Rect boundary(1,1,points.cols-2,points.rows-2);
-    if (!boundary.contains({loc[0],loc[1]})) {
+    if (!boundary.contains(cv::Point(loc))) {
         out = {-1,-1,-1};
         return -1;
     }
@@ -504,7 +504,7 @@ static float search_min_line(const cv::Mat_<E> &points, cv::Vec2f &loc, cv::Vec3
             cv::Vec2f cand = loc+mul(off,step);
             
             //just skip if out of bounds
-            if (!boundary.contains({cand[0],cand[1]}))
+            if (!boundary.contains(cv::Point(cand)))
                 continue;
                 
                 val = at_int(points, cand);
@@ -995,7 +995,7 @@ bool area_valid(const cv::Mat_<cv::Vec<T,C>> &m, cv::Vec2f l)
     cv::Rect bounds = {1, 1, m.rows-3,m.cols-3};
     cv::Vec2i li = {floor(l[0]),floor(l[1])};
 
-    if (!bounds.contains(li))
+    if (!bounds.contains(cv::Point(li)))
         return false;
 
     if (m(li[0],li[1])[0] == -1)
@@ -1056,13 +1056,13 @@ void find_intersect_segments(std::vector<std::vector<cv::Vec3f>> &seg_vol, std::
             point = at_int(points, loc);
 
             plane_loc = plane->project(point);
-            if (!plane_roi.contains({plane_loc[0],plane_loc[1]}))
+            if (!plane_roi.contains(cv::Point(plane_loc[0],plane_loc[1])))
                 continue;
 
                 dist = min_loc(points, loc, point, {}, {}, plane, std::min(points.cols,points.rows)*0.1, 0.01);
 
                 plane_loc = plane->project(point);
-                if (!plane_roi.contains({plane_loc[0],plane_loc[1]}))
+                if (!plane_roi.contains(cv::Point(plane_loc[0],plane_loc[1])))
                     dist = -1;
 
                 if (get_block(block, plane_loc, plane_roi, block_step))
@@ -1100,7 +1100,7 @@ void find_intersect_segments(std::vector<std::vector<cv::Vec3f>> &seg_vol, std::
             //now search following points
             cv::Vec2f loc3 = loc2+loc2-loc;
 
-            if (!grid_bounds.contains({loc3[0],loc3[1]}))
+            if (!grid_bounds.contains(cv::Point(loc3)))
                 break;
 
                 point3 = at_int(points, loc3);
@@ -1142,7 +1142,7 @@ void find_intersect_segments(std::vector<std::vector<cv::Vec3f>> &seg_vol, std::
             //now search following points
             cv::Vec2f loc3 = loc2+loc2-loc;
 
-            if (!grid_bounds.contains({loc3[0],loc3[1]}))
+            if (!grid_bounds.contains(cv::Point(loc3[0])))
                 break;
 
                 point3 = at_int(points, loc3);

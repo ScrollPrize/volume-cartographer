@@ -98,7 +98,7 @@ bool loc_valid(const cv::Mat_<cv::Vec<T,C>> &m, const cv::Vec2d &l)
     cv::Rect bounds = {0, 0, m.rows-2,m.cols-2};
     cv::Vec2i li = {floor(l[0]),floor(l[1])};
     
-    if (!bounds.contains(li))
+    if (!bounds.contains(cv::Point(li)))
         return false;
     
     if (m(li[0],li[1])[0] == -1)

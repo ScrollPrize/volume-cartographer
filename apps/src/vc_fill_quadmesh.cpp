@@ -45,7 +45,7 @@ template <typename E>
 static float search_min_line(const cv::Mat_<E> &points, cv::Vec2f &loc, cv::Vec3f &out, cv::Vec3f tgt_o, cv::Vec3f tgt_v, cv::Vec2f init_step, float min_step_x)
 {
     cv::Rect boundary(1,1,points.cols-2,points.rows-2);
-    if (!boundary.contains({loc[0],loc[1]})) {
+    if (!boundary.contains(cv::Point(loc))) {
         out = {-1,-1,-1};
         return -1;
     }
@@ -68,7 +68,7 @@ static float search_min_line(const cv::Mat_<E> &points, cv::Vec2f &loc, cv::Vec3
             cv::Vec2f cand = loc+mul(off,step);
             
             //just skip if out of bounds
-            if (!boundary.contains({cand[0],cand[1]}))
+            if (!boundary.contains(cv::Point(cand)))
                 continue;
                 
                 val = at_int(points, cand);
@@ -109,7 +109,7 @@ bool loc_valid_nan(const cv::Mat_<float> &m, const cv::Vec2d &l)
     cv::Rect bounds = {0, 0, m.rows-2,m.cols-2};
     cv::Vec2i li = {floor(l[0]),floor(l[1])};
     
-    if (!bounds.contains(li))
+    if (!bounds.contains(cv::Point(li)))
         return false;
     
     if (std::isnan(m(li[0],li[1])))
@@ -603,7 +603,7 @@ static bool loc_valid(const cv::Mat_<float> &m, const cv::Vec2d &l)
     cv::Rect bounds = {0, 0, m.rows-2,m.cols-2};
     cv::Vec2i li = {floor(l[0]),floor(l[1])};
     
-    if (!bounds.contains(li))
+    if (!bounds.contains(cv::Point(li)))
         return false;
     
     if (std::isnan(m(li[0],li[1])))
