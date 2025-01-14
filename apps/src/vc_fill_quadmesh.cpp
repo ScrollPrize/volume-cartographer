@@ -1453,18 +1453,18 @@ int main(int argc, char *argv[])
         cv::imwrite(seg_dir/"winding.tif",winding_ideal);
     }
     
-    {
-        cv::Mat_<cv::Vec3f> points_hr = points_hr_grounding(state, tgt_wind, winding_in, points, points_in, trace_mul);
-        QuadSurface *surf_hr = new QuadSurface(points_hr, surfs[0]->_scale);
-        fs::path tgt_dir = "./";
-        surf_hr->meta = new nlohmann::json;
-        (*surf_hr->meta)["vc_fill_quadmesh_params"] = params;
-        std::string name_prefix = "testing_fill_hr_";
-        std::string uuid = name_prefix + time_str();
-        fs::path seg_dir = tgt_dir / uuid;
-        std::cout << "saving " << seg_dir << std::endl;
-        surf_hr->save(seg_dir, uuid);
-    }
+    // {
+    //     cv::Mat_<cv::Vec3f> points_hr = points_hr_grounding(state, tgt_wind, winding_in, points, points_in, trace_mul);
+    //     QuadSurface *surf_hr = new QuadSurface(points_hr, surfs[0]->_scale);
+    //     fs::path tgt_dir = "./";
+    //     surf_hr->meta = new nlohmann::json;
+    //     (*surf_hr->meta)["vc_fill_quadmesh_params"] = params;
+    //     std::string name_prefix = "testing_fill_hr_";
+    //     std::string uuid = name_prefix + time_str();
+    //     fs::path seg_dir = tgt_dir / uuid;
+    //     std::cout << "saving " << seg_dir << std::endl;
+    //     surf_hr->save(seg_dir, uuid);
+    // }
     
     return EXIT_SUCCESS;
 }
