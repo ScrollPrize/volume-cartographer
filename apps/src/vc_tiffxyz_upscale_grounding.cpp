@@ -356,7 +356,7 @@ int main(int argc, char *argv[])
         fs::path tgt_dir = "./";
         surf_hr->meta = new nlohmann::json;
         (*surf_hr->meta)["vc_tiffxyz_upscale_grounding_scale_factor"] = scale_factor;
-        std::string name_prefix = "grouding_hr_";
+        std::string name_prefix = "grounding_hr_";
         std::string uuid = name_prefix + time_str();
         fs::path seg_dir = tgt_dir / uuid;
         std::cout << "saving " << seg_dir << std::endl;
