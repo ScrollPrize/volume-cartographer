@@ -1439,7 +1439,7 @@ int main(int argc, char *argv[])
         fs::path tgt_dir = "./";
         surf_full->meta = new nlohmann::json;
         (*surf_full->meta)["vc_fill_quadmesh_params"] = params;
-        std::string name_prefix = "testing_fill_";
+        std::string name_prefix = "fuse_fill_";
         std::string uuid = name_prefix + time_str();
         fs::path seg_dir = tgt_dir / uuid;
         std::cout << "saving " << seg_dir << std::endl;
