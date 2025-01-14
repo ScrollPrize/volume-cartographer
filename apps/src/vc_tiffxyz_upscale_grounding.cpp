@@ -353,7 +353,7 @@ int main(int argc, char *argv[])
     {
         cv::Mat_<cv::Vec3f> points_hr = points_hr_grounding(wind_lr, points_lr, winds, surf_points, scale_factor);
         QuadSurface *surf_hr = new QuadSurface(points_hr, surfs[0]->_scale);
-        fs::path tgt_dir = "/home/hendrik/data/ml_datasets/vesuvius/manual_wget/dl.ash2txt.org/full-scrolls/Scroll1/PHercParis4.volpkg/paths/";
+        fs::path tgt_dir = "./";
         surf_hr->meta = new nlohmann::json;
         (*surf_hr->meta)["vc_tiffxyz_upscale_grounding_scale_factor"] = scale_factor;
         std::string name_prefix = "grouding_hr_";

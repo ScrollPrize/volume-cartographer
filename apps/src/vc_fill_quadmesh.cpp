@@ -1436,7 +1436,7 @@ int main(int argc, char *argv[])
     
     {
         QuadSurface *surf_full = new QuadSurface(points(bbox), surfs[0]->_scale/trace_mul);
-        fs::path tgt_dir = "/home/hendrik/data/ml_datasets/vesuvius/manual_wget/dl.ash2txt.org/full-scrolls/Scroll1/PHercParis4.volpkg/paths/";
+        fs::path tgt_dir = "./";
         surf_full->meta = new nlohmann::json;
         (*surf_full->meta)["vc_fill_quadmesh_params"] = params;
         std::string name_prefix = "testing_fill_";
@@ -1456,7 +1456,7 @@ int main(int argc, char *argv[])
     {
         cv::Mat_<cv::Vec3f> points_hr = points_hr_grounding(state, tgt_wind, winding_in, points, points_in, trace_mul);
         QuadSurface *surf_hr = new QuadSurface(points_hr, surfs[0]->_scale);
-        fs::path tgt_dir = "/home/hendrik/data/ml_datasets/vesuvius/manual_wget/dl.ash2txt.org/full-scrolls/Scroll1/PHercParis4.volpkg/paths/";
+        fs::path tgt_dir = "./";
         surf_hr->meta = new nlohmann::json;
         (*surf_hr->meta)["vc_fill_quadmesh_params"] = params;
         std::string name_prefix = "testing_fill_hr_";
