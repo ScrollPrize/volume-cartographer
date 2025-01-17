@@ -107,7 +107,7 @@ int main(int argc, char *argv[])
                     surf->gen(&points, &normals, {w,crop.height}, nullptr, tgt_scale, {-full_size.width/2+x,-full_size.height/2+crop.y,0});
                     cv::Mat_<uint8_t> slice;
                     readInterpolated3D(slice, ds.get(), points*ds_scale+off*normals*ds_scale, &chunk_cache);
-                    slice.copyTo(img(cv::Rect(x,crop.y,w,crop.height)));
+                    slice.copyTo(img(cv::Rect(x-crop.x,0,w,crop.height)));
                 }
             }
             else {

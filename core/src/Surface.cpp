@@ -732,27 +732,30 @@ void QuadSurface::gen(cv::Mat_<cv::Vec3f> *coords, cv::Mat_<cv::Vec3f> *normals,
         coords = &_coords_header;
     if (!normals)
         normals = &_normals_header;
+
+    coords->create(size+cv::Size(8,8));
     
-    coords->create(size);
-    
-    std::vector<cv::Vec2f> dst = {{0,0},{w+1,0},{0,h+1}};
-    cv::Vec2f off2d = {upper_left_actual[0],upper_left_actual[1]};
-    std::vector<cv::Vec2f> src = {off2d,off2d+cv::Vec2f(w*_scale[0]/scale,0),off2d+cv::Vec2f(0,h*_scale[1]/scale)};
+    std::vector<cv::Vec2f> dst = {{0,0},{w+8,0},{0,h+8}};
+    cv::Vec2f off2d = {upper_left_actual[0]-4*_scale[0]/scale,upper_left_actual[1]-4*_scale[1]/scale};
+    std::vector<cv::Vec2f> src = {off2d,off2d+cv::Vec2f((w+8)*_scale[0]/scale,0),off2d+cv::Vec2f(0,(h+8)*_scale[1]/scale)};
     
     cv::Mat affine = cv::getAffineTransform(src, dst);
+    cv::warpAffine(_points, *coords, affine, size+cv::Size(8,8));
     
-    cv::warpAffine(_points, *coords, affine, size);
-    
+    //TODO create normals directly from input points instead off on sampled output ...
     if (create_normals) {
-        // std::cout << "FIX offset for GridCoords::gen_coords!" << std::endl;
-        
         normals->create(size);
         for(int j=0;j<h;j++)
             for(int i=0;i<w;i++)
-                (*normals)(j, i) = grid_normal(*coords, {i,j});
-        
-        *coords += (*normals)*upper_left_actual[2];
+                (*normals)(j, i) = grid_normal(*coords, {i+4,j+4});
+
+        *coords = (*coords)(cv::Rect(4,4,size.width,size.height)).clone();
+
+        if (upper_left_actual[2])
+            *coords += (*normals)*upper_left_actual[2];
     }
+    else
+        *coords = (*coords)(cv::Rect(4,4,size.width,size.height)).clone();
 }
 
 SurfaceControlPoint::SurfaceControlPoint(Surface *base, SurfacePointer *ptr_, const cv::Vec3f &control)
