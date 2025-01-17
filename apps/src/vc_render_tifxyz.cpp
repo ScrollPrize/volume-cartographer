@@ -60,8 +60,15 @@ int main(int argc, char *argv[])
         std::cout << "error when loading: " << seg_path << std::endl;
         return EXIT_FAILURE;
     }
+
+    cv::Mat_<cv::Vec3f> raw_points = surf->rawPoints();
+    for(int j=0;j<raw_points.rows;j++)
+        for(int i=0;i<raw_points.cols;i++)
+            if (raw_points(j,i)[0] == -1)
+                raw_points(j,i) = {NAN,NAN,NAN};
+    surf->setRawPoints(raw_points);
     
-    cv::Size full_size = surf->rawPoints().size();
+    cv::Size full_size = raw_points.size();
     full_size.width *= tgt_scale/surf->_scale[0];
     full_size.height *= tgt_scale/surf->_scale[1];
     
