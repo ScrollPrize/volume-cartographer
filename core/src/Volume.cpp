@@ -79,8 +79,8 @@ void Volume::zarrOpen()
         z5::filesystem::handle::Dataset ds_handle(group, name, nlohmann::json::parse(std::ifstream(path_/name/".zarray")).value<std::string>("dimension_separator","."));
 
         zarrDs_.push_back(z5::filesystem::openDataset(ds_handle));
-        if (zarrDs_.back()->getDtype() != z5::types::Datatype::uint8)
-            throw std::runtime_error("only uint8 is currently supported for zarr datasets incompatible type found in "+path_.string()+" / " +name);
+        if (zarrDs_.back()->getDtype() != z5::types::Datatype::uint8 && zarrDs_.back()->getDtype() != z5::types::Datatype::uint16)
+            throw std::runtime_error("only uint8 & uint16 is currently supported for zarr datasets incompatible type found in "+path_.string()+" / " +name);
     }
 }
 
