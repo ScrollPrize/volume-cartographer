@@ -41,6 +41,14 @@ target_link_libraries(vc_grow_seg_from_seed
     VC::surface
 )
 
+add_executable(vc_seg_add_overlap src/vc_seg_add_overlap.cpp)
+target_link_libraries(vc_seg_add_overlap
+    z5
+    opencv_highgui
+    VC::slicing
+    VC::surface
+)
+
 add_executable(vc_grow_seg_from_segments src/vc_grow_seg_from_segments.cpp)
 target_link_libraries(vc_grow_seg_from_segments
     z5
