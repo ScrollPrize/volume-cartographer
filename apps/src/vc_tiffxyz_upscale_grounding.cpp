@@ -282,6 +282,9 @@ int main(int argc, char *argv[])
     cv::Mat_<cv::Vec3f> points_lr = surf_lr->rawPoints();
     cv::Mat_<float> wind_lr = cv::imread(argv[2], cv::IMREAD_UNCHANGED);
     
+    if (points_lr.size() != wind_lr.size())
+        throw std::runtime_error("tiffxyz-lr data must have same size as winding-lr");
+
     int scale_factor = atoi(argv[3]);
     
     for(int j=0;j<wind_lr.rows;j++)
