@@ -1,7 +1,7 @@
 FROM ubuntu:noble
 
 RUN apt-get update
-RUN apt-get upgrade
+RUN apt-get -y upgrade
 RUN apt-get -y install software-properties-common
 RUN add-apt-repository universe
 RUN apt-get update
@@ -19,4 +19,13 @@ WORKDIR /build
 
 RUN cmake -DVC_WITH_CUDA_SPARSE=off /src
 RUN make -j$(nproc --all)
-RUN make install
+#RUN make install
+
+RUN apt-get -y install file
+
+RUN cpack -G DEB -V
+
+RUN dpkg -i /build/pkgs/vc3d*.deb
+
+RUN apt-get -y autoremove
+RUN rm -r /src
