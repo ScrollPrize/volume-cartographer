@@ -1,7 +1,7 @@
 FROM ubuntu:jammy
 
 RUN apt-get update
-RUN apt-get upgrade
+RUN apt-get -y upgrade
 RUN apt -y install build-essential git cmake
 RUN apt-get -y install software-properties-common
 RUN add-apt-repository universe
