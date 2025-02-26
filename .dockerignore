@@ -4,5 +4,5 @@
 .gitignore
 .gitlab-ci.yml
 .zenodo.json
-**/*.md
-docs/*
+build
+results
