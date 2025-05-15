@@ -567,7 +567,7 @@ void CWindow::LoadSurfaces(bool reload)
     treeWidgetSurfaces->clear();
 
     for (auto& pair : _vol_qsurfs) {
-        _surf_col->setSurface(pair.first, nullptr);
+        _surf_col->setSurface(pair.first, nullptr, true);
     }
 
     _vol_qsurfs.clear();
@@ -590,7 +590,7 @@ void CWindow::LoadSurfaces(bool reload)
         if (pair.second) {
             //FIXME replace _vol_surfs with _suf_col by either upgrading surf col to surfacemeta
             _vol_qsurfs[pair.first] = pair.second;
-            _surf_col->setSurface(pair.first, pair.second->surface());
+            _surf_col->setSurface(pair.first, pair.second->surface(), true);
         }
     }
     

@@ -4,10 +4,12 @@
 
 using namespace ChaoVis;
 
-void CSurfaceCollection::setSurface(const std::string &name, Surface* surf)
+void CSurfaceCollection::setSurface(const std::string &name, Surface* surf, bool noSignalSend)
 {
     _surfs[name] = surf;
-    sendSurfaceChanged(name, surf);
+    if (!noSignalSend) {
+        sendSurfaceChanged(name, surf);
+    }
 }
 
 void CSurfaceCollection::setPOI(const std::string &name, POI *poi)

@@ -40,7 +40,7 @@ class CSurfaceCollection : public QObject
     Q_OBJECT
     
 public:
-    void setSurface(const std::string &name, Surface*);
+    void setSurface(const std::string &name, Surface*, bool noSignalSend = false);
     void setPOI(const std::string &name, POI *poi);
     void setIntersection(const std::string &a, const std::string &b, Intersection *intersect);
     Surface *surface(const std::string &name);
