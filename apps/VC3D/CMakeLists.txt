@@ -17,6 +17,10 @@ set(srcs
     opslist.cpp
     opssettings.cpp
     formsetsrc.cpp
+    CDistanceTransformWidget.cpp
+    CDistanceTransformWidget.hpp
+    CSegmentationEditorWindow.cpp
+    CSegmentationEditorWindow.hpp
 )
 
 set(MACOSX_BUNDLE_ICON logo.icns)
@@ -92,5 +96,3 @@ if (${VC_INSTALL_APPS})
     )
     install(SCRIPT ${vc_gui_deploy_script} COMPONENT Programs)
 endif()
-
-

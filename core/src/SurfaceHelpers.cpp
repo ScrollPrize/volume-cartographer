@@ -14,6 +14,15 @@
 #include <xtensor/xview.hpp>
 
 #include <fstream>
+#include <iostream>
+
+// Forward declarations of global variables used across functions
+extern float straight_weight;
+extern float straight_weight_3D;
+extern float sliding_w_scale;
+extern float z_loc_loss_w;
+extern float dist_loss_2d_w;
+extern float dist_loss_3d_w;
 
 class ALifeTime
 {
@@ -809,6 +818,18 @@ float local_optimization(int radius, const cv::Vec2i &p, cv::Mat_<uint8_t> &stat
     options.minimizer_progress_to_stdout = false;
     options.max_num_iterations = 10000;
     options.function_tolerance = 1e-4;
+    options.use_nonmonotonic_steps = true;
+
+//    if (problem.NumParameterBlocks() > 1) {
+//        options.use_inner_iterations = true;
+//    }
+
+    options.sparse_linear_algebra_library_type = ceres::CUDA_SPARSE;
+
+    // Enable mixed precision for SPARSE_SCHUR
+    if (options.linear_solver_type == ceres::SPARSE_SCHUR) {
+        options.use_mixed_precision_solves = true;
+    }
 
     ceres::Solver::Summary summary;
     ceres::Solve(options, &problem, &summary);
@@ -1070,6 +1091,9 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *c
 
     ceres::Solver::Options options_big;
     options_big.linear_solver_type = ceres::SPARSE_SCHUR;
+    options_big.use_nonmonotonic_steps = true;
+    options_big.sparse_linear_algebra_library_type = ceres::CUDA_SPARSE;
+    options_big.use_mixed_precision_solves = true;
     options_big.minimizer_progress_to_stdout = false;
     options_big.max_num_iterations = 10000;
 
@@ -1418,7 +1442,7 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *c
         gen_avg_cost.push_back(avg_cost/cost_count);
         gen_max_cost.push_back(max_cost);
 
-        printf("-> total done %d/ fringe: %d surf: %fM vx^2\n", succ, fringe.size(), double(succ)*step*step/1e9);
+        printf("-> total done %d/ fringe: %ld surf: %fM vx^2\n", succ, (long)fringe.size(), double(succ)*step*step/1e9);
 
         timer_gen.unit = succ_gen*step*step;
         timer_gen.unit_string = "vx^2";
@@ -1696,7 +1720,9 @@ int add_surftrack_distloss(SurfaceMeta *sm, const cv::Vec2i &p, const cv::Vec2i 
     if ((state(p+off) & STATE_LOC_VALID) == 0 || !data.has(sm, p+off))
         return 0;
 
-    ceres::ResidualBlockId tmp = problem.AddResidualBlock(DistLoss2D::Create(unit*cv::norm(off),w), nullptr, &data.loc(sm, p)[0], &data.loc(sm, p+off)[0]);
+    // Use the global parameter if w is default value (1.0), otherwise use the provided value
+    float weight = (w == 1.0f) ? dist_loss_2d_w : w;
+    ceres::ResidualBlockId tmp = problem.AddResidualBlock(DistLoss2D::Create(unit*cv::norm(off), weight), nullptr, &data.loc(sm, p)[0], &data.loc(sm, p+off)[0]);
     if (res)
         *res = tmp;
 
@@ -1714,7 +1740,9 @@ int add_surftrack_distloss_3D(cv::Mat_<cv::Vec3d> &points, const cv::Vec2i &p, c
     if ((state(p+off) & (STATE_COORD_VALID | STATE_LOC_VALID)) == 0)
         return 0;
 
-    ceres::ResidualBlockId tmp = problem.AddResidualBlock(DistLoss::Create(unit*cv::norm(off),w), nullptr, &points(p)[0], &points(p+off)[0]);
+    // Use the global parameter if w is default value (2.0), otherwise use the provided value
+    float weight = (w == 2.0f) ? dist_loss_3d_w : w;
+    ceres::ResidualBlockId tmp = problem.AddResidualBlock(DistLoss::Create(unit*cv::norm(off), weight), nullptr, &points(p)[0], &points(p+off)[0]);
 
     // std::cout << cv::norm(points(p)-points(p+off)) << " tgt " << unit << points(p) << points(p+off) << std::endl;
     if (res)
@@ -1751,7 +1779,7 @@ int cond_surftrack_distloss(int type, SurfaceMeta *sm, const cv::Vec2i &p, const
     return 1;
 }
 
-int add_surftrack_straightloss(SurfaceMeta *sm, const cv::Vec2i &p, const cv::Vec2i &o1, const cv::Vec2i &o2, const cv::Vec2i &o3, SurfTrackerData &data, ceres::Problem &problem, const cv::Mat_<uint8_t> &state, int flags = 0, float w = 0.7)
+int add_surftrack_straightloss(SurfaceMeta *sm, const cv::Vec2i &p, const cv::Vec2i &o1, const cv::Vec2i &o2, const cv::Vec2i &o3, SurfTrackerData &data, ceres::Problem &problem, const cv::Mat_<uint8_t> &state, int flags = 0, float w = 0.7f)
 {
     if ((state(p+o1) & STATE_LOC_VALID) == 0 || !data.has(sm, p+o1))
         return 0;
@@ -1759,6 +1787,9 @@ int add_surftrack_straightloss(SurfaceMeta *sm, const cv::Vec2i &p, const cv::Ve
         return 0;
     if ((state(p+o3) & STATE_LOC_VALID) == 0 || !data.has(sm, p+o3))
         return 0;
+
+    // Always use the global straight_weight for 2D
+    w = straight_weight;
 
     // std::cout << "add straight " << sm << p << o1 << o2 << o3 << std::endl;
     problem.AddResidualBlock(StraightLoss2D::Create(w), nullptr, &data.loc(sm, p+o1)[0], &data.loc(sm, p+o2)[0], &data.loc(sm, p+o3)[0]);
@@ -1775,7 +1806,7 @@ int add_surftrack_straightloss(SurfaceMeta *sm, const cv::Vec2i &p, const cv::Ve
     return 1;
 }
 
-int add_surftrack_straightloss_3D(const cv::Vec2i &p, const cv::Vec2i &o1, const cv::Vec2i &o2, const cv::Vec2i &o3, cv::Mat_<cv::Vec3d> &points ,ceres::Problem &problem, const cv::Mat_<uint8_t> &state, int flags = 0, ceres::ResidualBlockId *res = nullptr, float w = 4.0)
+int add_surftrack_straightloss_3D(const cv::Vec2i &p, const cv::Vec2i &o1, const cv::Vec2i &o2, const cv::Vec2i &o3, cv::Mat_<cv::Vec3d> &points ,ceres::Problem &problem, const cv::Mat_<uint8_t> &state, int flags = 0, ceres::ResidualBlockId *res = nullptr, float w = 4.0f)
 {
     if ((state(p+o1) & (STATE_LOC_VALID|STATE_COORD_VALID)) == 0)
         return 0;
@@ -1783,6 +1814,9 @@ int add_surftrack_straightloss_3D(const cv::Vec2i &p, const cv::Vec2i &o1, const
         return 0;
     if ((state(p+o3) & (STATE_LOC_VALID|STATE_COORD_VALID)) == 0)
         return 0;
+
+    // Always use the global straight_weight_3D for 3D
+    w = straight_weight_3D;
 
     // std::cout << "add straight " << sm << p << o1 << o2 << o3 << std::endl;
     ceres::ResidualBlockId tmp =
@@ -1816,8 +1850,6 @@ int cond_surftrack_straightloss_3D(int type, SurfaceMeta *sm, const cv::Vec2i &p
 
     return count;
 }
-
-static float z_loc_loss_w = 0.1;
 
 int add_surftrack_surfloss(SurfaceMeta *sm, const cv::Vec2i p, SurfTrackerData &data, ceres::Problem &problem, const cv::Mat_<uint8_t> &state, cv::Mat_<cv::Vec3d> &points, float step, ceres::ResidualBlockId *res = nullptr, float w = 0.1)
 {
@@ -2131,8 +2163,17 @@ std::string strint(int n, int width)
 }
 
 int static dbg_counter = 0;
+// Default values for thresholds - will be configurable through JSON
 float local_cost_inl_th = 0.2;
 float same_surface_th = 2.0;
+float straight_weight = 0.7f;         // Weight for 2D straight line constraints
+float straight_weight_3D = 4.0f;    // Weight for 3D straight line constraints
+float sliding_w_scale = 1.0f;       // Scale factor for sliding window
+float z_loc_loss_w = 0.1f;          // Weight for Z location loss constraints
+float dist_loss_2d_w = 1.0f;        // Weight for 2D distance constraints
+float dist_loss_3d_w = 2.0f;        // Weight for 3D distance constraints
+float straight_min_count = 1.0f;   // Minimum number of straight constraints
+int inlier_base_threshold = 20;    // Starting threshold for inliers
 
 //try flattening the current surface mapping assuming direct 3d distances
 //this is basically just a reparametrization
@@ -2157,11 +2198,13 @@ void optimize_surface_mapping(SurfTrackerData &data, cv::Mat_<uint8_t> &state, c
     options.linear_solver_type = ceres::SPARSE_SCHUR;
 #ifdef VC_USE_CUDA_SPARSE
     options.sparse_linear_algebra_library_type = ceres::CUDA_SPARSE;
+    options.use_mixed_precision_solves = true;
 #endif
     options.minimizer_progress_to_stdout = false;
     options.max_num_iterations = 100;
     options.num_threads = omp_get_max_threads();
-    
+    options.use_nonmonotonic_steps = true;
+
     for(int j=used_area.y;j<used_area.br().y;j++)
         for(int i=used_area.x;i<used_area.br().x;i++)
             if (state(j,i) & STATE_LOC_VALID) {
@@ -2261,10 +2304,12 @@ void optimize_surface_mapping(SurfTrackerData &data, cv::Mat_<uint8_t> &state, c
                 if (problem.HasParameterBlock(&data_inp.loc(&sm_inp, {j,i})[0]))
                     problem.SetParameterBlockConstant(&data_inp.loc(&sm_inp, {j,i})[0]);
                 if (problem.HasParameterBlock(&points_new(j, i)[0]))
-                    problem.SetParameterBlockConstant(&points_new(j, i)[0]);                    
+                    problem.SetParameterBlockConstant(&points_new(j, i)[0]);
             }
     
     options.max_num_iterations = 1000;
+    options.use_nonmonotonic_steps = true;
+    options.use_inner_iterations = true;
     ceres::Solve(options, &problem, &summary);
     std::cout << summary.FullReport() << std::endl;
     std::cout << "rms " << sqrt(summary.final_cost/summary.num_residual_blocks) << " count " << summary.num_residual_blocks << std::endl;
@@ -2463,6 +2508,28 @@ QuadSurface *grow_surf_from_surfs(SurfaceMeta *seed, const std::vector<SurfaceMe
     float step = params.value("step", 10);
     int max_width = params.value("max_width", 80000);
     
+    local_cost_inl_th = params.value("local_cost_inl_th", 0.2f);
+    same_surface_th = params.value("same_surface_th", 2.0f);
+    straight_weight = params.value("straight_weight", 0.7f);        // Weight for 2D straight line constraints
+    straight_weight_3D = params.value("straight_weight_3D", 4.0f);  // Weight for 3D straight line constraints
+    sliding_w_scale = params.value("sliding_w_scale", 1.0f);          // Scale factor for sliding window
+    z_loc_loss_w = params.value("z_loc_loss_w", 0.1f);                // Weight for Z location loss constraints
+    dist_loss_2d_w = params.value("dist_loss_2d_w", 1.0f);            // Weight for 2D distance constraints
+    dist_loss_3d_w = params.value("dist_loss_3d_w", 2.0f);            // Weight for 3D distance constraints
+    straight_min_count = params.value("straight_min_count", 1.0f);   // Minimum number of straight constraints
+    inlier_base_threshold = params.value("inlier_base_threshold", 20); // Starting threshold for inliers
+
+    std::cout << "  local_cost_inl_th: " << local_cost_inl_th << std::endl;
+    std::cout << "  same_surface_th: " << same_surface_th << std::endl;
+    std::cout << "  straight_weight: " << straight_weight << std::endl;
+    std::cout << "  straight_weight_3D: " << straight_weight_3D << std::endl;
+    std::cout << "  straight_min_count: " << straight_min_count << std::endl;
+    std::cout << "  inlier_base_threshold: " << inlier_base_threshold << std::endl;
+    std::cout << "  sliding_w_scale: " << sliding_w_scale << std::endl;
+    std::cout << "  z_loc_loss_w: " << z_loc_loss_w << std::endl;
+    std::cout << "  dist_loss_2d_w: " << dist_loss_2d_w << std::endl;
+    std::cout << "  dist_loss_3d_w: " << dist_loss_3d_w << std::endl;
+
     std::cout << "total surf count " << surfs_v.size() << std::endl;
 
     std::set<SurfaceMeta*> approved_sm;
@@ -2491,8 +2558,10 @@ QuadSurface *grow_surf_from_surfs(SurfaceMeta *seed, const std::vector<SurfaceMe
     int stop_gen = 100000;
     int closing_r = 20; //FIXME dont forget to reset!
 
-    //1k ~ 1cm
-    int sliding_w = 1000/src_step/step*2;
+    // Get sliding window scale from params (set earlier from JSON)
+
+    //1k ~ 1cm, scaled by sliding_w_scale parameter
+    int sliding_w = static_cast<int>(1000/src_step/step*2 * sliding_w_scale);
     int w = 2000/src_step/step*2+10+2*closing_r;
     int h = 15000/src_step/step*2+10+2*closing_r;
     cv::Size size = {w,h};
@@ -2567,7 +2636,7 @@ QuadSurface *grow_surf_from_surfs(SurfaceMeta *seed, const std::vector<SurfaceMe
     
     int loc_valid_count = 0;
     int succ = 0;
-    int curr_best_inl_th = 20;
+    int curr_best_inl_th = inlier_base_threshold;
     int last_succ_parametrization = 0;
     
     std::vector<SurfTrackerData> data_ths(omp_get_max_threads());
@@ -2736,7 +2805,7 @@ QuadSurface *grow_surf_from_surfs(SurfaceMeta *seed, const std::vector<SurfaceMe
                         float cost = local_cost(test_surf, p, data_th, state, points, step, src_step, &count, &straight_count);
                         state(p) = 0;
                         data_th.erase(test_surf, p);
-                        if (cost < local_cost_inl_th && (ref_seed || (count >= 2 && straight_count >= 1))) {
+                        if (cost < local_cost_inl_th && (ref_seed || (count >= 2 && straight_count >= straight_min_count))) {
                             inliers_sum += count;
                             inliers_count++;
                         }
@@ -2915,7 +2984,7 @@ QuadSurface *grow_surf_from_surfs(SurfaceMeta *seed, const std::vector<SurfaceMe
             }
         }
         else
-            curr_best_inl_th = 20;
+            curr_best_inl_th = inlier_base_threshold;
    
         loc_valid_count = 0;
         for(int j=used_area.y;j<used_area.br().y-1;j++)
@@ -2967,7 +3036,7 @@ QuadSurface *grow_surf_from_surfs(SurfaceMeta *seed, const std::vector<SurfaceMe
             last_succ_parametrization = loc_valid_count;
             //recalc fringe after surface optimization (which often shrinks the surf)
             fringe.clear();
-            curr_best_inl_th = 20;
+            curr_best_inl_th = inlier_base_threshold;
             for(int j=active.y-2;j<=active.br().y+2;j++)
                 for(int i=active.x-2;i<=active.br().x+2;i++)
                     if (state(j,i) & STATE_LOC_VALID)
@@ -2982,7 +3051,7 @@ QuadSurface *grow_surf_from_surfs(SurfaceMeta *seed, const std::vector<SurfaceMe
             }
         }
 
-        printf("gen %d processing %d fringe cands (total done %d fringe: %d) area %f vx^2 best th: %d\n", generation, cands.size(), succ, fringe.size(),loc_valid_count*src_step*src_step*step*step, best_inliers_gen);
+        printf("gen %d processing %lu fringe cands (total done %d fringe: %lu) area %f vx^2 best th: %d\n", generation, static_cast<unsigned long>(cands.size()), succ, static_cast<unsigned long>(fringe.size()), loc_valid_count*src_step*src_step*step*step, best_inliers_gen);
         
         //continue expansion
         if (!fringe.size() && w < max_width/step)
@@ -3017,7 +3086,7 @@ QuadSurface *grow_surf_from_surfs(SurfaceMeta *seed, const std::vector<SurfaceMe
 
             std::cout << size << bounds << save_bounds_inv << used_area << active_bounds << (used_area & active_bounds) << static_bounds << std::endl;
             fringe.clear();
-            curr_best_inl_th = 20;
+            curr_best_inl_th = inlier_base_threshold;
             for(int j=active.y-2;j<=active.br().y+2;j++)
                 for(int i=active.x-2;i<=active.br().x+2;i++)
                     //FIXME WTF why isn't this working?!'

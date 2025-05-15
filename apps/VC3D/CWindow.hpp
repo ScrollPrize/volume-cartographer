@@ -4,6 +4,7 @@
 #include <cstdint>
 
 #include <opencv2/core.hpp>
+#include "CDistanceTransformWidget.hpp"
 #include "ui_VCMain.h"
 
 #define MAX_RECENT_VOLPKG 10
@@ -34,6 +35,7 @@ namespace ChaoVis
 
 class CVolumeViewer;
 class CSurfaceCollection;
+class CSegmentationEditorWindow;
 
 class CWindow : public QMainWindow
 {
@@ -59,6 +61,9 @@ public slots:
     void onOpChainChanged(OpChain *chain);
     void onTagChanged(void);
     void onResetPoints(void);
+    void onZSliceValueChanged(int value);
+    void updateZSliceControls(int z_value);
+    void onRefreshListPressed();
 
 public:
     CWindow();
@@ -101,6 +106,7 @@ private slots:
     void onSurfaceSelected(QTreeWidgetItem *current, QTreeWidgetItem *previous);
     void onSegFilterChanged(int index);
     void onEditMaskPressed();
+    void onViewInEditorPressed();
 private:
     std::shared_ptr<volcart::VolumePkg> fVpkg;
     Surface *_seg_surf;
@@ -147,6 +153,8 @@ private:
     //TODO abstract these into separate QWidget class?
     QLabel* lblLoc[3];
     QDoubleSpinBox* spNorm[3];
+    QSlider* sliderZSlice;
+    QSpinBox* spinBoxZSlice;
 
     Ui_VCMainWindow ui;
 
@@ -160,6 +168,12 @@ private:
 
     std::unordered_map<std::string,OpChain*> _opchains;
     std::unordered_map<std::string,SurfaceMeta*> _vol_qsurfs;
+
+    // Distance transform widget
+    CDistanceTransformWidget* distanceTransformWidget;
+
+    // Segmentation editor window
+    CSegmentationEditorWindow* segmentationEditorWindow;
 };  // class CWindow
 
 }  // namespace ChaoVis

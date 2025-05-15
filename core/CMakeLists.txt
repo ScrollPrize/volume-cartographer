@@ -79,6 +79,7 @@ target_link_libraries(vc_core
         spdlog::spdlog
         nlohmann_json::nlohmann_json
         z5
+        CURL::libcurl
     PRIVATE
         OpenMP::OpenMP_CXX
 )

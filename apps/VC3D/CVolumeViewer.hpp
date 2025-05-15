@@ -67,6 +67,7 @@ signals:
     void SendSignalStatusMessageAvailable(QString text, int timeout);
     void sendVolumeClicked(cv::Vec3f vol_loc, cv::Vec3f normal, Surface *surf, Qt::MouseButton buttons, Qt::KeyboardModifiers modifiers);
     void sendShiftNormal(cv::Vec3f step);
+    void sendZSliceChanged(int z_value);
 
 protected:
     void ScaleImage(double nFactor);

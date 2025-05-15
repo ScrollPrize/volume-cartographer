@@ -23,8 +23,8 @@ using qga = QGuiApplication;
 
 #define BGND_RECT_MARGIN 8
 #define DEFAULT_TEXT_COLOR QColor(255, 255, 120)
-// #define ZOOM_FACTOR 1.148698354997035
-#define ZOOM_FACTOR 2.0 //1.414213562373095
+// More gentle zoom factor for smoother experience
+#define ZOOM_FACTOR 1.15 // Changed from 2.0 (which was too aggressive)
 
 CVolumeViewer::CVolumeViewer(CSurfaceCollection *col, QWidget* parent)
     : QWidget(parent)
@@ -165,7 +165,25 @@ void CVolumeViewer::onZoom(int steps, QPointF scene_loc, Qt::KeyboardModifiers m
         return;
     
     if (modifiers & Qt::ShiftModifier) {
+        // Z slice navigation with shift+scroll
         _z_off += steps;
+
+        // Update the focus POI Z position
+        POI *poi = _surf_col->poi("focus");
+        if (poi && volume) {
+            // Calculate the new Z value
+            int newZ = static_cast<int>(poi->p[2] + steps);
+            // Make sure it's within bounds
+            newZ = std::max(0, std::min(newZ, static_cast<int>(volume->numSlices() - 1)));
+
+            // Update POI z position
+            poi->p[2] = newZ;
+            _surf_col->setPOI("focus", poi);
+
+            // Emit signal for Z slice change
+            emit sendZSliceChanged(newZ);
+        }
+
         renderVisible(true);
     }
     else {

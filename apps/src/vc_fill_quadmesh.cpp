@@ -1101,7 +1101,8 @@ int main(int argc, char *argv[])
     options_col.num_threads = 32;
     options_col.minimizer_progress_to_stdout = false;
     options_col.max_num_iterations = 10000;
-    
+    options_col.use_mixed_precision_solves = true;
+
     cv::Vec3f seed_coord = {-1,-1,-1};
     cv::Vec2i seed_loc = {-1,-1};
     
