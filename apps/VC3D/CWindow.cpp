@@ -121,8 +121,7 @@ CVolumeViewer *CWindow::newConnectedCVolumeViewer(std::string surfaceName, QStri
     auto volView = new CVolumeViewer(_surf_col, mdiArea);
     QMdiSubWindow *win = mdiArea->addSubWindow(volView);
     win->setWindowTitle(title);
-    win->setWindowFlags(Qt::WindowTitleHint);
-    win->setMouseTracking(false);
+    win->setWindowFlags(Qt::WindowTitleHint | Qt::WindowMinMaxButtonsHint);
     volView->setCache(chunk_cache);
     connect(this, &CWindow::sendVolumeChanged, volView, &CVolumeViewer::OnVolumeChanged);
     connect(this, &CWindow::sendPointsChanged, volView, &CVolumeViewer::onPointsChanged);
@@ -666,6 +665,9 @@ void CWindow::ShowSettings()
 
 void CWindow::ResetSegmentationViews()
 {
+    for(auto sub : mdiArea->subWindowList()) {
+        sub->showNormal();
+    }
     mdiArea->tileSubWindows();
 }
 
