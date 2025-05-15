@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>1200</width>
-    <height>800</height>
+    <width>1434</width>
+    <height>922</height>
    </rect>
   </property>
   <property name="sizePolicy">
@@ -180,7 +180,7 @@
              </size>
             </property>
             <property name="text">
-             <string>VOLUME_PACKAGE_NAME</string>
+             <string>[ No Volume Package Loaded ]</string>
             </property>
             <property name="wordWrap">
              <bool>true</bool>
@@ -189,6 +189,9 @@
           </item>
           <item>
            <widget class="QTreeWidget" name="treeWidgetSurfaces">
+            <property name="alternatingRowColors">
+             <bool>true</bool>
+            </property>
             <property name="indentation">
              <number>0</number>
             </property>
@@ -215,22 +218,50 @@
            </widget>
           </item>
           <item>
-           <widget class="QComboBox" name="cmbFilterSegs">
-            <item>
-             <property name="text">
-              <string>show all</string>
+           <widget class="QWidget" name="widget_2" native="true">
+            <layout class="QHBoxLayout" name="horizontalLayout_2" stretch="2,1">
+             <property name="leftMargin">
+              <number>0</number>
              </property>
-            </item>
-            <item>
-             <property name="text">
-              <string>filter by focus point</string>
+             <property name="topMargin">
+              <number>8</number>
              </property>
-            </item>
-            <item>
-             <property name="text">
-              <string>filter by point sets</string>
+             <property name="rightMargin">
+              <number>0</number>
              </property>
-            </item>
+             <property name="bottomMargin">
+              <number>8</number>
+             </property>
+             <item>
+              <widget class="QComboBox" name="cmbFilterSegs">
+               <item>
+                <property name="text">
+                 <string>Show All</string>
+                </property>
+               </item>
+               <item>
+                <property name="text">
+                 <string>Filter by Focus Points</string>
+                </property>
+               </item>
+               <item>
+                <property name="text">
+                 <string>Filter by Point Sets</string>
+                </property>
+               </item>
+              </widget>
+             </item>
+             <item>
+              <widget class="QPushButton" name="btnReloadSurfaces">
+               <property name="text">
+                <string>Reload</string>
+               </property>
+               <property name="icon">
+                <iconset theme="view-refresh"/>
+               </property>
+              </widget>
+             </item>
+            </layout>
            </widget>
           </item>
           <item>
@@ -246,17 +277,29 @@
           <item>
            <widget class="QWidget" name="widget" native="true">
             <layout class="QGridLayout" name="gridLayout_6">
+             <property name="leftMargin">
+              <number>0</number>
+             </property>
+             <property name="topMargin">
+              <number>8</number>
+             </property>
+             <property name="rightMargin">
+              <number>0</number>
+             </property>
+             <property name="bottomMargin">
+              <number>8</number>
+             </property>
              <item row="1" column="0">
               <widget class="QCheckBox" name="chkApproved">
                <property name="text">
-                <string>approved</string>
+                <string>Approved</string>
                </property>
               </widget>
              </item>
              <item row="1" column="1">
               <widget class="QCheckBox" name="chkDefective">
                <property name="text">
-                <string>defective</string>
+                <string>Defective</string>
                </property>
               </widget>
              </item>
@@ -270,7 +313,7 @@
              <item row="2" column="1">
               <widget class="QPushButton" name="btnResetPoints">
                <property name="text">
-                <string>reset points</string>
+                <string>Reset Points</string>
                </property>
               </widget>
              </item>
@@ -280,7 +323,10 @@
           <item>
            <widget class="QPushButton" name="btnEditMask">
             <property name="text">
-             <string>edit segment mask</string>
+             <string>Edit Segment Mask</string>
+            </property>
+            <property name="icon">
+             <iconset theme="applications-graphics"/>
             </property>
            </widget>
           </item>
@@ -290,35 +336,6 @@
       </layout>
      </item>
     </layout>
-   </widget>
-  </widget>
-  <widget class="QDockWidget" name="dockWidgetOpSettings">
-   <property name="minimumSize">
-    <size>
-     <width>103</width>
-     <height>143</height>
-    </size>
-   </property>
-   <property name="floating">
-    <bool>false</bool>
-   </property>
-   <property name="features">
-    <set>QDockWidget::DockWidgetFeature::DockWidgetClosable|QDockWidget::DockWidgetFeature::DockWidgetFloatable|QDockWidget::DockWidgetFeature::DockWidgetMovable</set>
-   </property>
-   <property name="allowedAreas">
-    <set>Qt::DockWidgetArea::LeftDockWidgetArea|Qt::DockWidgetArea::RightDockWidgetArea</set>
-   </property>
-   <property name="windowTitle">
-    <string>Layer Settings</string>
-   </property>
-   <attribute name="dockWidgetArea">
-    <number>1</number>
-   </attribute>
-   <widget class="QWidget" name="opsSettingsContent">
-    <property name="enabled">
-     <bool>true</bool>
-    </property>
-    <layout class="QGridLayout" name="gridLayout_3"/>
    </widget>
   </widget>
   <widget class="QDockWidget" name="dockWidgetSegmentation">
@@ -401,15 +418,15 @@
             <rect>
              <x>0</x>
              <y>0</y>
-             <width>367</width>
-             <height>360</height>
+             <width>347</width>
+             <height>547</height>
             </rect>
            </property>
            <property name="layoutDirection">
             <enum>Qt::LayoutDirection::LeftToRight</enum>
            </property>
            <property name="autoFillBackground">
-            <bool>false</bool>
+            <bool>true</bool>
            </property>
            <layout class="QVBoxLayout" name="verticalLayout_12">
             <property name="spacing">
@@ -691,7 +708,50 @@
     </layout>
    </widget>
   </widget>
+  <widget class="QDockWidget" name="dockWidgetOpList">
+   <property name="windowTitle">
+    <string>Layers</string>
+   </property>
+   <attribute name="dockWidgetArea">
+    <number>1</number>
+   </attribute>
+   <widget class="QWidget" name="opsListContent">
+    <layout class="QGridLayout" name="gridLayout_4"/>
+   </widget>
+  </widget>
+  <widget class="QDockWidget" name="dockWidgetOpSettings">
+   <property name="minimumSize">
+    <size>
+     <width>103</width>
+     <height>31</height>
+    </size>
+   </property>
+   <property name="floating">
+    <bool>false</bool>
+   </property>
+   <property name="features">
+    <set>QDockWidget::DockWidgetFeature::DockWidgetClosable|QDockWidget::DockWidgetFeature::DockWidgetFloatable|QDockWidget::DockWidgetFeature::DockWidgetMovable</set>
+   </property>
+   <property name="allowedAreas">
+    <set>Qt::DockWidgetArea::LeftDockWidgetArea|Qt::DockWidgetArea::RightDockWidgetArea</set>
+   </property>
+   <property name="windowTitle">
+    <string>Layer Settings</string>
+   </property>
+   <attribute name="dockWidgetArea">
+    <number>1</number>
+   </attribute>
+   <widget class="QWidget" name="opsSettingsContent">
+    <property name="enabled">
+     <bool>true</bool>
+    </property>
+    <layout class="QGridLayout" name="gridLayout_3"/>
+   </widget>
+  </widget>
   <widget class="QDockWidget" name="dockWidgetLocation">
+   <property name="windowTitle">
+    <string>Location</string>
+   </property>
    <attribute name="dockWidgetArea">
     <number>1</number>
    </attribute>
@@ -714,12 +774,15 @@
        <item row="0" column="0">
         <widget class="QLabel" name="label_9">
          <property name="text">
-          <string>focus</string>
+          <string>Focus</string>
          </property>
         </widget>
        </item>
        <item row="1" column="2">
         <widget class="QDoubleSpinBox" name="dspNY">
+         <property name="enabled">
+          <bool>false</bool>
+         </property>
          <property name="minimum">
           <double>-10.000000000000000</double>
          </property>
@@ -736,6 +799,9 @@
        </item>
        <item row="1" column="1">
         <widget class="QDoubleSpinBox" name="dspNX">
+         <property name="enabled">
+          <bool>false</bool>
+         </property>
          <property name="minimum">
           <double>-10.000000000000000</double>
          </property>
@@ -753,12 +819,15 @@
        <item row="1" column="0">
         <widget class="QLabel" name="label_12">
          <property name="text">
-          <string>normal</string>
+          <string>Normal</string>
          </property>
         </widget>
        </item>
        <item row="1" column="3">
         <widget class="QDoubleSpinBox" name="dspNZ">
+         <property name="enabled">
+          <bool>false</bool>
+         </property>
          <property name="minimum">
           <double>-10.000000000000000</double>
          </property>
@@ -799,17 +868,6 @@
     </layout>
    </widget>
   </widget>
-  <widget class="QDockWidget" name="dockWidgetOpList">
-   <property name="windowTitle">
-    <string>Layers</string>
-   </property>
-   <attribute name="dockWidgetArea">
-    <number>1</number>
-   </attribute>
-   <widget class="QWidget" name="opsListContent">
-    <layout class="QGridLayout" name="gridLayout_4"/>
-   </widget>
-  </widget>
   <action name="actionOpen">
    <property name="text">
     <string>Open</string>
@@ -820,7 +878,7 @@
  <resources/>
  <connections/>
  <buttongroups>
-  <buttongroup name="buttonGroupBackward"/>
   <buttongroup name="buttonGroupForward"/>
+  <buttongroup name="buttonGroupBackward"/>
  </buttongroups>
 </ui>

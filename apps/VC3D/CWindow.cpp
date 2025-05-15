@@ -48,7 +48,7 @@ CWindow::CWindow() :
     
     _surf_col = new CSurfaceCollection();
     
-    _surf_col->setSurface("manual plane", new PlaneSurface({2000,2000,2000},{1,1,1}));
+    //_surf_col->setSurface("manual plane", new PlaneSurface({2000,2000,2000},{1,1,1}));
     _surf_col->setSurface("xy plane", new PlaneSurface({2000,2000,2000},{0,0,1}));
     _surf_col->setSurface("xz plane", new PlaneSurface({2000,2000,2000},{0,1,0}));
     _surf_col->setSurface("yz plane", new PlaneSurface({2000,2000,2000},{1,0,0}));
@@ -116,11 +116,13 @@ CWindow::~CWindow(void)
 {
 }
 
-CVolumeViewer *CWindow::newConnectedCVolumeViewer(std::string show_surf, QMdiArea *mdiArea)
+CVolumeViewer *CWindow::newConnectedCVolumeViewer(std::string surfaceName, QString title, QMdiArea *mdiArea)
 {
     auto volView = new CVolumeViewer(_surf_col, mdiArea);
     QMdiSubWindow *win = mdiArea->addSubWindow(volView);
-    win->setWindowTitle(show_surf.c_str());
+    win->setWindowTitle(title);
+    win->setWindowFlags(Qt::WindowTitleHint);
+    win->setMouseTracking(false);
     volView->setCache(chunk_cache);
     connect(this, &CWindow::sendVolumeChanged, volView, &CVolumeViewer::OnVolumeChanged);
     connect(this, &CWindow::sendPointsChanged, volView, &CVolumeViewer::onPointsChanged);
@@ -129,7 +131,7 @@ CVolumeViewer *CWindow::newConnectedCVolumeViewer(std::string show_surf, QMdiAre
     connect(_surf_col, &CSurfaceCollection::sendIntersectionChanged, volView, &CVolumeViewer::onIntersectionChanged);
     connect(volView, &CVolumeViewer::sendVolumeClicked, this, &CWindow::onVolumeClicked);
     
-    volView->setSurface(show_surf);
+    volView->setSurface(surfaceName);
     
     _viewers.push_back(volView);
     
@@ -165,19 +167,18 @@ void CWindow::CreateWidgets(void)
     auto aWidgetLayout = new QVBoxLayout;
     ui.tabSegment->setLayout(aWidgetLayout);
     
-    QMdiArea *mdiArea = new QMdiArea(ui.tabSegment);
+    mdiArea = new QMdiArea(ui.tabSegment);
     aWidgetLayout->addWidget(mdiArea);
     
-    // newConnectedCVolumeViewer("manual plane", mdiArea);
-    newConnectedCVolumeViewer("seg xz", mdiArea)->setIntersects({"segmentation"});
-    newConnectedCVolumeViewer("seg yz", mdiArea)->setIntersects({"segmentation"});
-    newConnectedCVolumeViewer("xy plane", mdiArea)->setIntersects({"segmentation"});
-    // newConnectedCVolumeViewer("xz plane", mdiArea);
-    // newConnectedCVolumeViewer("yz plane", mdiArea);
-    newConnectedCVolumeViewer("segmentation", mdiArea)->setIntersects({"seg xz","seg yz"});
+    // newConnectedCVolumeViewer("manual plane", tr("Manual Plane"), mdiArea);
+    newConnectedCVolumeViewer("seg xz", tr("Segmentation XZ"), mdiArea)->setIntersects({"segmentation"});
+    newConnectedCVolumeViewer("seg yz", tr("Segmentation YZ"), mdiArea)->setIntersects({"segmentation"});
+    newConnectedCVolumeViewer("xy plane", tr("XY / Slices"), mdiArea)->setIntersects({"segmentation"});
+    newConnectedCVolumeViewer("segmentation", tr("Resulting Segmentation"), mdiArea)->setIntersects({"seg xz","seg yz"});
     mdiArea->tileSubWindows();
 
     treeWidgetSurfaces = this->findChild<QTreeWidget*>("treeWidgetSurfaces");
+    btnReloadSurfaces = this->findChild<QPushButton*>("btnReloadSurfaces");
     auto dockWidgetOpList = this->findChild<QDockWidget*>("dockWidgetOpList");
     auto dockWidgetOpSettings = this->findChild<QDockWidget*>("dockWidgetOpSettings");
     wOpsList = new OpsList(dockWidgetOpList);
@@ -186,6 +187,7 @@ void CWindow::CreateWidgets(void)
     dockWidgetOpSettings->setWidget(wOpsSettings);
 
     connect(treeWidgetSurfaces, &QTreeWidget::currentItemChanged, this, &CWindow::onSurfaceSelected);
+    connect(btnReloadSurfaces, &QPushButton::clicked, this, &CWindow::onRefreshSurfaces);
     connect(this, &CWindow::sendOpChainSelected, wOpsList, &OpsList::onOpChainSelected);
     connect(wOpsList, &OpsList::sendOpSelected, wOpsSettings, &OpsSettings::onOpSelected);
 
@@ -267,16 +269,16 @@ void CWindow::CreateMenus(void)
 
     fViewMenu = new QMenu(tr("&View"), this);
     fViewMenu->addAction(findChild<QDockWidget*>("dockWidgetVolumes")->toggleViewAction());
+    fViewMenu->addAction(findChild<QDockWidget*>("dockWidgetSegmentation")->toggleViewAction());
+    fViewMenu->addAction(findChild<QDockWidget*>("dockWidgetOpList")->toggleViewAction());
+    fViewMenu->addAction(findChild<QDockWidget*>("dockWidgetOpSettings")->toggleViewAction());
+    fViewMenu->addAction(findChild<QDockWidget*>("dockWidgetLocation")->toggleViewAction());
+    fViewMenu->addSeparator();
+    fViewMenu->addAction(fResetMdiView);
 
     fHelpMenu = new QMenu(tr("&Help"), this);
     fHelpMenu->addAction(fKeybinds);
     fFileMenu->addSeparator();
-
-    QSettings settings("VC.ini", QSettings::IniFormat);
-    if (settings.value("internal/debug", 0).toInt() == 1) {
-        fHelpMenu->addAction(fPrintDebugInfo);
-        fFileMenu->addSeparator();
-    }
 
     fHelpMenu->addAction(fAboutAct);
 
@@ -311,6 +313,9 @@ void CWindow::CreateActions(void)
 
     fAboutAct = new QAction(tr("&About..."), this);
     connect(fAboutAct, SIGNAL(triggered()), this, SLOT(About()));
+
+    fResetMdiView = new QAction(tr("Reset Segmentation Views"), this);
+    connect(fResetMdiView, SIGNAL(triggered()), this, SLOT(ResetSegmentationViews()));
 }
 
 void CWindow::UpdateRecentVolpkgActions()
@@ -519,30 +524,7 @@ void CWindow::OpenVolume(const QString& path)
             QVariant(QString::fromStdString(id)));
     }
 
-    treeWidgetSurfaces->clear();
-
-    std::vector<std::string> seg_ids = fVpkg->segmentationIDs();
-    std::vector<std::pair<std::string,SurfaceMeta*>> load_sm(seg_ids.size());
-    
-#pragma omp parallel for
-    for(int i=0;i<seg_ids.size();i++) {
-        auto seg = fVpkg->segmentation(seg_ids[i]);
-        if (seg->metadata().hasKey("format") && seg->metadata().get<std::string>("format") == "tifxyz") {
-            SurfaceMeta *sm = new SurfaceMeta(seg->path());
-            sm->surf();
-            load_sm[i] = {seg_ids[i], sm};
-        }
-    }
-        
-    for(auto &pair : load_sm)
-        if (pair.second) {
-            //FIXME replace _vol_surfs with _suf_col by either upgrading surf col to surfacemeta
-            _vol_qsurfs[pair.first] = pair.second;
-            _surf_col->setSurface(pair.first, pair.second->surf());
-        }
-    
-    onSegFilterChanged(0);
-
+    LoadSurfaces();
     UpdateRecentVolpkgList(aVpkgPath);
 }
 
@@ -574,10 +556,51 @@ void CWindow::OpenRecent()
         Open(action->data().toString());
 }
 
+void CWindow::LoadSurfaces(bool reload)
+{
+    if (reload && !InitializeVolumePkg(fVpkgPath.toStdString() + "/")) {
+        return;
+    }
+
+    // Prevent unwanted callbacks during (re-)loading
+    const QSignalBlocker blocker(treeWidgetSurfaces);
+    treeWidgetSurfaces->clear();
+
+    for (auto& pair : _vol_qsurfs) {
+        _surf_col->setSurface(pair.first, nullptr);
+    }
+
+    _vol_qsurfs.clear();
+    _opchains.clear();
+    
+    std::vector<std::string> seg_ids = fVpkg->segmentationIDs();
+    std::vector<std::pair<std::string,SurfaceMeta*>> load_sm(seg_ids.size());
+    
+    #pragma omp parallel for
+    for(int i = 0; i < seg_ids.size(); i++) {
+        auto seg = fVpkg->segmentation(seg_ids[i]);
+        if (seg->metadata().hasKey("format") && seg->metadata().get<std::string>("format") == "tifxyz") {
+            SurfaceMeta *sm = new SurfaceMeta(seg->path());
+            sm->surface();
+            load_sm[i] = {seg_ids[i], sm};
+        }
+    }
+        
+    for(auto &pair : load_sm) {
+        if (pair.second) {
+            //FIXME replace _vol_surfs with _suf_col by either upgrading surf col to surfacemeta
+            _vol_qsurfs[pair.first] = pair.second;
+            _surf_col->setSurface(pair.first, pair.second->surface());
+        }
+    }
+    
+    // Re-apply filter to update views
+    onSegFilterChanged(cmbFilterSegs->currentIndex());
+}
+
 // Pop up about dialog
 void CWindow::Keybindings(void)
 {
-    // REVISIT - FILL ME HERE
     QMessageBox::information(
         this, tr("Keybindings for Volume Cartographer"),
         tr("Keyboard: \n"
@@ -628,11 +651,10 @@ void CWindow::Keybindings(void)
 // Pop up about dialog
 void CWindow::About(void)
 {
-    // REVISIT - FILL ME HERE
     QMessageBox::information(
         this, tr("About Volume Cartographer"),
         tr("Vis Center, University of Kentucky\n\n"
-        "Fork: https://github.com/hendrikschilling/volume-cartographer"));
+        "Fork: https://github.com/spacegaier/volume-cartographer"));
 }
 
 void CWindow::ShowSettings()
@@ -640,6 +662,11 @@ void CWindow::ShowSettings()
     auto pDlg = new SettingsDialog(this);
     pDlg->exec();
     delete pDlg;
+}
+
+void CWindow::ResetSegmentationViews()
+{
+    mdiArea->tileSubWindows();
 }
 
 auto CWindow::can_change_volume_() -> bool
@@ -664,7 +691,10 @@ void CWindow::onVolumeClicked(cv::Vec3f vol_loc, cv::Vec3f normal, Surface *surf
         else
             _red_points.push_back(vol_loc);
         sendPointsChanged(_red_points, _blue_points);
-        _lblPointsInfo->setText(QString("red: %1 blue: %2").arg(_red_points.size()).arg(_blue_points.size()));
+        _lblPointsInfo->setText(QString("Red: %1 Blue: %2").arg(_red_points.size()).arg(_blue_points.size()));
+
+        // Force an update of the filter
+        onSegFilterChanged(cmbFilterSegs->currentIndex());
     }
     else if (modifiers & Qt::ControlModifier) {
         std::cout << "clicked on vol loc " << vol_loc << std::endl;
@@ -680,10 +710,9 @@ void CWindow::onVolumeClicked(cv::Vec3f vol_loc, cv::Vec3f normal, Surface *surf
             if (!segYZ)
                 segYZ = new PlaneSurface();
 
-            //FIXME actually properly use ptr .
-            // cv::Vec3f p2;..
+            //FIXME actually properly use ptr
             SurfacePointer *ptr = segment->pointer();
-            float err = segment->pointTo(ptr, vol_loc, 1.0);
+            segment->pointTo(ptr, vol_loc, 1.0);
             
             cv::Vec3f p2;
             p2 = segment->coord(ptr, {1,0,0});
@@ -714,6 +743,9 @@ void CWindow::onVolumeClicked(cv::Vec3f vol_loc, cv::Vec3f normal, Surface *surf
         lblLoc[0]->setText(QString::number(poi->p[0]));
         lblLoc[1]->setText(QString::number(poi->p[1]));
         lblLoc[2]->setText(QString::number(poi->p[2]));
+
+        // Force an update of the filter
+        onSegFilterChanged(cmbFilterSegs->currentIndex());
     }
     else {
         std::cout << "FIXME do something with regular click" << std::endl;
@@ -773,7 +805,7 @@ void CWindow::onSurfaceSelected(QTreeWidgetItem *current, QTreeWidgetItem *previ
 
     if (!_opchains.count(surf_id)) {
         if (_vol_qsurfs.count(surf_id)) {
-            _opchains[surf_id] = new OpChain(_vol_qsurfs[surf_id]->surf());
+            _opchains[surf_id] = new OpChain(_vol_qsurfs[surf_id]->surface());
         }
         else {
             auto seg = fVpkg->segmentation(surf_id);
@@ -870,7 +902,7 @@ void CWindow::onSegFilterChanged(int index)
 
 void CWindow::onResetPoints(void)
 {
-    _lblPointsInfo->setText(QString("red: %1 blue: %2").arg(_red_points.size()).arg(_blue_points.size()));
+    _lblPointsInfo->setText(QString("Red: %1 Blue: %2").arg(_red_points.size()).arg(_blue_points.size()));
     _red_points.resize(0);
     _blue_points.resize(0);
     
@@ -927,4 +959,9 @@ void CWindow::onEditMaskPressed(void)
     }
     
     QDesktopServices::openUrl(QUrl::fromLocalFile(path.string().c_str()));
+}
+
+void CWindow::onRefreshSurfaces()
+{
+    LoadSurfaces(true);
 }

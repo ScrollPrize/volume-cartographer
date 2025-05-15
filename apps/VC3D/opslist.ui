@@ -31,7 +31,7 @@
      <item>
       <widget class="QPushButton" name="pushAppendOp">
        <property name="text">
-        <string>append</string>
+        <string>Append</string>
        </property>
       </widget>
      </item>

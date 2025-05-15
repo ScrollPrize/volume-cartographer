@@ -31,10 +31,10 @@ struct string_pair_hash {
     }
 };
 
-//this class shall handle all the (gui) interactions for its stored objects but does not itself provide the gui
-//slices: all the defined slices of all kinds
-//Segmentators: segmentations and interactions with segments
-//POIs : e.g. active constrol points or slicing focus points
+// This class shall handle all the (GUI) interactions for its stored objects but does not itself provide the GUI
+// Slices: all the defined slices of all kinds
+// Segmentators: segmentations and interactions with segments
+// POIs : e.g. active constrol points or slicing focus points
 class CSurfaceCollection : public QObject
 {
     Q_OBJECT
@@ -46,8 +46,10 @@ public:
     Surface *surface(const std::string &name);
     Intersection *intersection(const std::string &a, const std::string &b);
     POI *poi(const std::string &name);
-    std::vector<std::string> surfaces();
-    std::vector<std::string> pois();
+    std::vector<Surface*> surfaces();
+    std::vector<POI*> pois();
+    std::vector<std::string> surfaceNames();
+    std::vector<std::string> poiNames();
     std::vector<std::pair<std::string,std::string>> intersections(const std::string &a = "");
     
 signals:

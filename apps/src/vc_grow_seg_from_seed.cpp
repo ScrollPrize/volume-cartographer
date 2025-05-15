@@ -186,7 +186,7 @@ int main(int argc, char *argv[])
 
         for(auto &it : surfs_v) {
             src = it;
-            cv::Mat_<cv::Vec3f> points = src->surf()->rawPoints();
+            cv::Mat_<cv::Vec3f> points = src->surface()->rawPoints();
             int w = points.cols;
             int h = points.rows;
 
@@ -335,7 +335,7 @@ int main(int argc, char *argv[])
 
     if (mode == "expansion") {
         current.path = seg_dir;
-        current.setSurf(surf);
+        current.setSurface(surf);
         current.bbox = surf->bbox();
 
         fs::path overlap_dir = current.path / "overlapping";

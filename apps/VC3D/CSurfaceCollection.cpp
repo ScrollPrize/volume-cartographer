@@ -30,7 +30,31 @@ POI *CSurfaceCollection::poi(const std::string &name)
     return _pois[name];
 }
 
-std::vector<std::string> CSurfaceCollection::surfaces()
+std::vector<Surface*> CSurfaceCollection::surfaces()
+{
+    std::vector<Surface*> surfaces;
+    surfaces.reserve(_surfs.size());
+
+    for(auto surface : _surfs) {
+        surfaces.push_back(surface.second);  
+    } 
+
+    return surfaces;
+}
+
+std::vector<POI*> CSurfaceCollection::pois()
+{
+    std::vector<POI*> pois;
+    pois.reserve(_pois.size());
+
+    for(auto poi : _pois) {
+        pois.push_back(poi.second);  
+    } 
+
+    return pois;
+}
+
+std::vector<std::string> CSurfaceCollection::surfaceNames()
 {
     std::vector<std::string> keys;
     for(auto &it : _surfs)
@@ -39,7 +63,7 @@ std::vector<std::string> CSurfaceCollection::surfaces()
     return keys;
 }
 
-std::vector<std::string> CSurfaceCollection::pois()
+std::vector<std::string> CSurfaceCollection::poiNames()
 {
     std::vector<std::string> keys;
     for(auto &it : _pois)

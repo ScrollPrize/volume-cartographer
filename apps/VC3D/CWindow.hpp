@@ -75,7 +75,7 @@ private:
     void UpdateRecentVolpkgList(const QString& path);
     void RemoveEntryFromRecentVolpkg(const QString& path);
 
-    CVolumeViewer *newConnectedCVolumeViewer(std::string show_slice, QMdiArea *mdiArea);
+    CVolumeViewer *newConnectedCVolumeViewer(std::string surfaceName, QString title, QMdiArea *mdiArea);
     void closeEvent(QCloseEvent* event);
 
     void setWidgetsEnabled(bool state);
@@ -85,6 +85,7 @@ private:
 
     void OpenVolume(const QString& path);
     void CloseVolume(void);
+    void LoadSurfaces(bool reload = false);
 
     static void audio_callback(void *user_data, uint8_t *raw_buffer, int bytes);
     void playPing();
@@ -98,9 +99,12 @@ private slots:
     void Keybindings(void);
     void About(void);
     void ShowSettings();
+    void ResetSegmentationViews();
     void onSurfaceSelected(QTreeWidgetItem *current, QTreeWidgetItem *previous);
     void onSegFilterChanged(int index);
     void onEditMaskPressed();
+    void onRefreshSurfaces();
+
 private:
     std::shared_ptr<volcart::VolumePkg> fVpkg;
     Surface *_seg_surf;
@@ -126,7 +130,7 @@ private:
     QAction* fExitAct;
     QAction* fKeybinds;
     QAction* fAboutAct;
-    QAction* fPrintDebugInfo;
+    QAction* fResetMdiView;
 
     QComboBox* volSelect;
     QComboBox* cmbFilterSegs;
@@ -143,13 +147,14 @@ private:
     QTreeWidget *treeWidgetSurfaces;
     OpsList *wOpsList;
     OpsSettings *wOpsSettings;
+    QPushButton *btnReloadSurfaces;
     
     //TODO abstract these into separate QWidget class?
     QLabel* lblLoc[3];
     QDoubleSpinBox* spNorm[3];
 
     Ui_VCMainWindow ui;
-
+    QMdiArea *mdiArea;
     QStatusBar* statusBar;
 
     bool can_change_volume_();
@@ -158,8 +163,8 @@ private:
     std::vector<CVolumeViewer*> _viewers;
     CSurfaceCollection *_surf_col;
 
-    std::unordered_map<std::string,OpChain*> _opchains;
-    std::unordered_map<std::string,SurfaceMeta*> _vol_qsurfs;
+    std::unordered_map<std::string, OpChain*> _opchains;
+    std::unordered_map<std::string, SurfaceMeta*> _vol_qsurfs;
 };  // class CWindow
 
 }  // namespace ChaoVis
