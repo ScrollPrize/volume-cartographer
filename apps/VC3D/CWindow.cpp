@@ -174,7 +174,7 @@ void CWindow::CreateWidgets(void)
     newConnectedCVolumeViewer("seg xz", tr("Segmentation XZ"), mdiArea)->setIntersects({"segmentation"});
     newConnectedCVolumeViewer("seg yz", tr("Segmentation YZ"), mdiArea)->setIntersects({"segmentation"});
     newConnectedCVolumeViewer("xy plane", tr("XY / Slices"), mdiArea)->setIntersects({"segmentation"});
-    newConnectedCVolumeViewer("segmentation", tr("Resulting Segmentation"), mdiArea)->setIntersects({"seg xz","seg yz"});
+    newConnectedCVolumeViewer("segmentation", tr("Surface"), mdiArea)->setIntersects({"seg xz","seg yz"});
     mdiArea->tileSubWindows();
 
     treeWidgetSurfaces = this->findChild<QTreeWidget*>("treeWidgetSurfaces");
@@ -218,7 +218,7 @@ void CWindow::CreateWidgets(void)
     // Set up the status bar
     statusBar = this->findChild<QStatusBar*>("statusBar");
 
-    //new location input
+    // Location input elements
     lblLoc[0] = this->findChild<QLabel*>("sliceX");
     lblLoc[1] = this->findChild<QLabel*>("sliceY");
     lblLoc[2] = this->findChild<QLabel*>("sliceZ");
@@ -563,7 +563,7 @@ void CWindow::LoadSurfaces(bool reload)
     }
 
     // Prevent unwanted callbacks during (re-)loading
-    const QSignalBlocker blocker(treeWidgetSurfaces);
+    const QSignalBlocker blocker{treeWidgetSurfaces};
     treeWidgetSurfaces->clear();
 
     for (auto& pair : _vol_qsurfs) {
@@ -802,6 +802,14 @@ void CWindow::onTagChanged(void)
 void CWindow::onSurfaceSelected(QTreeWidgetItem *current, QTreeWidgetItem *previous)
 {
     std::string surf_id = current->data(0, Qt::UserRole).toString().toStdString();
+
+    // Update sub window title with surface ID
+    for (auto &viewer : _viewers) {
+        if (viewer->surfName() == "segmentation") {
+            viewer->setWindowTitle(tr("Surface %1").arg(QString::fromStdString(surf_id)));
+            break;
+        }
+    }
 
     if (!_opchains.count(surf_id)) {
         if (_vol_qsurfs.count(surf_id)) {
