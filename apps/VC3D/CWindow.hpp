@@ -14,7 +14,7 @@
 static constexpr int VOLPKG_MIN_VERSION = 6;
 static constexpr int VOLPKG_SLICE_MIN_INDEX = 0;
 
-// Our own fordward declarations
+// Our own forward declarations
 class ChunkCache;
 class Surface;
 class QuadSurface;
