@@ -1166,7 +1166,7 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *c
                     cands.push_back(p+n);
                 }
         }
-        printf("gen %d processing %d fringe cands (total done %d fringe: %d)\n", generation, cands.size(), succ, fringe.size());
+        std::cout << "gen " << generation << " processing " << cands.size() << " fringe cands (total done " << succ << " fringe: " << fringe.size() << ")" << std::endl;
         fringe.resize(0);
 
         std::cout << "cands " << cands.size() << std::endl;
@@ -1667,7 +1667,7 @@ public:
         for(auto &it : old._surfs)
             _surfs[{it.first[0],x0+x0-it.first[1]}] = it.second;
         
-        std::cout << " fliped sizes " << _data.size() << " " << _surfs.size() << std::endl;
+        std::cout << " flipped sizes " << _data.size() << " " << _surfs.size() << std::endl;
     }
 // protected:
     std::unordered_map<SurfPoint,cv::Vec2d,SurfPoint_hash> _data;
@@ -2401,7 +2401,7 @@ void optimize_surface_mapping(SurfTrackerData &data, cv::Mat_<uint8_t> &state, c
     cv::Mat_<uint8_t> fringe_next(state.size(), 1);
     int added = 1;
     for(int r=0;r<30 && added;r++) {
-        ALifeTime timer("add iteration");
+        ALifeTime timer("add iteration\n");
         
         fringe_next.copyTo(fringe);
         fringe_next.setTo(0);
@@ -2510,14 +2510,14 @@ QuadSurface *grow_surf_from_surfs(SurfaceMeta *seed, const std::vector<SurfaceMe
     
     local_cost_inl_th = params.value("local_cost_inl_th", 0.2f);
     same_surface_th = params.value("same_surface_th", 2.0f);
-    straight_weight = params.value("straight_weight", 0.7f);        // Weight for 2D straight line constraints
-    straight_weight_3D = params.value("straight_weight_3D", 4.0f);  // Weight for 3D straight line constraints
-    sliding_w_scale = params.value("sliding_w_scale", 1.0f);          // Scale factor for sliding window
-    z_loc_loss_w = params.value("z_loc_loss_w", 0.1f);                // Weight for Z location loss constraints
-    dist_loss_2d_w = params.value("dist_loss_2d_w", 1.0f);            // Weight for 2D distance constraints
-    dist_loss_3d_w = params.value("dist_loss_3d_w", 2.0f);            // Weight for 3D distance constraints
-    straight_min_count = params.value("straight_min_count", 1.0f);   // Minimum number of straight constraints
-    inlier_base_threshold = params.value("inlier_base_threshold", 20); // Starting threshold for inliers
+    straight_weight = params.value("straight_weight", 0.7f);            // Weight for 2D straight line constraints
+    straight_weight_3D = params.value("straight_weight_3D", 4.0f);      // Weight for 3D straight line constraints
+    sliding_w_scale = params.value("sliding_w_scale", 1.0f);            // Scale factor for sliding window
+    z_loc_loss_w = params.value("z_loc_loss_w", 0.1f);                  // Weight for Z location loss constraints
+    dist_loss_2d_w = params.value("dist_loss_2d_w", 1.0f);              // Weight for 2D distance constraints
+    dist_loss_3d_w = params.value("dist_loss_3d_w", 2.0f);              // Weight for 3D distance constraints
+    straight_min_count = params.value("straight_min_count", 1.0f);      // Minimum number of straight constraints
+    inlier_base_threshold = params.value("inlier_base_threshold", 20);  // Starting threshold for inliers
 
     std::cout << "  local_cost_inl_th: " << local_cost_inl_th << std::endl;
     std::cout << "  same_surface_th: " << same_surface_th << std::endl;
@@ -2530,7 +2530,7 @@ QuadSurface *grow_surf_from_surfs(SurfaceMeta *seed, const std::vector<SurfaceMe
     std::cout << "  dist_loss_2d_w: " << dist_loss_2d_w << std::endl;
     std::cout << "  dist_loss_3d_w: " << dist_loss_3d_w << std::endl;
 
-    std::cout << "total surf count " << surfs_v.size() << std::endl;
+    std::cout << "total surf count: " << surfs_v.size() << std::endl;
 
     std::set<SurfaceMeta*> approved_sm;
     
@@ -2550,8 +2550,8 @@ QuadSurface *grow_surf_from_surfs(SurfaceMeta *seed, const std::vector<SurfaceMe
             if (surfs.count(name))
                 sm->overlapping.insert(surfs[name]);
 
-    std::cout << "total number of surfs:" << surfs.size() << std::endl;
-    std::cout << seed << "name" << seed->name() << " seed overlapping:" << seed->overlapping.size() << "/" << seed->overlapping_str.size() << std::endl;
+    std::cout << "total number of surfs: " << surfs.size() << std::endl;
+    std::cout << "seed " << seed << " name " << seed->name() << " seed overlapping: " << seed->overlapping.size() << "/" << seed->overlapping_str.size() << std::endl;
 
     cv::Mat_<cv::Vec3f> seed_points = seed->surf()->rawPoints();
 
@@ -2596,7 +2596,7 @@ QuadSurface *grow_surf_from_surfs(SurfaceMeta *seed, const std::vector<SurfaceMe
         std::cout << "try loc" << seed_loc << std::endl;
     }
 
-    data.loc(seed,{y0,x0}) = {seed_loc[0], seed_loc[1] };
+    data.loc(seed,{y0,x0}) = {seed_loc[0], seed_loc[1]};
     data.surfs({y0,x0}).insert(seed);
     points(y0,x0) = data.lookup_int(seed,{y0,x0});
 
@@ -2610,7 +2610,7 @@ QuadSurface *grow_surf_from_surfs(SurfaceMeta *seed, const std::vector<SurfaceMe
     fringe.insert(cv::Vec2i(y0,x0));
 
     //insert initial surfs per location
-    for(auto p: fringe) {
+    for(auto p : fringe) {
         data.surfs(p).insert(seed);
         cv::Vec3f coord = points(p);
         std::cout << "testing " << p << " from cands: " << seed->overlapping.size() << coord << std::endl;
@@ -2701,7 +2701,7 @@ QuadSurface *grow_surf_from_surfs(SurfaceMeta *seed, const std::vector<SurfaceMe
                 data_th.surfs(added) = data.surfs(added);
                 for (auto &s : data.surfsC(added)) {
                     if (!data.has(s, added))
-                        std::cout << "where the fuck is or data?" << std::endl;
+                        std::cout << "where the heck is our data?" << std::endl;
                     else
                         data_th.loc(s, added) = data.loc(s, added);
                 }

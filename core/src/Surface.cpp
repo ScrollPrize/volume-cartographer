@@ -1286,8 +1286,12 @@ void QuadSurface::save(const std::string &path_, const std::string &uuid)
 {
     path = path_;
     
-    if (!fs::create_directories(path))
-        throw std::runtime_error("error creating dir for QuadSurface::save(): "+path.string());
+    if (!fs::create_directories(path)) {
+        if (fs::exists(path))
+            throw std::runtime_error("dir already exists => cannot run QuadSurface::save(): " + path.string());
+        else
+            throw std::runtime_error("error creating dir for QuadSurface::save(): " + path.string());
+    }
 
     std::vector<cv::Mat> xyz;
 
