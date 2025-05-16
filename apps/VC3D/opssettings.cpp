@@ -11,7 +11,8 @@ OpsSettings::OpsSettings(QWidget* parent)
 {
     ui->setupUi(this);
     _box = this->findChild<QGroupBox*>("groupBox");
-    _enable = this->findChild<QCheckBox*>("chkEnableLayer");
+    _box->setVisible(false); // start invisible until a layer is selected
+    _enable = this->findChild<QCheckBox*>("chkEnableLayer");    
 
     connect(_enable, &QCheckBox::stateChanged, this, &OpsSettings::onEnabledChanged);
 }
@@ -20,8 +21,10 @@ OpsSettings::~OpsSettings() { delete ui; }
 
 void OpsSettings::onEnabledChanged()
 {
-    _chain->setEnabled((DeltaSurface*)_op, _enable->isChecked());
-    sendOpChainChanged(_chain);
+    if (_chain) {
+        _chain->setEnabled((DeltaSurface*)_op, _enable->isChecked());
+        sendOpChainChanged(_chain);
+    }
 }
 
 QWidget *op_form_widget(Surface *op, OpsSettings *parent)
@@ -45,7 +48,15 @@ void OpsSettings::onOpSelected(Surface *op, OpChain *chain)
     _op = op;
     _chain = chain;
 
-    _box->setTitle(QString(op_name(op)));
+    // If we have no layer selected (e.g. because a new surface was selected to
+    // display which resets the layer selection), hide the box until a
+    // layer actually is selected.
+    if(!_op) {
+        _box->setVisible(false);
+        return;
+    }
+
+    _box->setTitle(tr("Selected Layer: %1").arg(QString(op_name(op))));    
 
     if (!dynamic_cast<DeltaSurface*>(_op))
         _enable->setEnabled(false);
@@ -59,6 +70,8 @@ void OpsSettings::onOpSelected(Surface *op, OpChain *chain)
         delete _form;
     
     _form = op_form_widget(op, this);
-    if (_form)
+    if (_form) {
         _box->layout()->addWidget(_form);
+        _box->setVisible(true);
+    }
 }

@@ -16,9 +16,15 @@
   <layout class="QGridLayout" name="gridLayout">
    <item row="0" column="0">
     <widget class="QTreeWidget" name="treeWidget">
+     <property name="alternatingRowColors">
+      <bool>true</bool>
+     </property>
      <property name="rootIsDecorated">
       <bool>false</bool>
      </property>
+     <attribute name="headerVisible">
+      <bool>false</bool>
+     </attribute>
      <column>
       <property name="text">
        <string>Layers</string>
@@ -31,7 +37,7 @@
      <item>
       <widget class="QPushButton" name="pushAppendOp">
        <property name="text">
-        <string>append</string>
+        <string>Append</string>
        </property>
       </widget>
      </item>

@@ -26,6 +26,12 @@ using qga = QGuiApplication;
 // More gentle zoom factor for smoother experience
 #define ZOOM_FACTOR 1.15 // Changed from 2.0 (which was too aggressive)
 
+#define COLOR_CURSOR Qt::cyan
+#define COLOR_FOCUS QColor(50, 255, 215)
+#define COLOR_SEG_YZ Qt::yellow
+#define COLOR_SEG_XZ Qt::red
+#define COLOR_SEG_XY QColor(255, 140, 0)
+
 CVolumeViewer::CVolumeViewer(CSurfaceCollection *col, QWidget* parent)
     : QWidget(parent)
     , fGraphicsView(nullptr)
@@ -354,7 +360,7 @@ void CVolumeViewer::onSurfaceChanged(std::string name, Surface *surf)
 
 QGraphicsItem *cursorItem()
 {
-    QPen pen(QBrush(Qt::cyan), 3);
+    QPen pen(QBrush(COLOR_CURSOR), 2);
     QGraphicsLineItem *parent = new QGraphicsLineItem(-10, 0, -5, 0);
     parent->setZValue(10);
     parent->setPen(pen);
@@ -494,7 +500,7 @@ void CVolumeViewer::renderVisible(bool force)
     QImage qimg = Mat2QImage(img);
     
     QPixmap pixmap = QPixmap::fromImage(qimg, fSkipImageFormatConv ? Qt::NoFormatConversion : Qt::AutoColor);
-    //     
+ 
     // Add the QPixmap to the scene as a QGraphicsPixmapItem
     if (!fBaseImageItem)
         fBaseImageItem = fScene->addPixmap(pixmap);
@@ -502,7 +508,7 @@ void CVolumeViewer::renderVisible(bool force)
         fBaseImageItem->setPixmap(pixmap);
     
     if (!_center_marker) {
-        _center_marker = fScene->addEllipse({-10,-10,20,20}, QPen(Qt::yellow, 3, Qt::DashDotLine, Qt::RoundCap, Qt::RoundJoin));
+        _center_marker = fScene->addEllipse({-10,-10,20,20}, QPen(COLOR_FOCUS, 3, Qt::DashDotLine, Qt::RoundCap, Qt::RoundJoin));
         _center_marker->setZValue(11);
     }
 
@@ -617,7 +623,10 @@ void CVolumeViewer::renderIntersections()
             int z_value = 5;
 
             if (key == "segmentation") {
-                col = Qt::yellow;
+                col =
+                    (_surf_name == "seg yz"   ? COLOR_SEG_YZ
+                     : _surf_name == "seg xz" ? COLOR_SEG_XZ
+                                              : COLOR_SEG_XY);
                 width = 3;
                 z_value = 20;
             }
@@ -715,7 +724,7 @@ void CVolumeViewer::renderIntersections()
                         continue;
 
                     if (last[0] != -1 && cv::norm(p-last) >= 8) {
-                        auto item = fGraphicsView->scene()->addPath(path, QPen(Qt::yellow, 2));
+                        auto item = fGraphicsView->scene()->addPath(path, QPen(key == "seg yz" ? COLOR_SEG_YZ: COLOR_SEG_XZ, 2));
                         item->setZValue(5);
                         items.push_back(item);
                         first = true;
@@ -728,7 +737,7 @@ void CVolumeViewer::renderIntersections()
                         path.lineTo(p[0],p[1]);
                     first = false;
                 }
-                auto item = fGraphicsView->scene()->addPath(path, QPen(Qt::yellow, 2));
+                auto item = fGraphicsView->scene()->addPath(path, QPen(key == "seg yz" ? COLOR_SEG_YZ: COLOR_SEG_XZ, 2));
                 item->setZValue(5);
                 items.push_back(item);
             }

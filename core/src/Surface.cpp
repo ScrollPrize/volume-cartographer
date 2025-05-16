@@ -1416,16 +1416,16 @@ bool overlap(SurfaceMeta &a, SurfaceMeta &b, int max_iters)
     if (!intersect(a.bbox, b.bbox))
         return false;
 
-    cv::Mat_<cv::Vec3f> points = a.surf()->rawPoints();
+    cv::Mat_<cv::Vec3f> points = a.surface()->rawPoints();
     for(int r=0;r<std::max(10, max_iters/10);r++) {
         cv::Vec2f p = {rand() % points.cols, rand() % points.rows};
         cv::Vec3f loc = points(p[1],p[0]);
         if (loc[0] == -1)
             continue;
 
-        SurfacePointer *ptr = b.surf()->pointer();
+        SurfacePointer *ptr = b.surface()->pointer();
 
-        if (b.surf()->pointTo(ptr, loc, 2.0, max_iters) <= 2.0)
+        if (b.surface()->pointTo(ptr, loc, 2.0, max_iters) <= 2.0)
             return true;
     }
 
@@ -1437,9 +1437,9 @@ bool contains(SurfaceMeta &a, const cv::Vec3f &loc, int max_iters)
     if (!intersect(a.bbox, {loc,loc}))
         return false;
         
-        SurfacePointer *ptr = a.surf()->pointer();
+        SurfacePointer *ptr = a.surface()->pointer();
         
-        if (a.surf()->pointTo(ptr, loc, 2.0, max_iters) <= 2.0)
+        if (a.surface()->pointTo(ptr, loc, 2.0, max_iters) <= 2.0)
             return true;
     
     return false;
@@ -1478,14 +1478,14 @@ void SurfaceMeta::readOverlapping()
             overlapping_str.insert(entry.path().filename());
 }
 
-QuadSurface *SurfaceMeta::surf()
+QuadSurface *SurfaceMeta::surface()
 {
     if (!_surf)
         _surf = load_quad_from_tifxyz(path);
     return _surf;
 }
 
-void SurfaceMeta::setSurf(QuadSurface *surf)
+void SurfaceMeta::setSurface(QuadSurface *surf)
 {
     _surf = surf;
 }
