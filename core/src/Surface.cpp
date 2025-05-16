@@ -1381,6 +1381,7 @@ QuadSurface *load_quad_from_tifxyz(const std::string &path)
     QuadSurface *surf = new QuadSurface(points, scale);
     
     surf->path = path;
+    surf->id   = metadata["uuid"];
     surf->meta = new nlohmann::json(metadata);
     
     return surf;

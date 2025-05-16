@@ -6,16 +6,19 @@
 #include <opencv2/core.hpp>
 #include "ui_VCMain.h"
 
+#include "vc/core/util/SurfaceDef.hpp"
+
 #define MAX_RECENT_VOLPKG 10
 
 // Volpkg version required by this app
 static constexpr int VOLPKG_MIN_VERSION = 6;
 static constexpr int VOLPKG_SLICE_MIN_INDEX = 0;
 
-//our own fw declarations
+// Our own fordward declarations
 class ChunkCache;
 class Surface;
 class QuadSurface;
+class SurfaceMeta;
 class OpChain;
 
 namespace volcart {
@@ -23,11 +26,12 @@ namespace volcart {
     class VolumePkg;
 }
 
-//Qt fw declaration
+// Qt related forward declaration
 class QMdiArea;
 class OpsList;
 class OpsSettings;
-class SurfaceMeta;
+class SurfaceTreeWidget;
+class SurfaceTreeWidgetItem;
 
 namespace ChaoVis
 {
@@ -71,7 +75,7 @@ private:
     void CreateActions(void);
 
     void FillSurfaceTree(void);
-    void UpdateSurfaceTreeIcon(QTreeWidgetItem *item);
+    void UpdateSurfaceTreeIcon(SurfaceTreeWidgetItem *item);
 
     void UpdateView(void);
 
@@ -145,11 +149,12 @@ private:
     QLabel* _lblPointsInfo;
     QPushButton* _btnResetPoints;
     QuadSurface *_surf;
+    SurfaceID _surfID;
 
     std::vector<cv::Vec3f> _red_points;
     std::vector<cv::Vec3f> _blue_points;
     
-    QTreeWidget *treeWidgetSurfaces;
+    SurfaceTreeWidget *treeWidgetSurfaces;
     OpsList *wOpsList;
     OpsSettings *wOpsSettings;
     QPushButton *btnReloadSurfaces;

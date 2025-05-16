@@ -14,9 +14,11 @@ set(srcs
     SettingsDialog.cpp
     CSurfaceCollection.cpp
     OpChain.cpp
-    opslist.cpp
-    opssettings.cpp
+    OpsList.cpp
+    OpsSettings.cpp
     formsetsrc.cpp
+    SurfaceTreeWidget.hpp
+    SurfaceTreeWidget.cpp
     CDistanceTransformWidget.cpp
     CDistanceTransformWidget.hpp
     CSegmentationEditorWindow.cpp
@@ -31,7 +33,7 @@ if(APPLE)
     list(APPEND srcs ${MACOSX_BUNDLE_ICON})
 endif()
 
-set(copyright "Copyright 2023 EduceLab")
+set(copyright "Copyright 2025 EduceLab")
 string(CONCAT info_string
     ${target}
     " Version ${PROJECT_VERSION}"

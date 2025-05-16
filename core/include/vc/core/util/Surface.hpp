@@ -5,6 +5,8 @@
 #include <opencv2/core.hpp> 
 #include <nlohmann/json_fwd.hpp>
 
+#include "SurfaceDef.hpp"
+
 class QuadSurface;
 class ChunkCache;
 
@@ -47,7 +49,7 @@ cv::Vec3f vy_from_orig_norm(const cv::Vec3f &o, const cv::Vec3f &n);
 //base surface class
 class Surface
 {
-public:    
+public:
     // a pointer in some central location
     virtual SurfacePointer *pointer() = 0;
     
@@ -66,6 +68,7 @@ public:
     virtual void gen(cv::Mat_<cv::Vec3f> *coords, cv::Mat_<cv::Vec3f> *normals, cv::Size size, SurfacePointer *ptr, float scale, const cv::Vec3f &offset) = 0;
     nlohmann::json *meta = nullptr;
     std::filesystem::path path;
+    SurfaceID id;
 };
 
 class PlaneSurface : public Surface
