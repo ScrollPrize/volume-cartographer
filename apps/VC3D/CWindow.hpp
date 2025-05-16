@@ -4,7 +4,6 @@
 #include <cstdint>
 
 #include <opencv2/core.hpp>
-#include "CDistanceTransformWidget.hpp"
 #include "ui_VCMain.h"
 
 #define MAX_RECENT_VOLPKG 10
@@ -61,9 +60,6 @@ public slots:
     void onOpChainChanged(OpChain *chain);
     void onTagChanged(void);
     void onResetPoints(void);
-    void onZSliceValueChanged(int value);
-    void updateZSliceControls(int z_value);
-    void onRefreshListPressed();
 
 public:
     CWindow();
@@ -157,8 +153,7 @@ private:
     //TODO abstract these into separate QWidget class?
     QLabel* lblLoc[3];
     QDoubleSpinBox* spNorm[3];
-    QSlider* sliderZSlice;
-    QSpinBox* spinBoxZSlice;
+
 
     Ui_VCMainWindow ui;
     QMdiArea *mdiArea;

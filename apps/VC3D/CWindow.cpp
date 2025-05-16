@@ -37,9 +37,7 @@ namespace fs = std::filesystem;
 
 // Constructor
 CWindow::CWindow() :
-    fVpkg(nullptr),
-    distanceTransformWidget(nullptr),
-    segmentationEditorWindow(nullptr)
+    fVpkg(nullptr)
 {
     const QSettings settings("VC.ini", QSettings::IniFormat);
     setWindowIcon(QPixmap(":/images/logo.png"));
@@ -155,8 +153,6 @@ void CWindow::setVolume(std::shared_ptr<volcart::Volume> newvol)
     int h = currentVolume->sliceHeight();
     int d = currentVolume->numSlices();
     
-    // Initialize Z slice controls with volume dimensions
-    updateZSliceControls(d/2); // Start at middle slice
 
     // Set default focus at middle of volume
     POI *poi = _surf_col->poi("focus");
@@ -261,42 +257,8 @@ void CWindow::CreateWidgets(void)
     _btnResetPoints = this->findChild<QPushButton*>("btnResetPoints");
     connect(_btnResetPoints, &QPushButton::pressed, this, &CWindow::onResetPoints);
     connect(this->findChild<QPushButton*>("btnEditMask"), &QPushButton::pressed, this, &CWindow::onEditMaskPressed);
-    connect(this->findChild<QPushButton*>("btnRefreshList"), &QPushButton::pressed, this, &CWindow::onRefreshListPressed);
 
-    // Add "View in Editor" button below "edit segment mask" button
-    auto grpVolManager = this->findChild<QGroupBox*>("grpVolManager");
-    if (grpVolManager && grpVolManager->layout()) {
-        auto btnViewInEditor = new QPushButton("view in editor", grpVolManager);
-        if (QVBoxLayout* vLayout = qobject_cast<QVBoxLayout*>(grpVolManager->layout())) {
-            vLayout->addWidget(btnViewInEditor);
-        }
-        connect(btnViewInEditor, &QPushButton::pressed, this, &CWindow::onViewInEditorPressed);
-    }
 
-    // Z slice navigation
-    sliderZSlice = this->findChild<QSlider*>("sliderZSlice");
-    spinBoxZSlice = this->findChild<QSpinBox*>("spinBoxZSlice");
-    connect(sliderZSlice, &QSlider::valueChanged, this, &CWindow::onZSliceValueChanged);
-    connect(spinBoxZSlice, &QSpinBox::valueChanged, this, &CWindow::onZSliceValueChanged);
-
-    // Create and setup the Distance Transform widget
-    auto dockWidgetVolumes = this->findChild<QDockWidget*>("dockWidgetVolumes");
-    auto volumesLayout = this->findChild<QWidget*>("dockWidgetVolumesContent")->layout();
-
-    distanceTransformWidget = new CDistanceTransformWidget(this);
-
-    // Cast to QVBoxLayout to add the widget
-    if (QVBoxLayout* vLayout = qobject_cast<QVBoxLayout*>(volumesLayout)) {
-        vLayout->addWidget(distanceTransformWidget);
-    }
-
-    // Connect signals
-    connect(distanceTransformWidget, &CDistanceTransformWidget::sendPointsChanged,
-            this, &CWindow::sendPointsChanged);
-    connect(distanceTransformWidget, &CDistanceTransformWidget::sendStatusMessageAvailable,
-            this, &CWindow::onShowStatusMessage);
-    connect(this, &CWindow::sendVolumeChanged,
-            distanceTransformWidget, &CDistanceTransformWidget::onVolumeChanged);
 }
 
 // Create menus
@@ -804,10 +766,6 @@ void CWindow::onVolumeClicked(cv::Vec3f vol_loc, cv::Vec3f normal, Surface *surf
         onSegFilterChanged(cmbFilterSegs->currentIndex());
     }
     else {
-        // Pass the point to the distance transform widget when clicked without modifiers
-        if (distanceTransformWidget) {
-            distanceTransformWidget->onPointSelected(vol_loc, normal);
-        }
     }
 }
 
