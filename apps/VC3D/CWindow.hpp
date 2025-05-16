@@ -70,6 +70,9 @@ private:
     void CreateMenus(void);
     void CreateActions(void);
 
+    void FillSurfaceTree(void);
+    void UpdateSurfaceTreeIcon(QTreeWidgetItem *item);
+
     void UpdateView(void);
 
     void UpdateRecentVolpkgActions(void);
@@ -107,6 +110,7 @@ private slots:
     void onRefreshSurfaces();
 
 private:
+    bool appInitComplete{false};
     std::shared_ptr<volcart::VolumePkg> fVpkg;
     Surface *_seg_surf;
     QString fVpkgPath;

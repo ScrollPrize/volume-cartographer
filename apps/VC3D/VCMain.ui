@@ -195,8 +195,11 @@
             <property name="indentation">
              <number>0</number>
             </property>
+            <property name="sortingEnabled">
+             <bool>true</bool>
+            </property>
             <property name="columnCount">
-             <number>1</number>
+             <number>5</number>
             </property>
             <attribute name="headerVisible">
              <bool>true</bool>
@@ -207,12 +210,35 @@
             <attribute name="headerDefaultSectionSize">
              <number>120</number>
             </attribute>
+            <attribute name="headerShowSortIndicator" stdset="0">
+             <bool>true</bool>
+            </attribute>
             <attribute name="headerStretchLastSection">
              <bool>true</bool>
             </attribute>
             <column>
              <property name="text">
+              <string>State</string>
+             </property>
+            </column>
+            <column>
+             <property name="text">
               <string>Surface ID</string>
+             </property>
+            </column>
+            <column>
+             <property name="text">
+              <string>Area (cm2)</string>
+             </property>
+            </column>
+            <column>
+             <property name="text">
+              <string>Avg Cost</string>
+             </property>
+            </column>
+            <column>
+             <property name="text">
+              <string>Overlaps</string>
              </property>
             </column>
            </widget>
@@ -878,7 +904,7 @@
  <resources/>
  <connections/>
  <buttongroups>
-  <buttongroup name="buttonGroupForward"/>
   <buttongroup name="buttonGroupBackward"/>
+  <buttongroup name="buttonGroupForward"/>
  </buttongroups>
 </ui>

@@ -34,6 +34,7 @@ using namespace ChaoVis;
 using qga = QGuiApplication;
 namespace fs = std::filesystem;
 
+#define SURFACE_ID_COLUMN 1
 
 // Constructor
 CWindow::CWindow() :
@@ -110,6 +111,8 @@ CWindow::CWindow() :
             Open(files[0]);
         }
     }
+
+    appInitComplete = true;
 }
 
 // Destructor
@@ -257,8 +260,6 @@ void CWindow::CreateWidgets(void)
     _btnResetPoints = this->findChild<QPushButton*>("btnResetPoints");
     connect(_btnResetPoints, &QPushButton::pressed, this, &CWindow::onResetPoints);
     connect(this->findChild<QPushButton*>("btnEditMask"), &QPushButton::pressed, this, &CWindow::onEditMaskPressed);
-
-
 }
 
 // Create menus
@@ -609,6 +610,8 @@ void CWindow::LoadSurfaces(bool reload)
         }
     }
     
+    FillSurfaceTree();
+
     // Re-apply filter to update views
     onSegFilterChanged(cmbFilterSegs->currentIndex());
 }
@@ -814,11 +817,13 @@ void CWindow::onTagChanged(void)
             _surf->meta->at("tags").push_back({"defective", nullptr});
         _surf->save_meta();
     }
+
+    UpdateSurfaceTreeIcon(treeWidgetSurfaces->currentItem());
 }
 
 void CWindow::onSurfaceSelected(QTreeWidgetItem *current, QTreeWidgetItem *previous)
 {
-    std::string surf_id = current->data(0, Qt::UserRole).toString().toStdString();
+    std::string surf_id = current->data(SURFACE_ID_COLUMN, Qt::UserRole).toString().toStdString();
 
     // Update sub window title with surface ID
     for (auto &viewer : _viewers) {
@@ -853,7 +858,7 @@ void CWindow::onSurfaceSelected(QTreeWidgetItem *current, QTreeWidgetItem *previ
             const QSignalBlocker b1{_chkApproved};
             const QSignalBlocker b2{_chkDefective};
             
-            std::cout << "surf" << _surf->path << surf_id <<  _surf->meta << std::endl;
+            std::cout << "surf " << _surf->path << surf_id <<  _surf->meta << std::endl;
             
             _chkApproved->setEnabled(true);
             _chkDefective->setEnabled(true);
@@ -876,53 +881,98 @@ void CWindow::onSurfaceSelected(QTreeWidgetItem *current, QTreeWidgetItem *previ
         std::cout << "ERROR loading " << surf_id << std::endl;
 }
 
+void CWindow::FillSurfaceTree()
+{
+    const QSignalBlocker blocker{treeWidgetSurfaces};
+    treeWidgetSurfaces->clear();
+
+    for (auto& id : fVpkg->segmentationIDs()) {
+        QTreeWidgetItem* item = new QTreeWidgetItem(treeWidgetSurfaces);
+        item->setText(SURFACE_ID_COLUMN, QString(id.c_str()));
+        item->setData(SURFACE_ID_COLUMN, Qt::UserRole, QVariant(id.c_str()));
+        double size = _vol_qsurfs[id]->meta->value("area_cm2", -1.f);
+        item->setText(2, QString::number(size, 'f', 3));
+        double cost = _vol_qsurfs[id]->meta->value("avg_cost", -1.f);
+        item->setText(3, QString::number(cost, 'f', 3));
+        _vol_qsurfs[id]->readOverlapping();
+        item->setText(4, QString::number(_vol_qsurfs[id]->overlapping_str.size()));
+
+        UpdateSurfaceTreeIcon(item);
+    }
+
+    treeWidgetSurfaces->resizeColumnToContents(0);
+    treeWidgetSurfaces->resizeColumnToContents(1);
+    treeWidgetSurfaces->resizeColumnToContents(2);
+    treeWidgetSurfaces->resizeColumnToContents(3);
+
+    if (!appInitComplete) {
+        // Apply initial sorting during apps tartup, but afterwards keep
+        // whatever the user chose
+        treeWidgetSurfaces->sortByColumn(SURFACE_ID_COLUMN, Qt::AscendingOrder);
+    }
+}
+
+void CWindow::UpdateSurfaceTreeIcon(QTreeWidgetItem *item)
+{
+    std::string id = item->data(SURFACE_ID_COLUMN, Qt::UserRole).toString().toStdString();
+
+    // Approved / defective icon
+    if (_vol_qsurfs[id]->surface()->meta) {
+        if (_vol_qsurfs[id]->surface()->meta->value("tags", nlohmann::json::object_t()).count("approved")) {            
+            item->setData(0, Qt::DisplayRole, "A");
+            item->setIcon(0, style()->standardIcon(QStyle::SP_DialogOkButton));
+            item->setToolTip(0, tr("Approved"));
+        } else if (_vol_qsurfs[id]->surface()->meta->value("tags", nlohmann::json::object_t()).count("defective")) {
+            item->setData(0, Qt::DisplayRole, "D");
+            item->setIcon(0, style()->standardIcon(QStyle::SP_MessageBoxWarning));
+            item->setToolTip(0, tr("Defective"));
+        } else {            
+            item->setData(0, Qt::DisplayRole, "");
+            item->setIcon(0, QIcon());
+            item->setToolTip(0, tr("Unknown"));
+        }
+    }
+}
 
 void CWindow::onSegFilterChanged(int index)
 {
     std::set<std::string> dbg_intersects = {"segmentation"};
     
     POI *poi = _surf_col->poi("focus");
-    
-    //TODO select a new idx if the old one is not in the list any more?
-    int orig_idx = -1;
-    
-    {
-        const QSignalBlocker blocker{treeWidgetSurfaces};
-        treeWidgetSurfaces->clear();
-        
-        //TODO list sub-segmentation formats (like objs...)
-        for (auto &id : fVpkg->segmentationIDs()) {
-            bool insert = false;
-            if (!_vol_qsurfs.count(id)) {
-                insert = true;
-            }
-            else {
-                //use alls
-                if (index == 0) {
-                    insert = true;
-                }
-                else if (index == 1 && contains(*_vol_qsurfs[id], poi->p)) {
-                    insert = true;
-                }
-                else if (index == 2 && contains(*_vol_qsurfs[id], _red_points) && contains(*_vol_qsurfs[id], _blue_points)) {
-                    insert = true;
-                }
-            }
-            
-            if (insert) {
-                QTreeWidgetItem *item = new QTreeWidgetItem(treeWidgetSurfaces);
-                item->setText(0, QString(id.c_str()));
-                item->setData(0, Qt::UserRole, QVariant(id.c_str()));
-                
-                if (_vol_qsurfs.count(id))
-                    dbg_intersects.insert(id);
+
+    QTreeWidgetItemIterator it(treeWidgetSurfaces);
+    while (*it) {
+        std::string id = (*it)->data(SURFACE_ID_COLUMN, Qt::UserRole).toString().toStdString();
+
+        bool show = false;
+        if (!_vol_qsurfs.count(id)) {
+            show = true;
+        } else {
+            if (index == 0) {
+                show = true;
+            } else if (index == 1 && contains(*_vol_qsurfs[id], poi->p)) {
+                show = true;
+            } else if (
+                index == 2 && contains(*_vol_qsurfs[id], _red_points) &&
+                contains(*_vol_qsurfs[id], _blue_points)) {
+                show = true;
             }
         }
-        
-        for (auto &viewer : _viewers)
-            if (viewer->surfName() != "segmentation")
-                viewer->setIntersects(dbg_intersects);
+
+        (*it)->setHidden(!show);
+
+        if(show) {
+            if (_vol_qsurfs.count(id))
+                    dbg_intersects.insert(id);
+        }
+
+        ++it;
     }
+
+    for (auto &viewer : _viewers)
+        if (viewer->surfName() != "segmentation")
+            viewer->setIntersects(dbg_intersects);
+
 }
 
 void CWindow::onResetPoints(void)
