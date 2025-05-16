@@ -78,6 +78,7 @@ private:
     void UpdateSurfaceTreeIcon(SurfaceTreeWidgetItem *item);
 
     void UpdateView(void);
+    void UpdateVolpkgLabel(int filterCounter);
 
     void UpdateRecentVolpkgActions(void);
     void UpdateRecentVolpkgList(const QString& path);

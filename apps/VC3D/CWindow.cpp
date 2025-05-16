@@ -451,12 +451,17 @@ void CWindow::UpdateView(void)
     setWidgetsEnabled(true);  // Enable Widgets for User
 
     // show volume package name
-    this->findChild<QLabel*>("lblVpkgName")
-        ->setText(QString(fVpkg->name().c_str()));
+    UpdateVolpkgLabel(0);    
 
     volSelect->setEnabled(can_change_volume_());
 
     update();
+}
+
+void CWindow::UpdateVolpkgLabel(int filterCounter)
+{
+    QString label = tr("%1 (%2 Surfaces | %3 filtered)").arg(QString::fromStdString(fVpkg->name())).arg(fVpkg->segmentationIDs().size()).arg(filterCounter);
+    this->findChild<QLabel*>("lblVpkgName")->setText(label);
 }
 
 void CWindow::onShowStatusMessage(QString text, int timeout)
@@ -941,6 +946,7 @@ void CWindow::onSegFilterChanged(int index)
     std::set<std::string> dbg_intersects = {"segmentation"};
     
     POI *poi = _surf_col->poi("focus");
+    int filterCounter = 0;
 
     QTreeWidgetItemIterator it(treeWidgetSurfaces);
     while (*it) {
@@ -966,10 +972,13 @@ void CWindow::onSegFilterChanged(int index)
         if(show) {
             if (_vol_qsurfs.count(id))
                     dbg_intersects.insert(id);
-        }
+        } else
+            filterCounter++;
 
         ++it;
     }
+
+    UpdateVolpkgLabel(filterCounter);
 
     for (auto &viewer : _viewers)
         if (viewer->surfName() != "segmentation")
