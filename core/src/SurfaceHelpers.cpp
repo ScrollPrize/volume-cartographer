@@ -2205,17 +2205,17 @@ std::string strint(int n, int width)
 }
 
 int static dbg_counter = 0;
-// Default values for thresholds - will be configurable through JSON
+// Default values for thresholds Will be configurable through JSON
 float local_cost_inl_th = 0.2;
 float same_surface_th = 2.0;
-float straight_weight = 0.7f;         // Weight for 2D straight line constraints
+float straight_weight = 0.7f;       // Weight for 2D straight line constraints
 float straight_weight_3D = 4.0f;    // Weight for 3D straight line constraints
 float sliding_w_scale = 1.0f;       // Scale factor for sliding window
 float z_loc_loss_w = 0.1f;          // Weight for Z location loss constraints
 float dist_loss_2d_w = 1.0f;        // Weight for 2D distance constraints
 float dist_loss_3d_w = 2.0f;        // Weight for 3D distance constraints
-float straight_min_count = 1.0f;   // Minimum number of straight constraints
-int inlier_base_threshold = 20;    // Starting threshold for inliers
+float straight_min_count = 1.0f;    // Minimum number of straight constraints
+int inlier_base_threshold = 20;     // Starting threshold for inliers
 
 //try flattening the current surface mapping assuming direct 3d distances
 //this is basically just a reparametrization
@@ -2574,7 +2574,7 @@ QuadSurface *grow_surf_from_surfs(SurfaceMeta *seed, const std::vector<SurfaceMe
     std::cout << "  dist_loss_2d_w: " << dist_loss_2d_w << std::endl;
     std::cout << "  dist_loss_3d_w: " << dist_loss_3d_w << std::endl;
 
-    std::cout << "total surf count: " << surfs_v.size() << std::endl;
+    std::cout << "total surface count: " << surfs_v.size() << std::endl;
 
     std::set<SurfaceMeta*> approved_sm;
     
@@ -2594,7 +2594,7 @@ QuadSurface *grow_surf_from_surfs(SurfaceMeta *seed, const std::vector<SurfaceMe
             if (surfs.count(name))
                 sm->overlapping.insert(surfs[name]);
 
-    std::cout << "total number of surfs: " << surfs.size() << std::endl;
+    std::cout << "total surface count (after defective filter): " << surfs.size() << std::endl;
     std::cout << "seed " << seed << " name " << seed->name() << " seed overlapping: " 
               << seed->overlapping.size() << "/" << seed->overlapping_str.size() << std::endl;
 
