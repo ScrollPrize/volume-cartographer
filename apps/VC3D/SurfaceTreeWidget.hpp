@@ -8,6 +8,8 @@
 
 class SurfaceTreeWidget : public QTreeWidget
 {
+    Q_OBJECT
+    
 public:
     SurfaceTreeWidget(QTreeWidget* parent) : QTreeWidget(parent) {}
     
