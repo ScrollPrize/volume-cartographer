@@ -154,7 +154,7 @@ static void min_loc(const cv::Mat_<cv::Vec3f> &points, cv::Vec2f &loc, cv::Vec3f
         }
     }
     
-    std::cout << "best" << best << tgt << out << "\n" <<  std::endl;
+    std::cout << "best " << best << tgt << out << "\n" <<  std::endl;
 }
 
 static float tdist(const cv::Vec3f &a, const cv::Vec3f &b, float t_dist)
@@ -835,7 +835,7 @@ float local_optimization(int radius, const cv::Vec2i &p, cv::Mat_<uint8_t> &stat
     ceres::Solve(options, &problem, &summary);
 
     if (!quiet)
-        std::cout << "local solve radius" << radius << " " << summary.BriefReport() << std::endl;
+        std::cout << "local solve radius " << radius << " " << summary.BriefReport() << std::endl;
 
     return sqrt(summary.final_cost/summary.num_residual_blocks);
 }
@@ -1373,7 +1373,7 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *c
 
         for(auto p: fringe)
             if (locs(p)[0] == -1)
-                std::cout << "impossible!" << p << cv::Vec2i(y0,x0) << std::endl;
+                std::cout << "impossible! " << p << cv::Vec2i(y0,x0) << std::endl;
 
         if (generation >= 3) {
             options_big.max_num_iterations = 10;
@@ -1412,7 +1412,7 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *c
             std::cout << "running big solve" << std::endl;
             ceres::Solve(options_big, &big_problem, &big_summary);
             std::cout << big_summary.BriefReport() << "\n";
-            std::cout << "avg err:" << sqrt(big_summary.final_cost/big_summary.num_residual_blocks) << std::endl;
+            std::cout << "avg err: " << sqrt(big_summary.final_cost/big_summary.num_residual_blocks) << std::endl;
         }
 
         cv::Rect used_plus = {used_area.x-8,used_area.y-8,used_area.width+16,used_area.height+16};
@@ -2179,7 +2179,7 @@ int inlier_base_threshold = 20;    // Starting threshold for inliers
 //this is basically just a reparametrization
 void optimize_surface_mapping(SurfTrackerData &data, cv::Mat_<uint8_t> &state, cv::Mat_<cv::Vec3d> &points, cv::Rect used_area, cv::Rect static_bounds, float step, float src_step, const cv::Vec2i &seed, int closing_r, bool keep_inpainted = false, const std::filesystem::path& tgt_dir = std::filesystem::path())
 {
-    std::cout << "optimizing surface" << state.size() << used_area << static_bounds << std::endl;
+    std::cout << "optimizing surface " << state.size() << used_area << static_bounds << std::endl;
     cv::Mat_<cv::Vec3d> points_new = points.clone();
     SurfaceMeta sm;
     sm._surf = new QuadSurface(points, {1,1});
@@ -2593,7 +2593,7 @@ QuadSurface *grow_surf_from_surfs(SurfaceMeta *seed, const std::vector<SurfaceMe
     
     while (seed_points(seed_loc)[0] == -1) {
         seed_loc = {rand() % seed_points.rows, rand() % seed_points.cols };
-        std::cout << "try loc" << seed_loc << std::endl;
+        std::cout << "try loc " << seed_loc << std::endl;
     }
 
     data.loc(seed,{y0,x0}) = {seed_loc[0], seed_loc[1]};
