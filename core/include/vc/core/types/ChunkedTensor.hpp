@@ -233,7 +233,9 @@ public:
         tmp_path = fs::path(_cache_dir) / ss.str();
         _mutex.unlock();
         int fd = open(tmp_path.string().c_str(), O_RDWR | O_CREAT | O_TRUNC, (mode_t)0600);
-        ftruncate(fd, len_bytes);
+        int ret = ftruncate(fd, len_bytes);
+        if (ret != 0)
+            throw std::runtime_error("oops ftruncate failed!");
         T *chunk = (T*)mmap(NULL, len_bytes, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
         close(fd);
         
