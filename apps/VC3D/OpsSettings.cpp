@@ -1,5 +1,5 @@
-#include "opssettings.hpp"
-#include "ui_opssettings.h"
+#include "OpsSettings.hpp"
+#include "ui_OpsSettings.h"
 
 #include "OpChain.hpp"
 #include "formsetsrc.hpp"

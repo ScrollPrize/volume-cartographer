@@ -1399,6 +1399,7 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *c
             if (locs(p)[0] == -1)
                 std::cout << "impossible! " << p << " " << cv::Vec2i(y0,x0) << std::endl;
 
+
         if (generation >= 3) {
             options_big.max_num_iterations = 10;
         }
@@ -2224,6 +2225,7 @@ void optimize_surface_mapping(SurfTrackerData &data, cv::Mat_<uint8_t> &state, c
     const std::filesystem::path& tgt_dir = std::filesystem::path())
 {
     std::cout << "optimizing surface " << state.size() << " " << used_area <<  " " << static_bounds << std::endl;
+
     cv::Mat_<cv::Vec3d> points_new = points.clone();
     SurfaceMeta sm;
     sm._surf = new QuadSurface(points, {1,1});
