@@ -1,5 +1,5 @@
-#include "opslist.hpp"
-#include "ui_opslist.h"
+#include "OpsList.hpp"
+#include "ui_OpsList.h"
 
 #include "OpChain.hpp"
 
@@ -22,7 +22,7 @@ OpsList::~OpsList() { delete ui; }
 void OpsList::onOpChainSelected(OpChain *ops)
 {
     _op_chain = ops;
-    std::cout << "opchain selected" << ops << std::endl;
+    std::cout << "opchain selected " << ops << std::endl;
 
     _tree->clear();
 
