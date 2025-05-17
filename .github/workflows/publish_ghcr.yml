@@ -10,9 +10,21 @@ env:
   REGISTRY_IMAGE: ghcr.io/${{ github.repository_owner }}/volume-cartographer
 
 jobs:
+  prepare:
+    name: Preparation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Convert repository name to lower case
+        id: lowercase
+        run: |
+          input=${{ env.REGISTRY_IMAGE }}
+          echo "REGISTRY_IMAGE_LC=${input,,}" >> $GITHUB_ENV
+
   build_x64:
     name: Build Docker Image (x64)
     runs-on: ubuntu-24.04
+    needs:
+      - prepare
     steps:
       - name: Prepare
         run: |
@@ -23,7 +35,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY_IMAGE }}
+          images: ${{ env.REGISTRY_IMAGE_LC }}
 
       - name: Login to Docker Hub
         uses: docker/login-action@v3
@@ -46,7 +58,7 @@ jobs:
           file: ubuntu-24.04-noble.Dockerfile
           platforms: linux/amd64
           labels: ${{ steps.meta.outputs.labels }}
-          tags: ${{ env.REGISTRY_IMAGE }}
+          tags: ${{ env.REGISTRY_IMAGE_LC }}
           outputs: type=image,push-by-digest=true,name-canonical=true,push=true
 
       - name: Export digest
@@ -66,6 +78,8 @@ jobs:
   build_arm64:
     name: Build Docker Image (arm64)
     runs-on: ubuntu-24.04-arm
+    needs:
+      - prepare
     steps:
       - name: Prepare
         run: |
@@ -76,7 +90,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY_IMAGE }}
+          images: ${{ env.REGISTRY_IMAGE_LC }}
 
       - name: Login to Docker Hub
         uses: docker/login-action@v3
@@ -99,7 +113,7 @@ jobs:
           file: ubuntu-24.04-noble.Dockerfile
           platforms: linux/arm64
           labels: ${{ steps.meta.outputs.labels }}
-          tags: ${{ env.REGISTRY_IMAGE }}
+          tags: ${{ env.REGISTRY_IMAGE_LC }}
           outputs: type=image,push-by-digest=true,name-canonical=true,push=true
 
       - name: Export digest
@@ -145,7 +159,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY_IMAGE }}
+          images: ${{ env.REGISTRY_IMAGE_LC }}
           tags: |
             type=ref,event=pr
             type=semver,pattern={{version}}
@@ -159,8 +173,8 @@ jobs:
         working-directory: ${{ runner.temp }}/digests
         run: |
           docker buildx imagetools create $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
-            $(printf '${{ env.REGISTRY_IMAGE }}@sha256:%s ' *)
+            $(printf '${{ env.REGISTRY_IMAGE_LC }}@sha256:%s ' *)
 
       - name: Inspect image
         run: |
-          docker buildx imagetools inspect ${{ env.REGISTRY_IMAGE }}:${{ steps.meta.outputs.version }}
+          docker buildx imagetools inspect ${{ env.REGISTRY_IMAGE_LC }}:${{ steps.meta.outputs.version }}
