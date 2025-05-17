@@ -1,4 +1,5 @@
 name: Build & Push Docker Image (ghcr.io)
+
 on:
   push:
     branches: ["dev-next", "latest"]
@@ -20,11 +21,11 @@ jobs:
           input=${{ env.REGISTRY_IMAGE }}
           echo "REGISTRY_IMAGE_LC=${input,,}" >> $GITHUB_ENV
 
+
   build_x64:
     name: Build Docker Image (x64)
     runs-on: ubuntu-24.04
-    needs:
-      - prepare
+    needs: [prepare]
     steps:
       - name: Prepare
         run: |
@@ -36,8 +37,13 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY_IMAGE_LC }}
+          tags: |
+            type=ref,event=branch               # dev-next → dev-next, latest → latest
+            type=sha,prefix=sha-                # sha-<7chars>
+            type=raw,value=edge,enable={{is_default_branch}}
+            type=raw,value=latest,enable=${{ github.ref == format('refs/heads/{0}', 'latest') }}
 
-      - name: Login to Docker Hub
+      - name: Login to GHCR
         uses: docker/login-action@v3
         if: github.event_name != 'pull_request'
         with:
@@ -58,7 +64,7 @@ jobs:
           file: ubuntu-24.04-noble.Dockerfile
           platforms: linux/amd64
           labels: ${{ steps.meta.outputs.labels }}
-          tags: ${{ env.REGISTRY_IMAGE_LC }}
+          tags: ${{ steps.meta.outputs.tags }}       
           outputs: type=image,push-by-digest=true,name-canonical=true,push=true
 
       - name: Export digest
@@ -74,12 +80,11 @@ jobs:
           path: ${{ runner.temp }}/digests/*
           if-no-files-found: error
           retention-days: 1
-          
+
   build_arm64:
     name: Build Docker Image (arm64)
     runs-on: ubuntu-24.04-arm
-    needs:
-      - prepare
+    needs: [prepare]
     steps:
       - name: Prepare
         run: |
@@ -91,8 +96,13 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY_IMAGE_LC }}
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix=sha-
+            type=raw,value=edge,enable={{is_default_branch}}
+            type=raw,value=latest,enable=${{ github.ref == format('refs/heads/{0}', 'latest') }}
 
-      - name: Login to Docker Hub
+      - name: Login to GHCR
         uses: docker/login-action@v3
         if: github.event_name != 'pull_request'
         with:
@@ -113,7 +123,7 @@ jobs:
           file: ubuntu-24.04-noble.Dockerfile
           platforms: linux/arm64
           labels: ${{ steps.meta.outputs.labels }}
-          tags: ${{ env.REGISTRY_IMAGE_LC }}
+          tags: ${{ steps.meta.outputs.tags }}      
           outputs: type=image,push-by-digest=true,name-canonical=true,push=true
 
       - name: Export digest
@@ -133,9 +143,7 @@ jobs:
   merge:
     name: Merge & Publish Docker Images
     runs-on: ubuntu-latest
-    needs:
-      - build_x64
-      - build_arm64
+    needs: [build_x64, build_arm64]
     steps:
       - name: Download digests
         uses: actions/download-artifact@v4
@@ -144,7 +152,7 @@ jobs:
           pattern: digests-*
           merge-multiple: true
 
-      - name: Login to Docker Hub
+      - name: Login to GHCR
         uses: docker/login-action@v3
         if: github.event_name != 'pull_request'
         with:
@@ -164,9 +172,7 @@ jobs:
             type=ref,event=pr
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
-            # default branch = dev-next => set Docker tag "edge"
             type=raw,value=edge,enable={{is_default_branch}}
-            # latest branch => set Docker tag "latest"
             type=raw,value=latest,enable=${{ github.ref == format('refs/heads/{0}', 'latest') }}
 
       - name: Create manifest list and push
@@ -177,4 +183,4 @@ jobs:
 
       - name: Inspect image
         run: |
-          docker buildx imagetools inspect ${{ env.REGISTRY_IMAGE_LC }}:edge
+          docker buildx imagetools inspect ${{ env.REGISTRY_IMAGE_LC }}:${{ steps.meta.outputs.version }}
