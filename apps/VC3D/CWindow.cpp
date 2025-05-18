@@ -8,6 +8,9 @@
 #include <QMdiArea>
 #include <QMenu>
 #include <QAction>
+#include <QApplication>
+#include <QClipboard>
+#include <QTimer>
 #include <opencv2/imgproc.hpp>
 #include <opencv2/highgui.hpp>
 
@@ -20,7 +23,6 @@
 #include "OpsSettings.hpp"
 #include "SurfaceTreeWidget.hpp"
 #include "CSegmentationEditorWindow.hpp"
-#include "SegmentRenderThread.hpp"
 
 #include "vc/core/types/Color.hpp"
 #include "vc/core/types/Exceptions.hpp"
@@ -40,7 +42,7 @@ namespace fs = std::filesystem;
 // Constructor
 CWindow::CWindow() :
     fVpkg(nullptr),
-    _renderThread(nullptr)
+    _cmdRunner(nullptr)
 {
     const QSettings settings("VC.ini", QSettings::IniFormat);
     setWindowIcon(QPixmap(":/images/logo.png"));
@@ -1125,43 +1127,43 @@ void CWindow::onRenderSegment(const SurfaceID& segmentId)
     QString segmentOutDir = QString::fromStdString(_vol_qsurfs[segmentId]->path.string());
     QString outputPattern = outputFormat.replace("%s", segmentOutDir);
     
-    QFileInfo outputDir(QFileInfo(outputPattern).path());
-    if (!outputDir.exists()) {
-        QDir().mkpath(outputDir.absoluteFilePath());
+    // Initialize command line tool runner if needed
+    if (!_cmdRunner) {
+        _cmdRunner = new CommandLineToolRunner(statusBar, this);
+        connect(_cmdRunner, &CommandLineToolRunner::toolStarted, 
+                [this](CommandLineToolRunner::Tool tool, const QString& message) {
+                    statusBar->showMessage(message, 0);
+                });
+        connect(_cmdRunner, &CommandLineToolRunner::toolFinished, 
+                [this](CommandLineToolRunner::Tool tool, bool success, const QString& message, 
+                       const QString& outputPath, bool copyToClipboard) {
+                    if (success) {
+                        QString displayMsg = message;
+                        if (copyToClipboard) {
+                            displayMsg += tr(" - Path copied to clipboard");
+                        }
+                        statusBar->showMessage(displayMsg, 5000);
+                        QMessageBox::information(this, tr("Rendering Complete"), displayMsg);
+                    } else {
+                        statusBar->showMessage(tr("Rendering failed"), 5000);
+                        QMessageBox::critical(this, tr("Rendering Error"), message);
+                    }
+                });
     }
     
-    if (_renderThread) {
-        if (_renderThread->isRunning()) {
-            QMessageBox::warning(this, tr("Warning"), tr("rendering task is already in progress."));
-            return;
-        }
-        delete _renderThread;
+    // Check if a tool is already running
+    if (_cmdRunner->isRunning()) {
+        QMessageBox::warning(this, tr("Warning"), tr("A command line tool is already running."));
+        return;
     }
     
-    _renderThread = new SegmentRenderThread(this);
-    connect(_renderThread, &SegmentRenderThread::renderingStarted, this, &CWindow::onRenderingStarted);
-    connect(_renderThread, &SegmentRenderThread::renderingFinished, this, &CWindow::onRenderingFinished);
-    connect(_renderThread, &SegmentRenderThread::renderingFailed, this, &CWindow::onRenderingFailed);
+    // Set up parameters and execute the render tool
+    _cmdRunner->setVolumePath(volumePath);
+    _cmdRunner->setSegmentPath(segmentPath);
+    _cmdRunner->setOutputPattern(outputPattern);
+    _cmdRunner->setRenderParams(scale, resolution, layers);
     
-    _renderThread->setParameters(volumePath, segmentPath, outputPattern, scale, resolution, layers);
-    _renderThread->start();
+    _cmdRunner->execute(CommandLineToolRunner::Tool::RenderTifXYZ);
     
     statusBar->showMessage(tr("Rendering segment: %1").arg(QString::fromStdString(segmentId)), 5000);
-}
-
-void CWindow::onRenderingStarted(const QString& message)
-{
-    statusBar->showMessage(message, 5000);
-}
-
-void CWindow::onRenderingFinished(const QString& message)
-{
-    statusBar->showMessage(message, 5000);
-    QMessageBox::information(this, tr("Rendering Complete"), message);
-}
-
-void CWindow::onRenderingFailed(const QString& errorMessage)
-{
-    statusBar->showMessage(tr("Rendering failed"), 5000);
-    QMessageBox::critical(this, tr("Rendering Error"), errorMessage);
 }

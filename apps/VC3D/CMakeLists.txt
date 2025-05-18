@@ -25,6 +25,10 @@ set(srcs
     CSegmentationEditorWindow.hpp
     SegmentRenderThread.cpp
     SegmentRenderThread.hpp
+    ProgressUtil.cpp
+    ProgressUtil.hpp
+    CommandLineToolRunner.cpp
+    CommandLineToolRunner.hpp
 )
 
 set(MACOSX_BUNDLE_ICON logo.icns)
