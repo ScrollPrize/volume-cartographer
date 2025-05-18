@@ -6,6 +6,8 @@
 #include <QProgressBar>
 #include <QSettings>
 #include <QMdiArea>
+#include <QMenu>
+#include <QAction>
 #include <opencv2/imgproc.hpp>
 #include <opencv2/highgui.hpp>
 
@@ -18,6 +20,7 @@
 #include "OpsSettings.hpp"
 #include "SurfaceTreeWidget.hpp"
 #include "CSegmentationEditorWindow.hpp"
+#include "SegmentRenderThread.hpp"
 
 #include "vc/core/types/Color.hpp"
 #include "vc/core/types/Exceptions.hpp"
@@ -36,7 +39,8 @@ namespace fs = std::filesystem;
 
 // Constructor
 CWindow::CWindow() :
-    fVpkg(nullptr)
+    fVpkg(nullptr),
+    _renderThread(nullptr)
 {
     const QSettings settings("VC.ini", QSettings::IniFormat);
     setWindowIcon(QPixmap(":/images/logo.png"));
@@ -192,6 +196,8 @@ void CWindow::CreateWidgets(void)
     mdiArea->tileSubWindows();
 
     treeWidgetSurfaces = this->findChild<SurfaceTreeWidget*>("treeWidgetSurfaces");
+    treeWidgetSurfaces->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(treeWidgetSurfaces, &QWidget::customContextMenuRequested, this, &CWindow::onSurfaceContextMenuRequested);
     btnReloadSurfaces = this->findChild<QPushButton*>("btnReloadSurfaces");
     auto dockWidgetOpList = this->findChild<QDockWidget*>("dockWidgetOpList");
     auto dockWidgetOpSettings = this->findChild<QDockWidget*>("dockWidgetOpSettings");
@@ -695,6 +701,16 @@ void CWindow::About(void)
 void CWindow::ShowSettings()
 {
     auto pDlg = new SettingsDialog(this);
+    
+    // If we have volumes loaded, update the volume list in settings
+    if (fVpkg && fVpkg->numberOfVolumes() > 0) {
+        QStringList volIds;
+        for (const auto& id : fVpkg->volumeIDs()) {
+            volIds << QString::fromStdString(id);
+        }
+        pDlg->updateVolumeList(volIds);
+    }
+    
     pDlg->exec();
     delete pDlg;
 }
@@ -1050,4 +1066,102 @@ void CWindow::onEditMaskPressed(void)
 void CWindow::onRefreshSurfaces()
 {
     LoadSurfaces(true);
+}
+
+void CWindow::onSurfaceContextMenuRequested(const QPoint& pos)
+{
+    QTreeWidgetItem* item = treeWidgetSurfaces->itemAt(pos);
+    if (!item) {
+        return;
+    }
+    
+    SurfaceID segmentId = item->data(SURFACE_ID_COLUMN, Qt::UserRole).toString().toStdString();
+    
+    QMenu contextMenu(tr("Context Menu"), this);
+    QAction* renderAction = new QAction(tr("Render segment"), this);
+    
+    connect(renderAction, &QAction::triggered, [this, segmentId]() {
+        onRenderSegment(segmentId);
+    });
+    
+    contextMenu.addAction(renderAction);
+    
+    // separator for potential future options
+    contextMenu.addSeparator();
+    
+    // show the context menu at the position of the right-click
+    contextMenu.exec(treeWidgetSurfaces->mapToGlobal(pos));
+}
+
+void CWindow::onRenderSegment(const SurfaceID& segmentId)
+{
+    if (currentVolume == nullptr || !_vol_qsurfs.count(segmentId)) {
+        QMessageBox::warning(this, tr("Error"), tr("Cannot render segment: No volume or invalid segment selected"));
+        return;
+    }
+    
+    QSettings settings("VC.ini", QSettings::IniFormat);
+    
+    QString defaultVolume = settings.value("rendering/default_volume", "").toString();
+    QString outputFormat = settings.value("rendering/output_path_format", "%s/layers/%02d.tif").toString();
+    float scale = settings.value("rendering/scale", 1.0f).toFloat();
+    int resolution = settings.value("rendering/resolution", 0).toInt();
+    int layers = settings.value("rendering/layers", 21).toInt();
+    
+    std::shared_ptr<volcart::Volume> volumeToRender;
+    if (defaultVolume.isEmpty()) {
+        volumeToRender = currentVolume;
+    } else {
+        try {
+            volumeToRender = fVpkg->volume(defaultVolume.toStdString());
+        } catch (const std::exception& e) {
+            QMessageBox::warning(this, tr("Error"), tr("Default volume not found. Using current volume instead."));
+            volumeToRender = currentVolume;
+        }
+    }
+    
+    QString volumePath = QString::fromStdString(volumeToRender->path().string());
+    QString segmentPath = QString::fromStdString(_vol_qsurfs[segmentId]->path.string());
+    QString segmentOutDir = QString::fromStdString(_vol_qsurfs[segmentId]->path.string());
+    QString outputPattern = outputFormat.replace("%s", segmentOutDir);
+    
+    QFileInfo outputDir(QFileInfo(outputPattern).path());
+    if (!outputDir.exists()) {
+        QDir().mkpath(outputDir.absoluteFilePath());
+    }
+    
+    if (_renderThread) {
+        if (_renderThread->isRunning()) {
+            QMessageBox::warning(this, tr("Warning"), tr("rendering task is already in progress."));
+            return;
+        }
+        delete _renderThread;
+    }
+    
+    _renderThread = new SegmentRenderThread(this);
+    connect(_renderThread, &SegmentRenderThread::renderingStarted, this, &CWindow::onRenderingStarted);
+    connect(_renderThread, &SegmentRenderThread::renderingFinished, this, &CWindow::onRenderingFinished);
+    connect(_renderThread, &SegmentRenderThread::renderingFailed, this, &CWindow::onRenderingFailed);
+    
+    _renderThread->setParameters(volumePath, segmentPath, outputPattern, scale, resolution, layers);
+    _renderThread->start();
+    
+    statusBar->showMessage(tr("Rendering segment: %1").arg(QString::fromStdString(segmentId)), 5000);
+}
+
+void CWindow::onRenderingStarted(const QString& message)
+{
+    statusBar->showMessage(message, 5000);
+}
+
+void CWindow::onRenderingFinished(const QString& message)
+{
+    statusBar->showMessage(message, 5000);
+    QMessageBox::information(this, tr("Rendering Complete"), message);
+}
+
+void CWindow::onRenderingFailed(const QString& errorMessage)
+{
+    statusBar->showMessage(tr("Rendering failed"), 5000);
+    QMessageBox::critical(this, tr("Rendering Error"), errorMessage);
 }

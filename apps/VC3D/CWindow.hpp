@@ -32,6 +32,7 @@ class OpsList;
 class OpsSettings;
 class SurfaceTreeWidget;
 class SurfaceTreeWidgetItem;
+class SegmentRenderThread;
 
 namespace ChaoVis
 {
@@ -64,6 +65,11 @@ public slots:
     void onOpChainChanged(OpChain *chain);
     void onTagChanged(void);
     void onResetPoints(void);
+    void onSurfaceContextMenuRequested(const QPoint& pos);
+    void onRenderSegment(const SurfaceID& segmentId);
+    void onRenderingStarted(const QString& message);
+    void onRenderingFinished(const QString& message);
+    void onRenderingFailed(const QString& errorMessage);
 
 public:
     CWindow();
@@ -177,6 +183,9 @@ private:
 
     std::unordered_map<std::string, OpChain*> _opchains;
     std::unordered_map<std::string, SurfaceMeta*> _vol_qsurfs;
+    
+    // Segment rendering
+    SegmentRenderThread* _renderThread;
 };  // class CWindow
 
 }  // namespace ChaoVis

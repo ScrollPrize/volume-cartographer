@@ -27,6 +27,17 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent)
 
     spinPreloadedSlices->setValue(settings.value("perf/preloaded_slices", 200).toInt());
     chkSkipImageFormatConvExp->setChecked(settings.value("perf/chkSkipImageFormatConvExp", false).toBool());
+    
+    // Load rendering settings
+    QString defaultVolume = settings.value("rendering/default_volume", "").toString();
+    cmbDefaultVolume->addItem(""); // Empty selection
+    // Note: The combobox will be populated with actual volumes when a volpkg is loaded
+    cmbDefaultVolume->setCurrentText(defaultVolume);
+    
+    edtOutputFormat->setText(settings.value("rendering/output_path_format", "%s/layers/%02d.tif").toString());
+    spinScale->setValue(settings.value("rendering/scale", 1.0).toDouble());
+    spinResolution->setValue(settings.value("rendering/resolution", 0).toInt());
+    spinLayers->setValue(settings.value("rendering/layers", 21).toInt());
 
     connect(btnHelpScrollSpeed, &QPushButton::clicked, this, [this]{ QToolTip::showText(QCursor::pos(), btnHelpScrollSpeed->toolTip()); });
     connect(btnHelpDisplayOpacity, &QPushButton::clicked, this, [this]{ QToolTip::showText(QCursor::pos(), btnHelpDisplayOpacity->toolTip()); });
@@ -51,6 +62,13 @@ void SettingsDialog::accept()
 
     settings.setValue("perf/preloaded_slices", spinPreloadedSlices->value());
     settings.setValue("perf/chkSkipImageFormatConvExp", chkSkipImageFormatConvExp->isChecked() ? "1" : "0");
+    
+    // Store rendering settings
+    settings.setValue("rendering/default_volume", cmbDefaultVolume->currentText());
+    settings.setValue("rendering/output_path_format", edtOutputFormat->text());
+    settings.setValue("rendering/scale", spinScale->value());
+    settings.setValue("rendering/resolution", spinResolution->value());
+    settings.setValue("rendering/layers", spinLayers->value());
 
     QMessageBox::information(this, tr("Restart required"), tr("Note: Some settings only take effect once you restarted the app."));
 
@@ -84,4 +102,23 @@ std::vector<int> SettingsDialog::expandSettingToIntRange(const QString& setting)
     }
 
     return res;
+}
+
+void SettingsDialog::updateVolumeList(const QStringList& volumeIds)
+{
+    QString currentVolume = cmbDefaultVolume->currentText();
+    cmbDefaultVolume->clear();
+    
+    // Always add an empty option
+    cmbDefaultVolume->addItem("");
+    
+    for (const QString& id : volumeIds) {
+        cmbDefaultVolume->addItem(id);
+    }
+    
+    // Try to restore the previous selection
+    int index = cmbDefaultVolume->findText(currentVolume);
+    if (index >= 0) {
+        cmbDefaultVolume->setCurrentIndex(index);
+    }
 }

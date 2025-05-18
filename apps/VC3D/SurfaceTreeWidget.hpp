@@ -9,7 +9,9 @@
 class SurfaceTreeWidget : public QTreeWidget
 {
 public:
-    SurfaceTreeWidget(QTreeWidget* parent) : QTreeWidget(parent) {}
+    SurfaceTreeWidget(QTreeWidget* parent) : QTreeWidget(parent) {
+        setContextMenuPolicy(Qt::CustomContextMenu);
+    }
     
     QTreeWidgetItem* findItemForSurface(SurfaceID id);
 };

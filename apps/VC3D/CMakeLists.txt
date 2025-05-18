@@ -23,6 +23,8 @@ set(srcs
     CDistanceTransformWidget.hpp
     CSegmentationEditorWindow.cpp
     CSegmentationEditorWindow.hpp
+    SegmentRenderThread.cpp
+    SegmentRenderThread.hpp
 )
 
 set(MACOSX_BUNDLE_ICON logo.icns)
