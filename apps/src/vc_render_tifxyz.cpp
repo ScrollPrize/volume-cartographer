@@ -11,6 +11,88 @@ namespace fs = std::filesystem;
 
 using json = nlohmann::json;
 
+/**
+ * @brief Orient normals to point outward from a reference point
+ * 
+ * @param points Matrix of 3D points (cv::Mat_<cv::Vec3f>)
+ * @param normals Matrix of normal vectors to reorient (modified in-place)
+ * @param referencePoint Optional external reference point (default: compute centroid)
+ * @param usePointsForCentroid Whether to compute centroid from points or use referencePoint
+ * @return bool True if normals were flipped, false otherwise
+ */
+bool orientNormals(
+    const cv::Mat_<cv::Vec3f>& points, 
+    cv::Mat_<cv::Vec3f>& normals,
+    const cv::Vec3f& referencePoint = cv::Vec3f(0,0,0),
+    bool usePointsForCentroid = true)
+{
+    cv::Vec3f refPt = referencePoint;
+    if (usePointsForCentroid) {
+        refPt = cv::Vec3f(0, 0, 0);
+        int validPoints = 0;
+        for (int y = 0; y < points.rows; y++) {
+            for (int x = 0; x < points.cols; x++) {
+                const cv::Vec3f& pt = points(y, x);
+                if (std::isnan(pt[0]) || std::isnan(pt[1]) || std::isnan(pt[2])) {
+                    continue;
+                }
+                refPt += pt;
+                validPoints++;
+            }
+        }
+        if (validPoints > 0) {
+            refPt /= static_cast<float>(validPoints);
+        }
+    }
+
+    size_t pointingToward = 0;
+    size_t pointingAway = 0;
+    
+    for (int y = 0; y < points.rows; y++) {
+        for (int x = 0; x < points.cols; x++) {
+            const cv::Vec3f& pt = points(y, x);
+            const cv::Vec3f& n = normals(y, x);
+            
+            if (std::isnan(pt[0]) || std::isnan(pt[1]) || std::isnan(pt[2]) ||
+                std::isnan(n[0]) || std::isnan(n[1]) || std::isnan(n[2])) {
+                continue;
+            }
+            
+            cv::Vec3f direction = refPt - pt;
+            float distance = cv::norm(direction);
+            
+            if (distance < 1e-6) {
+                continue;
+            }
+            
+            direction /= distance;
+            
+            float dotProduct = direction.dot(n);
+            if (dotProduct > 0) {
+                pointingToward++;
+            } else {
+                pointingAway++;
+            }
+        }
+    }
+    
+    bool shouldFlip = pointingAway > pointingToward;
+    
+    if (shouldFlip) {
+        for (int y = 0; y < normals.rows; y++) {
+            for (int x = 0; x < normals.cols; x++) {
+                cv::Vec3f& n = normals(y, x);
+                if (std::isnan(n[0]) || std::isnan(n[1]) || std::isnan(n[2])) {
+                    continue;
+                }
+                n = -n;
+            }
+        }
+    }
+    
+    return shouldFlip;
+}
+
 std::ostream& operator<< (std::ostream& out, const xt::svector<size_t> &v) {
     if ( !v.empty() ) {
         out << '[';
@@ -89,8 +171,14 @@ int main(int argc, char *argv[])
     
     if (tgt_size.width >= 10000 && num_slices > 1)
         slice_gen = true;
-    else
+    else {
         surf->gen(&points, &normals, tgt_size, nullptr, tgt_scale, {-full_size.width/2+crop.x,-full_size.height/2+crop.y,0});
+        
+        bool flipped = orientNormals(points, normals);
+        if (flipped) {
+            std::cout << "Flipping normals" << std::endl;
+        }
+    }
 
     cv::Mat_<uint8_t> img;
 
@@ -112,6 +200,9 @@ int main(int argc, char *argv[])
                 for(int x=crop.x;x<crop.x+crop.width;x+=1024) {
                     int w = std::min(tgt_size.width+crop.x-x, 1024);
                     surf->gen(&points, &normals, {w,crop.height}, nullptr, tgt_scale, {-full_size.width/2+x,-full_size.height/2+crop.y,0});
+                    
+                    orientNormals(points, normals);
+                    
                     cv::Mat_<uint8_t> slice;
                     readInterpolated3D(slice, ds.get(), points*ds_scale+off*normals*ds_scale, &chunk_cache);
                     slice.copyTo(img(cv::Rect(x-crop.x,0,w,crop.height)));
