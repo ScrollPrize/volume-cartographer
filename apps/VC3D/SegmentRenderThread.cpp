@@ -67,7 +67,9 @@ void SegmentRenderThread::run()
     connect(m_process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
             [this](int exitCode, QProcess::ExitStatus exitStatus) {
                 if (exitCode == 0 && exitStatus == QProcess::NormalExit) {
-                    emit renderingFinished("Segment rendering completed successfully");
+                    QFileInfo outputInfo(m_outputPattern);
+                    QDir outputDir = outputInfo.dir();
+                    emit renderingFinished("Segment rendering completed successfully", outputDir.path());
                 } else {
                     emit renderingFailed("Rendering process failed with exit code: " + QString::number(exitCode));
                 }

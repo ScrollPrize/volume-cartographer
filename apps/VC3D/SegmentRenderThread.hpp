@@ -25,7 +25,7 @@ public:
 
 signals:
     void renderingStarted(const QString& message);
-    void renderingFinished(const QString& message);
+    void renderingFinished(const QString& message, const QString& outputPath);
     void renderingFailed(const QString& errorMessage);
 
 private:
