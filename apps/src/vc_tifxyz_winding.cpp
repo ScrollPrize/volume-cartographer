@@ -175,7 +175,7 @@ IntersectVec getIntersects(const cv::Vec2i &seed, const cv::Mat_<cv::Vec3f> &poi
     }
     
     // std::cout << "seed " << seed_in_a << std::endl;
-//     
+     
     if (seed_in_a) {
         dist_locs = a;
     }
@@ -309,8 +309,6 @@ int main(int argc, char *argv[])
         unsigned int sr = omp_get_thread_num();
 #pragma omp for
         for(int i=0;i<num_conn;i++) {
-            
-            
             cv::Vec2i seed = {rand_r(&sr) % points.cols, rand_r(&sr) % points.rows};
             while (points(seed[1],seed[0])[0] == -1)
                 seed = {rand_r(&sr) % points.cols, rand_r(&sr) % points.rows};
@@ -561,6 +559,8 @@ int main(int argc, char *argv[])
         if (ramp == -50)
             break;
     }
+
+    delete surf;
     
     return EXIT_SUCCESS;
 }

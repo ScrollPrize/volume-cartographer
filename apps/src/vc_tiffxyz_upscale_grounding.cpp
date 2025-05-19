@@ -123,7 +123,8 @@ bool loc_surround_valid(const cv::Mat_<cv::Vec3f> &m, const cv::Vec2f &loc)
 
 //FIXME use min-loc that runs into forbidden areas!
 
-cv::Mat_<cv::Vec3f> points_hr_grounding(cv::Mat_<float> wind_lr, const cv::Mat_<cv::Vec3f> &points_lr, const std::vector<cv::Mat_<float>> &wind_hr_src, const std::vector<cv::Mat_<cv::Vec3f>> &points_hr_src, int scale)
+cv::Mat_<cv::Vec3f> points_hr_grounding(cv::Mat_<float> wind_lr, const cv::Mat_<cv::Vec3f> &points_lr, const std::vector<cv::Mat_<float>> &wind_hr_src, 
+    const std::vector<cv::Mat_<cv::Vec3f>> &points_hr_src, int scale)
 {
     cv::Mat_<cv::Vec3f> points_hr(points_lr.rows*scale, points_lr.cols*scale, {0,0,0});
     cv::Mat_<int> counts_hr(points_lr.rows*scale, points_lr.cols*scale, 0);
@@ -176,14 +177,12 @@ cv::Mat_<cv::Vec3f> points_hr_grounding(cv::Mat_<float> wind_lr, const cv::Mat_<
                 counts_lr_grounded(j, i) += 1;
                 counts_lr_grounded(j, i+1) += 1;
                 counts_lr_grounded(j+1, i) += 1;
-                counts_lr_grounded(j+1, i+1) += 1;
-                
+                counts_lr_grounded(j+1, i+1) += 1;                
                 
                 l00 = {l00[1],l00[0]};
                 l01 = {l01[1],l01[0]};
                 l10 = {l10[1],l10[0]};
-                l11 = {l11[1],l11[0]};
-                
+                l11 = {l11[1],l11[0]};                
                 
                 // std::cout << "succ!" << res << cv::Vec2i(i,j) << l00 << l01 << points_tgt(j,i) << std::endl;
                 
@@ -270,7 +269,7 @@ int main(int argc, char *argv[])
 {
     if (argc < 6 || (argc-4) % 2 != 0)  {
         std::cout << "usage: " << argv[0] << " <tiffxyz-lr> <winding-lr> <scale-factor> <tiffxyz-highres1> <winding1>  ..." << std::endl;
-        std::cout << "  upsamples a lr tiffxyz by interpolating locations from multiple hr surfaces each provided as a pair of tiffxyz, winding-tiff" << std::endl;
+        std::cout << "   upsamples a lr tiffxyz by interpolating locations from multiple hr surfaces each provided as a pair of tiffxyz, winding-tiff" << std::endl;
         return EXIT_SUCCESS;
     }
     
@@ -364,6 +363,7 @@ int main(int argc, char *argv[])
         fs::path seg_dir = tgt_dir / uuid;
         std::cout << "saving " << seg_dir << std::endl;
         surf_hr->save(seg_dir, uuid);
+        delete surf_hr;
     }
     
     return EXIT_SUCCESS;

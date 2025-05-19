@@ -181,7 +181,8 @@ std::string time_str()
     return oss.str();
 }
 
-int gen_surfloss(const cv::Vec2i p, ceres::Problem &problem, const cv::Mat_<uint8_t> &state, const cv::Mat_<cv::Vec3f> &points_in, cv::Mat_<cv::Vec3d> &points, cv::Mat_<cv::Vec2d> &locs, float w = 0.1, int flags = 0)
+int gen_surfloss(const cv::Vec2i p, ceres::Problem &problem, const cv::Mat_<uint8_t> &state, const cv::Mat_<cv::Vec3f> &points_in, 
+    cv::Mat_<cv::Vec3d> &points, cv::Mat_<cv::Vec2d> &locs, float w = 0.1, int flags = 0)
 {
     if ((state(p) & STATE_LOC_VALID) == 0)
         return 0;
@@ -192,7 +193,8 @@ int gen_surfloss(const cv::Vec2i p, ceres::Problem &problem, const cv::Mat_<uint
 }
 
 //gen straigt loss given point and 3 offsets
-int gen_dist_loss_fill(ceres::Problem &problem, const cv::Vec2i &p, const cv::Vec2i &off, cv::Mat_<uint8_t> &state, cv::Mat_<cv::Vec3d> &dpoints, float unit, bool optimize_all, ceres::ResidualBlockId *res, float w)
+int gen_dist_loss_fill(ceres::Problem &problem, const cv::Vec2i &p, const cv::Vec2i &off, cv::Mat_<uint8_t> &state, cv::Mat_<cv::Vec3d> &dpoints, 
+    float unit, bool optimize_all, ceres::ResidualBlockId *res, float w)
 {
     if ((state(p) & (STATE_LOC_VALID|STATE_COORD_VALID)) == 0)
         return 0;
@@ -222,7 +224,7 @@ static bool coord_valid(int state)
 
 template <typename E>
 struct SampledZNormalLoss {
-    SampledZNormalLoss(const cv::Mat_<E> &normals, float normal_loc_x, float mul_z, float w) : _normals(normals), _normal_loc_x(normal_loc_x), _mul_z(mul_z), _w(w) {};
+    SampledZNormalLoss(const cv::Mat_<E> &normals, float normal_loc_x, float mul_z, float w) : _normals(normals), _normal_loc_x(normal_loc_x),_mul_z(mul_z), _w(w) {};
     template <typename T>
     //p1 is the central point, p2 a neighboring point to calculate a direction against p1
     bool operator()(const T* const p1, const T* const p2, T* residual) const {        
@@ -266,14 +268,16 @@ struct SampledZNormalLoss {
 };
 
 //gen straigt loss given point and 3 offsets
-int gen_normal_loss_fill(ceres::Problem &problem, const cv::Vec2i &p, const cv::Vec2i &off, cv::Mat_<uint8_t> &state, cv::Mat_<cv::Vec3d> &points, cv::Mat_<cv::Vec3f> &normals, float tgt_wind_x, float mul_z, bool optimize_all, ceres::ResidualBlockId *res, float w)
+int gen_normal_loss_fill(ceres::Problem &problem, const cv::Vec2i &p, const cv::Vec2i &off, cv::Mat_<uint8_t> &state, cv::Mat_<cv::Vec3d> &points, 
+    cv::Mat_<cv::Vec3f> &normals, float tgt_wind_x, float mul_z, bool optimize_all, ceres::ResidualBlockId *res, float w)
 {
     if ((state(p) & (STATE_LOC_VALID|STATE_COORD_VALID)) == 0)
         return 0;
     if ((state(p+off) & (STATE_LOC_VALID|STATE_COORD_VALID)) == 0)
         return 0;
     
-    ceres::ResidualBlockId tmp = problem.AddResidualBlock(SampledZNormalLoss<cv::Vec3f>::Create(normals,tgt_wind_x,mul_z,w), new ceres::CauchyLoss(1.0), &points(p)[0], &points(p+off)[0]);
+    ceres::ResidualBlockId tmp = problem.AddResidualBlock(SampledZNormalLoss<cv::Vec3f>::Create(normals,tgt_wind_x,mul_z,w), 
+                                                          new ceres::CauchyLoss(1.0), &points(p)[0], &points(p+off)[0]);
     
     if (res)
         *res = tmp;
@@ -285,7 +289,8 @@ int gen_normal_loss_fill(ceres::Problem &problem, const cv::Vec2i &p, const cv::
 }
 
 //gen straigt loss given point and 3 offsets
-int gen_straight_loss2(ceres::Problem &problem, const cv::Vec2i &p, const cv::Vec2i &o1, const cv::Vec2i &o2, const cv::Vec2i &o3, cv::Mat_<uint8_t> &state, cv::Mat_<cv::Vec3d> &dpoints, bool optimize_all, float w)
+int gen_straight_loss2(ceres::Problem &problem, const cv::Vec2i &p, const cv::Vec2i &o1, const cv::Vec2i &o2, const cv::Vec2i &o3, 
+    cv::Mat_<uint8_t> &state, cv::Mat_<cv::Vec3d> &dpoints, bool optimize_all, float w)
 {
     if (!coord_valid(state(p+o1)))
         return 0;
@@ -309,7 +314,9 @@ int gen_straight_loss2(ceres::Problem &problem, const cv::Vec2i &p, const cv::Ve
     return 1;
 }
 
-int create_centered_losses_left_large(ceres::Problem &problem, const cv::Vec2i &p, cv::Mat_<uint8_t> &state, const cv::Mat_<cv::Vec3f> &points_in, cv::Mat_<cv::Vec3d> &points, cv::Mat_<cv::Vec2d> &locs, cv::Mat_<cv::Vec3f> &normals, float tgt_wind_x, float mul_z, float unit, int flags = 0)
+int create_centered_losses_left_large(ceres::Problem &problem, const cv::Vec2i &p, cv::Mat_<uint8_t> &state, 
+    const cv::Mat_<cv::Vec3f> &points_in, cv::Mat_<cv::Vec3d> &points, cv::Mat_<cv::Vec2d> &locs, cv::Mat_<cv::Vec3f> &normals, 
+    float tgt_wind_x, float mul_z, float unit, int flags = 0)
 {
     if (!coord_valid(state(p)))
         return 0;
@@ -368,7 +375,9 @@ int create_centered_losses_left_large(ceres::Problem &problem, const cv::Vec2i &
     return count;
 }
 
-int create_centered_losses(ceres::Problem &problem, const cv::Vec2i &p, cv::Mat_<uint8_t> &state, const cv::Mat_<cv::Vec3f> &points_in, cv::Mat_<cv::Vec3d> &points, cv::Mat_<cv::Vec2d> &locs, cv::Mat_<cv::Vec3f> &normals, float tgt_wind_x, float mul_z, float unit, int flags = 0, float w_mul = 1.0)
+int create_centered_losses(ceres::Problem &problem, const cv::Vec2i &p, cv::Mat_<uint8_t> &state, 
+    const cv::Mat_<cv::Vec3f> &points_in, cv::Mat_<cv::Vec3d> &points, cv::Mat_<cv::Vec2d> &locs, cv::Mat_<cv::Vec3f> &normals, 
+    float tgt_wind_x, float mul_z, float unit, int flags = 0, float w_mul = 1.0)
 {
     if (!coord_valid(state(p)))
         return 0;
@@ -470,7 +479,8 @@ static float sdist(const cv::Vec3f &a, const cv::Vec3f &b)
     return d.dot(d);
 }
 
-float min_loc_wind(const cv::Mat_<cv::Vec3f> &points, const cv::Mat_<float> &winding, cv::Vec2f &loc, cv::Vec3f &out, float tgt_wind, const cv::Vec3f &tgt, float init_step, float min_step, bool avoid_edges = true)
+float min_loc_wind(const cv::Mat_<cv::Vec3f> &points, const cv::Mat_<float> &winding, cv::Vec2f &loc, cv::Vec3f &out, 
+    float tgt_wind, const cv::Vec3f &tgt, float init_step, float min_step, bool avoid_edges = true)
 {
     if (!loc_valid(points, {loc[1],loc[0]})) {
         out = {-1,-1,-1};
@@ -485,8 +495,6 @@ float min_loc_wind(const cv::Mat_<cv::Vec3f> &points, const cv::Mat_<float> &win
     
     std::vector<cv::Vec2f> search = {{0,-1},{0,1},{-1,0},{1,0}};
     float step = init_step;
-    
-    
     
     while (changed) {
         changed = false;
@@ -529,7 +537,8 @@ float min_loc_wind(const cv::Mat_<cv::Vec3f> &points, const cv::Mat_<float> &win
     return best;
 }
 
-float find_loc_wind(cv::Vec2f &loc, float tgt_wind, const cv::Mat_<cv::Vec3f> &points, const cv::Mat_<float> &winding, const cv::Vec3f &tgt, float th, bool avoid_edges = true)
+float find_loc_wind(cv::Vec2f &loc, float tgt_wind, const cv::Mat_<cv::Vec3f> &points, const cv::Mat_<float> &winding, 
+    const cv::Vec3f &tgt, float th, bool avoid_edges = true)
 {
     float best_res = -1;
     uint32_t sr = loc[0]+loc[1];
@@ -649,7 +658,8 @@ struct Interp2DLoss {
     
 };
 
-cv::Mat_<cv::Vec3f> points_hr_grounding(const cv::Mat_<uint8_t> &state, std::vector<float> tgt_wind, const cv::Mat_<float> &winding, const cv::Mat_<cv::Vec3f> &points_tgt_in, const cv::Mat_<cv::Vec3f> &points_src, int step)
+cv::Mat_<cv::Vec3f> points_hr_grounding(const cv::Mat_<uint8_t> &state, std::vector<float> tgt_wind, const cv::Mat_<float> &winding, 
+    const cv::Mat_<cv::Vec3f> &points_tgt_in, const cv::Mat_<cv::Vec3f> &points_src, int step)
 {
     cv::Mat_<cv::Vec3f> points_hr(points_tgt_in.rows*step, points_tgt_in.cols*step, {0,0,0});
     cv::Mat_<int> counts_hr(points_tgt_in.rows*step, points_tgt_in.cols*step, 0);
@@ -699,8 +709,7 @@ cv::Mat_<cv::Vec3f> points_hr_grounding(const cv::Mat_<uint8_t> &state, std::vec
             l00 = {l00[1],l00[0]};
             l01 = {l01[1],l01[0]};
             l10 = {l10[1],l10[0]};
-            l11 = {l11[1],l11[0]};
-            
+            l11 = {l11[1],l11[0]};            
             
             // std::cout << "succ!" << res << cv::Vec2i(i,j) << l00 << l01 << points_tgt(j,i) << std::endl;
             
@@ -760,7 +769,7 @@ int main(int argc, char *argv[])
 {
     if (argc != 5 && (argc-2) % 3 != 0)  {
         std::cout << "usage: " << argv[0] << " <params.json> <tiffxyz> <winding> <weight> ..." << std::endl;
-        std::cout << "  multiple triplets of <tiffxyz> <winding> <weight> can be used for a joint optimization" << std::endl;
+        std::cout << "   multiple triplets of <tiffxyz> <winding> <weight> can be used for a joint optimization" << std::endl;
         return EXIT_SUCCESS;
     }
     
@@ -851,7 +860,7 @@ int main(int argc, char *argv[])
         }
     }
     
-    //safety margin so we don't acces out of mat points
+    //safety margin so we don't access out of mat points
     int margin = 4*trace_mul;
     int pad_amount = margin+20;
     
@@ -1061,7 +1070,7 @@ int main(int argc, char *argv[])
         }
     }
     
-    std::cout << " init y range" << col_first << " " << col_last << std::endl;
+    std::cout << "init y range " << col_first << " " << col_last << std::endl;
 
     last_miny = col_first;
     last_maxy = col_last;
@@ -1242,8 +1251,7 @@ int main(int argc, char *argv[])
             ceres::Problem problem;
             cv::Mat_<cv::Vec2d> dummy_;
             create_centered_losses_left_large(problem, p, state, points_in, points, dummy_, normals, tgt_wind_x_i, mul_z, step, 0);
-            problem.AddResidualBlock(ZCoordLoss::Create(seed_coord[2] - (j-seed_loc[0])*step, z_loc_loss_w), nullptr, &points(p)[0]);
-            
+            problem.AddResidualBlock(ZCoordLoss::Create(seed_coord[2] - (j-seed_loc[0])*step, z_loc_loss_w), nullptr, &points(p)[0]);            
             
             ceres::Solve(options, &problem, &summary);
             
@@ -1422,7 +1430,7 @@ int main(int argc, char *argv[])
         }
             
         if (!wind_counts[i]) {
-            std::cout << "stopping as zero valid locations found!" << i << std::endl;
+            std::cout << "stopping as zero valid locations found! " << i << std::endl;
             break;
         }
         
@@ -1466,6 +1474,10 @@ int main(int argc, char *argv[])
     //     std::cout << "saving " << seg_dir << std::endl;
     //     surf_hr->save(seg_dir, uuid);
     // }
+
+    for (auto sm : surfs) {
+        delete sm;
+    }
     
     return EXIT_SUCCESS;
 }
