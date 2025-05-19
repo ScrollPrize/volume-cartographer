@@ -2031,7 +2031,7 @@ int surftrack_add_global(SurfaceMeta *sm, const cv::Vec2i p, SurfTrackerData &da
     if (flags & LOSS_ON_SURF)
     {
         if (step_onsurf == 0)
-            throw std::runtime_error("oops");
+            throw std::runtime_error("oops step_onsurf == 0");
         
         //direct
         count += cond_surftrack_distloss(8, sm, p, {0,1}, data, problem, state, step_onsurf);
@@ -2746,7 +2746,7 @@ QuadSurface *grow_surf_from_surfs(SurfaceMeta *seed, const std::vector<SurfaceMe
                 continue;
             
             if (points(p)[0] != -1)
-                throw std::runtime_error("oops");
+                throw std::runtime_error("oops points(p)[0]");
 
             std::set<SurfaceMeta*> local_surfs = {seed};
             
