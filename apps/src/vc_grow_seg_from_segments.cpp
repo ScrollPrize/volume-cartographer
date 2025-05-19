@@ -179,5 +179,10 @@ int main(int argc, char *argv[])
     fs::path seg_dir = tgt_dir / uuid;
     surf->save(seg_dir, uuid);
 
+    delete surf;
+    for(auto sm : surfaces) {
+        delete sm;
+    }
+
     return EXIT_SUCCESS;
 }

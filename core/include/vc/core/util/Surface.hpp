@@ -52,6 +52,8 @@ cv::Vec3f vy_from_orig_norm(const cv::Vec3f &o, const cv::Vec3f &n);
 class Surface
 {
 public:
+    virtual ~Surface();
+
     // a pointer in some central location
     virtual SurfacePointer *pointer() = 0;
     
@@ -77,7 +79,7 @@ class PlaneSurface : public Surface
 {
 public:
     //Surface API FIXME
-    SurfacePointer *pointer() override;
+    TrivialSurfacePointer *pointer() override;
     void move(SurfacePointer *ptr, const cv::Vec3f &offset);
     bool valid(SurfacePointer *ptr, const cv::Vec3f &offset = {0,0,0}) override { return true; };
     cv::Vec3f loc(SurfacePointer *ptr, const cv::Vec3f &offset = {0,0,0}) override;
@@ -108,7 +110,7 @@ protected:
 class QuadSurface : public Surface
 {
 public:
-    SurfacePointer *pointer();
+    TrivialSurfacePointer *pointer();
     QuadSurface() {};
     QuadSurface(const cv::Mat_<cv::Vec3f> &points, const cv::Vec2f &scale);
     void move(SurfacePointer *ptr, const cv::Vec3f &offset) override;
@@ -210,6 +212,7 @@ public:
     SurfaceMeta() {};
     SurfaceMeta(const std::filesystem::path &path_, const nlohmann::json &json);
     SurfaceMeta(const std::filesystem::path &path_);
+    ~SurfaceMeta();
     void readOverlapping();
     QuadSurface *surface();
     void setSurface(QuadSurface *surf);
@@ -217,7 +220,7 @@ public:
     std::filesystem::path path;
     QuadSurface *_surf = nullptr;
     Rect3D bbox;
-    nlohmann::json *meta;
+    nlohmann::json *meta = nullptr;
     std::set<std::string> overlapping_str;
     std::set<SurfaceMeta*> overlapping;
 };
