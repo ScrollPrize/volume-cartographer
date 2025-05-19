@@ -2452,7 +2452,7 @@ void optimize_surface_mapping(SurfTrackerData &data, cv::Mat_<uint8_t> &state, c
     cv::Mat_<uint8_t> fringe_next(state.size(), 1);
     int added = 1;
     for(int r=0;r<30 && added;r++) {
-        ALifeTime timer("add iteration\n");
+        ALifeTime timer("optimizer: add iteration\n");
         
         fringe_next.copyTo(fringe);
         fringe_next.setTo(0);
