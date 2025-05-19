@@ -127,6 +127,17 @@ int main(int argc, char *argv[])
     SurfaceMeta *src = new SurfaceMeta(src_path, meta);
     src->readOverlapping();
 
+    // Remove debug output folders from previous runs
+    std::string debug_prefix = Z_DBG_GEN_PREFIX;
+    for (const auto& entry : fs::directory_iterator(tgt_dir)) {
+        if (fs::is_directory(entry)) {
+            std::string name = entry.path().filename();
+            if (name.compare(0, debug_prefix.size(), debug_prefix) == 0) {
+                std::filesystem::remove_all(entry.path());
+            }
+        }
+    }
+
     for (const auto& entry : fs::directory_iterator(src_dir))
         if (fs::is_directory(entry)) {
             std::string name = entry.path().filename();
@@ -164,8 +175,7 @@ int main(int argc, char *argv[])
 
     (*surf->meta)["source"] = "vc_grow_seg_from_segments";
     (*surf->meta)["vc_grow_seg_from_segments_params"] = params;
-    // std::string uuid = "testing_auto_surf_trace" + std::string("_opt_int_64%6_") + time_str();
-    std::string uuid = "auto_surf_trace_";
+    std::string uuid = "auto_trace_" + time_str();;
     fs::path seg_dir = tgt_dir / uuid;
     surf->save(seg_dir, uuid);
 

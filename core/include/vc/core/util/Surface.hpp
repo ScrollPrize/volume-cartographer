@@ -7,6 +7,8 @@
 
 #include "SurfaceDef.hpp"
 
+#define Z_DBG_GEN_PREFIX "z_dbg_gen_"
+
 class QuadSurface;
 class ChunkCache;
 

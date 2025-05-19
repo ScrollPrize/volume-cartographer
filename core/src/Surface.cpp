@@ -781,7 +781,6 @@ SurfacePointer *DeltaSurface::pointer()
     return _base->pointer();
 }
 
-
 void DeltaSurface::move(SurfacePointer *ptr, const cv::Vec3f &offset)
 {
     _base->move(ptr, offset);
