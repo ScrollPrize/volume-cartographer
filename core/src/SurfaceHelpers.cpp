@@ -2055,14 +2055,14 @@ int surftrack_add_global(SurfaceMeta *sm, const cv::Vec2i p, SurfTrackerData &da
 double local_cost_destructive(SurfaceMeta *sm, const cv::Vec2i p, SurfTrackerData &data, cv::Mat_<uint8_t> &state, 
     cv::Mat_<cv::Vec3d> &points, float step, float src_step, cv::Vec3f loc, int *ref_count = nullptr, int *straight_count_ptr = nullptr)
 {
-    assert(!data.has(sm, p));
     uint8_t state_old = state(p);
     state(p) = STATE_LOC_VALID | STATE_COORD_VALID;
     int count;
     int straigh_count;
     if (!straight_count_ptr)
         straight_count_ptr = &straigh_count;
-    double test_loss = 0.0;
+    
+        double test_loss = 0.0;
     {
         ceres::Problem problem_test;
 
@@ -2087,13 +2087,13 @@ double local_cost_destructive(SurfaceMeta *sm, const cv::Vec2i p, SurfTrackerDat
 double local_cost(SurfaceMeta *sm, const cv::Vec2i p, SurfTrackerData &data, cv::Mat_<uint8_t> &state, cv::Mat_<cv::Vec3d> &points, 
     float step, float src_step, int *ref_count = nullptr, int *straight_count_ptr = nullptr)
 {
-    assert(!data.has(sm, p));
     int count;
     int straigh_count;
     if (!straight_count_ptr)
         straight_count_ptr = &straigh_count;
-    double test_loss = 0.0;
-        ceres::Problem problem_test;
+    
+        double test_loss = 0.0;
+    ceres::Problem problem_test;
 
     count = surftrack_add_local(sm, p, data, problem_test, state, points, step, src_step, 0, straight_count_ptr);
     if (ref_count)
