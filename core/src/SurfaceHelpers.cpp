@@ -836,7 +836,7 @@ float local_optimization(int radius, const cv::Vec2i &p, cv::Mat_<uint8_t> &stat
 
 
     ceres::Solver::Options options;
-    options.linear_solver_type = ceres::SPARSE_SCHUR;
+    options.linear_solver_type = ceres::DENSE_QR;
     options.minimizer_progress_to_stdout = false;
     options.max_num_iterations = 10000;
     options.function_tolerance = 1e-4;
@@ -845,14 +845,15 @@ float local_optimization(int radius, const cv::Vec2i &p, cv::Mat_<uint8_t> &stat
 //    if (problem.NumParameterBlocks() > 1) {
 //        options.use_inner_iterations = true;
 //    }
-
+#ifdef VC_USE_CUDA_SPARSE
+    options.linear_solver_type = ceres::SPARSE_SCHUR;
     options.sparse_linear_algebra_library_type = ceres::CUDA_SPARSE;
 
     // Enable mixed precision for SPARSE_SCHUR
     if (options.linear_solver_type == ceres::SPARSE_SCHUR) {
         options.use_mixed_precision_solves = true;
     }
-
+#endif
     ceres::Solver::Summary summary;
     ceres::Solve(options, &problem, &summary);
 
@@ -1114,8 +1115,14 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *c
     ceres::Solver::Options options_big;
     options_big.linear_solver_type = ceres::SPARSE_SCHUR;
     options_big.use_nonmonotonic_steps = true;
-    options_big.sparse_linear_algebra_library_type = ceres::CUDA_SPARSE;
-    options_big.use_mixed_precision_solves = true;
+#ifdef VC_USE_CUDA_SPARSE
+    options.sparse_linear_algebra_library_type = ceres::CUDA_SPARSE;
+
+    // Enable mixed precision for SPARSE_SCHUR
+    if (options.linear_solver_type == ceres::SPARSE_SCHUR) {
+        options.use_mixed_precision_solves = true;
+    }
+#endif
     options_big.minimizer_progress_to_stdout = false;
     options_big.max_num_iterations = 10000;
 

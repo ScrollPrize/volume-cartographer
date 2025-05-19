@@ -7,9 +7,14 @@
 #include <QMessageBox>
 #include <QApplication>
 #include <QClipboard>
+#include <QDialog>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QFile>
 #include <memory>
 
 #include "ProgressUtil.hpp"
+#include "ConsoleOutputWidget.hpp"
 #include "vc/core/util/SurfaceDef.hpp"
 
 namespace ChaoVis {
@@ -41,7 +46,7 @@ public:
 
     // tool specific params 
     void setRenderParams(float scale, int resolution, int layers);
-    void setGrowParams(QString volumePath, QString tgtDir, QString jsonParams, int seed_x, int seed_y, int seed_z);
+    void setGrowParams(QString volumePath, QString tgtDir, QString jsonParams, int seed_x = 0, int seed_y = 0, int seed_z = 0, bool useExpandMode = false, bool useRandomSeed = false);
     void setTraceParams(QString volumePath, QString srcDir, QString tgtDir, QString jsonParams, QString srcSegment);
     void setAddOverlapParams(QString tgtDir, QString tifxyzPath);
     void setToObjParams(QString tifxyzPath, QString objPath);
@@ -49,15 +54,23 @@ public:
     bool execute(Tool tool);
     void cancel();
     bool isRunning() const;
+    
+    void showConsoleOutput();
+    void hideConsoleOutput();
+    void setAutoShowConsoleOutput(bool autoShow);
+    void setParallelProcesses(int count);
+    void setIterationCount(int count);
 
 signals:
     void toolStarted(Tool tool, const QString& message);
     void toolFinished(Tool tool, bool success, const QString& message, const QString& outputPath, bool copyToClipboard = false);
+    void consoleOutputReceived(const QString& output);
 
 private slots:
     void onProcessStarted();
     void onProcessFinished(int exitCode, QProcess::ExitStatus exitStatus);
     void onProcessError(QProcess::ProcessError error);
+    void onProcessReadyRead();
 
 private:
     QStringList buildArguments(Tool tool);
@@ -67,6 +80,9 @@ private:
     ProgressUtil* _progressUtil;
     
     QProcess* _process;
+    ConsoleOutputWidget* _consoleOutput;
+    QDialog* _consoleDialog;
+    bool _autoShowConsole;
     
     QString _volumePath;
     QString _segmentPath;
@@ -83,7 +99,11 @@ private:
     int _layers;
     int _seed_x;
     int _seed_y;
-    int _seed_z; 
+    int _seed_z;
+    bool _useExpandMode;
+    bool _useRandomSeed;
+    int _parallelProcesses;  // processes for xargs
+    int _iterationCount;     // iterations for xargs
     
     Tool _currentTool;
 };

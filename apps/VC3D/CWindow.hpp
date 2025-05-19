@@ -67,6 +67,11 @@ public slots:
     void onResetPoints(void);
     void onSurfaceContextMenuRequested(const QPoint& pos);
     void onRenderSegment(const SurfaceID& segmentId);
+    void onGrowSegmentFromSegment(const SurfaceID& segmentId);
+    void onAddOverlap(const SurfaceID& segmentId);
+    void onConvertToObj(const SurfaceID& segmentId);
+    void onGrowSeeds(const SurfaceID& segmentId, bool isExpand, bool isRandomSeed = false);
+    void onToggleConsoleOutput();
 
 public:
     CWindow();
@@ -86,6 +91,9 @@ private:
     void UpdateRecentVolpkgActions(void);
     void UpdateRecentVolpkgList(const QString& path);
     void RemoveEntryFromRecentVolpkg(const QString& path);
+    
+    // Helper method for command line tools
+    bool initializeCommandLineRunner(void);
 
     CVolumeViewer *newConnectedCVolumeViewer(std::string surfaceName, QString title, QMdiArea *mdiArea);
     void closeEvent(QCloseEvent* event);
@@ -103,6 +111,9 @@ private:
     void playPing();
 
     void setVolume(std::shared_ptr<volcart::Volume> newvol);
+    
+    // Helper method to get the current volume path
+    QString getCurrentVolumePath() const;
 
 private slots:
     void Open(void);
@@ -144,6 +155,7 @@ private:
     QAction* fKeybinds;
     QAction* fAboutAct;
     QAction* fResetMdiView;
+    QAction* fShowConsoleOutputAct;
 
     QComboBox* volSelect;
     QComboBox* cmbFilterSegs;

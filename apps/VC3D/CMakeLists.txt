@@ -29,6 +29,8 @@ set(srcs
     ProgressUtil.hpp
     CommandLineToolRunner.cpp
     CommandLineToolRunner.hpp
+    ConsoleOutputWidget.cpp
+    ConsoleOutputWidget.hpp
 )
 
 set(MACOSX_BUNDLE_ICON logo.icns)

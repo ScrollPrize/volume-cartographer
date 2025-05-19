@@ -112,6 +112,7 @@ install(
         vc_objrefine
         vc_grow_seg_from_seed
         vc_grow_seg_from_segments
+        vc_seg_add_overlap
         vc_tifxyz2obj
         vc_tifxyz_winding
         vc_fill_quadmesh
