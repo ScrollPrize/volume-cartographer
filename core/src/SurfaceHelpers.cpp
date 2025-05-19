@@ -2038,7 +2038,7 @@ int surftrack_add_global(SurfaceMeta *sm, const cv::Vec2i p, SurfTrackerData &da
     if (flags & LOSS_ON_SURF)
     {
         if (step_onsurf == 0)
-            throw std::runtime_error("oops");
+            throw std::runtime_error("oops step_onsurf == 0");
         
         //direct
         count += cond_surftrack_distloss(8, sm, p, {0,1}, data, problem, state, step_onsurf);
@@ -2427,7 +2427,7 @@ void optimize_surface_mapping(SurfTrackerData &data, cv::Mat_<uint8_t> &state, c
                     surfs.insert(data.surfsC({y+1,x+1}).begin(), data.surfsC({y+1,x+1}).end());
                     
                     for(auto &s : surfs) {
-                        SurfacePointer *ptr = s->surface()->pointer();
+                        auto *ptr = s->surface()->pointer();
                         float res = s->surface()->pointTo(ptr, points_out(j, i), same_surface_th, 10);
                         if (res <= same_surface_th) {
                             mutex.lock();
@@ -2436,6 +2436,7 @@ void optimize_surface_mapping(SurfTrackerData &data, cv::Mat_<uint8_t> &state, c
                             data_out.loc(s, {j,i}) = {loc[1], loc[0]};
                             mutex.unlock();
                         }
+                        delete ptr;
                     }
                 }
             }
@@ -2483,12 +2484,13 @@ void optimize_surface_mapping(SurfTrackerData &data, cv::Mat_<uint8_t> &state, c
                         }
                         mutex.unlock();
                         
-                        SurfacePointer *ptr = test_surf->surface()->pointer();
+                        auto *ptr = test_surf->surface()->pointer();
                         if (test_surf->surface()->pointTo(ptr, points_out(j, i), same_surface_th, 10) > same_surface_th)
                             continue;
                         
                         int count = 0;
                         cv::Vec3f loc_3d = test_surf->surface()->loc_raw(ptr);
+                        delete ptr;
                         int straight_count = 0;
                         float cost;
                         mutex.lock();
@@ -2550,9 +2552,6 @@ void optimize_surface_mapping(SurfTrackerData &data, cv::Mat_<uint8_t> &state, c
     }
             
     dbg_counter++;
-    
-    delete sm_inp._surf;
-    delete sm._surf;
 }
 
 QuadSurface *grow_surf_from_surfs(SurfaceMeta *seed, const std::vector<SurfaceMeta*> &surfs_v, const nlohmann::json &params)
@@ -2678,12 +2677,13 @@ QuadSurface *grow_surf_from_surfs(SurfaceMeta *seed, const std::vector<SurfaceMe
         cv::Vec3f coord = points(p);
         std::cout << "testing " << p << " from cands: " << seed->overlapping.size() << coord << std::endl;
         for(auto s : seed->overlapping) {
-            SurfacePointer *ptr = s->surface()->pointer();
+            auto *ptr = s->surface()->pointer();
             if (s->surface()->pointTo(ptr, coord, same_surface_th) <= same_surface_th) {
                 cv::Vec3f loc = s->surface()->loc_raw(ptr);
                 data.surfs(p).insert(s);
                 data.loc(s, p) = {loc[1], loc[0]};
             }
+            delete ptr;
         }
         std::cout << "fringe point " << p << " surfcount " << data.surfs(p).size() << " init " << data.loc(seed, p) << data.lookup_int(seed, p) << std::endl;
     }
@@ -2753,7 +2753,7 @@ QuadSurface *grow_surf_from_surfs(SurfaceMeta *seed, const std::vector<SurfaceMe
                 continue;
             
             if (points(p)[0] != -1)
-                throw std::runtime_error("oops");
+                throw std::runtime_error("oops points(p)[0]");
 
             std::set<SurfaceMeta*> local_surfs = {seed};
             
@@ -2857,7 +2857,7 @@ QuadSurface *grow_surf_from_surfs(SurfaceMeta *seed, const std::vector<SurfaceMe
                 }
 
                 for(auto test_surf : local_surfs) {
-                    SurfacePointer *ptr = test_surf->surface()->pointer();
+                    auto *ptr = test_surf->surface()->pointer();
                     //FIXME this does not check geometry, only if its also on the surfaces (which might be good enough...)
                     if (test_surf->surface()->pointTo(ptr, coord, same_surface_th, 10) <= same_surface_th) {
                         int count = 0;
@@ -2873,6 +2873,7 @@ QuadSurface *grow_surf_from_surfs(SurfaceMeta *seed, const std::vector<SurfaceMe
                             inliers_count++;
                         }
                     }
+                    delete ptr;
                 }
                 if ((inliers_count >= 2 || ref_seed) && inliers_sum > best_inliers) {
                     best_inliers = inliers_sum;
@@ -2925,7 +2926,7 @@ QuadSurface *grow_surf_from_surfs(SurfaceMeta *seed, const std::vector<SurfaceMe
                     if (test_surf == best_surf)
                         continue;
                     
-                    SurfacePointer *ptr = test_surf->surface()->pointer();
+                    auto *ptr = test_surf->surface()->pointer();
                     if (test_surf->surface()->pointTo(ptr, best_coord, same_surface_th, 10) <= same_surface_th) {
                         cv::Vec3f loc = test_surf->surface()->loc_raw(ptr);
                         data_th.loc(test_surf, p) = {loc[1], loc[0]};
@@ -2939,6 +2940,7 @@ QuadSurface *grow_surf_from_surfs(SurfaceMeta *seed, const std::vector<SurfaceMe
                         else
                             data_th.erase(test_surf, p);
                     }
+                    delete ptr;
                 }
                 
                 ceres::Solver::Summary summary;
@@ -2947,7 +2949,7 @@ QuadSurface *grow_surf_from_surfs(SurfaceMeta *seed, const std::vector<SurfaceMe
                 
                 //TODO only add/test if we have 2 neighs which both find locations
                 for(auto test_surf : more_local_surfs) {
-                    SurfacePointer *ptr = test_surf->surface()->pointer();
+                    auto *ptr = test_surf->surface()->pointer();
                     float res = test_surf->surface()->pointTo(ptr, best_coord, same_surface_th, 10);
                     if (res <= same_surface_th) {
                         cv::Vec3f loc = test_surf->surface()->loc_raw(ptr);
@@ -2962,6 +2964,7 @@ QuadSurface *grow_surf_from_surfs(SurfaceMeta *seed, const std::vector<SurfaceMe
                             data_th.surfs(p).insert(test_surf);
                         };
                     }
+                    delete ptr;
                 }
                 
                 mutex.lock();

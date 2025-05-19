@@ -33,6 +33,13 @@ static cv::Vec3f nominal_loc(const cv::Vec3f &nominal, const cv::Vec3f &internal
     return nominal + cv::Vec3f(internal[0]/scale[0], internal[1]/scale[1], internal[2]);
 }
 
+Surface::~Surface()
+{
+    if (meta) {
+        delete meta;
+    }
+}
+
 PlaneSurface::PlaneSurface(cv::Vec3f origin_, cv::Vec3f normal) : _origin(origin_)
 {
     cv::normalize(normal, _normal);
@@ -196,7 +203,7 @@ void PlaneSurface::gen(cv::Mat_<cv::Vec3f> *coords, cv::Mat_<cv::Vec3f> *normals
         }
 }
 
-SurfacePointer *PlaneSurface::pointer()
+TrivialSurfacePointer *PlaneSurface::pointer()
 {
     return new TrivialSurfacePointer({0,0,0});
 }
@@ -251,7 +258,7 @@ QuadSurface *smooth_vc_segmentation(QuadSurface *src)
     return new QuadSurface(points, {sx,sy});
 }
 
-SurfacePointer *QuadSurface::pointer()
+TrivialSurfacePointer *QuadSurface::pointer()
 {
     return new TrivialSurfacePointer({0,0,0});
 }
@@ -1427,10 +1434,14 @@ bool overlap(SurfaceMeta &a, SurfaceMeta &b, int max_iters)
         if (loc[0] == -1)
             continue;
 
-        SurfacePointer *ptr = b.surface()->pointer();
+        auto *ptr = b.surface()->pointer();
 
-        if (b.surface()->pointTo(ptr, loc, 2.0, max_iters) <= 2.0)
+        if (b.surface()->pointTo(ptr, loc, 2.0, max_iters) <= 2.0) {
+            delete ptr;
             return true;
+        }
+        
+        delete ptr;
     }
 
     return false;
@@ -1441,11 +1452,14 @@ bool contains(SurfaceMeta &a, const cv::Vec3f &loc, int max_iters)
     if (!intersect(a.bbox, {loc,loc}))
         return false;
         
-        SurfacePointer *ptr = a.surface()->pointer();
-        
-        if (a.surface()->pointTo(ptr, loc, 2.0, max_iters) <= 2.0)
-            return true;
+    auto *ptr = a.surface()->pointer();
     
+    if (a.surface()->pointTo(ptr, loc, 2.0, max_iters) <= 2.0) {
+        delete ptr;
+        return true;
+    }
+    
+    delete ptr;
     return false;
 }
 
@@ -1473,6 +1487,17 @@ SurfaceMeta::SurfaceMeta(const std::filesystem::path &path_) : path(path_)
     *meta = nlohmann::json::parse(meta_f);
     if (meta->contains("bbox"))
         bbox = rect_from_json((*meta)["bbox"]);
+}
+
+SurfaceMeta::~SurfaceMeta()
+{
+    if (_surf) {
+        delete _surf;
+    }
+
+    if (meta) {
+        delete meta;
+    }
 }
 
 void SurfaceMeta::readOverlapping()
