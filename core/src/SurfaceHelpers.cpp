@@ -1116,11 +1116,11 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *c
     options_big.linear_solver_type = ceres::SPARSE_SCHUR;
     options_big.use_nonmonotonic_steps = true;
 #ifdef VC_USE_CUDA_SPARSE
-    options.sparse_linear_algebra_library_type = ceres::CUDA_SPARSE;
+    options_big.sparse_linear_algebra_library_type = ceres::CUDA_SPARSE;
 
     // Enable mixed precision for SPARSE_SCHUR
-    if (options.linear_solver_type == ceres::SPARSE_SCHUR) {
-        options.use_mixed_precision_solves = true;
+    if (options_big.linear_solver_type == ceres::SPARSE_SCHUR) {
+        options_big.use_mixed_precision_solves = true;
     }
 #endif
     options_big.minimizer_progress_to_stdout = false;
