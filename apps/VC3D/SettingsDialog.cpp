@@ -27,6 +27,8 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent)
 
     spinPreloadedSlices->setValue(settings.value("perf/preloaded_slices", 200).toInt());
     chkSkipImageFormatConvExp->setChecked(settings.value("perf/chkSkipImageFormatConvExp", false).toBool());
+    spinParallelProcesses->setValue(settings.value("perf/parallel_processes", 8).toInt());
+    spinIterationCount->setValue(settings.value("perf/iteration_count", 1000).toInt());
     
     // Load rendering settings
     QString defaultVolume = settings.value("rendering/default_volume", "").toString();
@@ -62,6 +64,8 @@ void SettingsDialog::accept()
 
     settings.setValue("perf/preloaded_slices", spinPreloadedSlices->value());
     settings.setValue("perf/chkSkipImageFormatConvExp", chkSkipImageFormatConvExp->isChecked() ? "1" : "0");
+    settings.setValue("perf/parallel_processes", spinParallelProcesses->value());
+    settings.setValue("perf/iteration_count", spinIterationCount->value());
     
     // Store rendering settings
     settings.setValue("rendering/default_volume", cmbDefaultVolume->currentText());

@@ -297,6 +297,8 @@ void CWindow::CreateMenus(void)
     fViewMenu->addAction(findChild<QDockWidget*>("dockWidgetLocation")->toggleViewAction());
     fViewMenu->addSeparator();
     fViewMenu->addAction(fResetMdiView);
+    fViewMenu->addSeparator();
+    fViewMenu->addAction(fShowConsoleOutputAct);
 
     fHelpMenu = new QMenu(tr("&Help"), this);
     fHelpMenu->addAction(fKeybinds);
@@ -338,6 +340,9 @@ void CWindow::CreateActions(void)
 
     fResetMdiView = new QAction(tr("Reset Segmentation Views"), this);
     connect(fResetMdiView, SIGNAL(triggered()), this, SLOT(ResetSegmentationViews()));
+    
+    fShowConsoleOutputAct = new QAction(tr("Show Console Output"), this);
+    connect(fShowConsoleOutputAct, &QAction::triggered, this, &CWindow::onToggleConsoleOutput);
 }
 
 void CWindow::UpdateRecentVolpkgActions()
@@ -1070,6 +1075,24 @@ void CWindow::onRefreshSurfaces()
     LoadSurfaces(true);
 }
 
+QString CWindow::getCurrentVolumePath() const
+{
+    if (currentVolume == nullptr) {
+        return QString();
+    }
+    return QString::fromStdString(currentVolume->path().string());
+}
+
+void CWindow::onToggleConsoleOutput()
+{
+    if (_cmdRunner) {
+        _cmdRunner->showConsoleOutput();
+    } else {
+        QMessageBox::information(this, tr("Console Output"), 
+                                tr("No command line tool has been run yet. The console will be available after running a tool."));
+    }
+}
+
 void CWindow::onSurfaceContextMenuRequested(const QPoint& pos)
 {
     QTreeWidgetItem* item = treeWidgetSurfaces->itemAt(pos);
@@ -1080,16 +1103,62 @@ void CWindow::onSurfaceContextMenuRequested(const QPoint& pos)
     SurfaceID segmentId = item->data(SURFACE_ID_COLUMN, Qt::UserRole).toString().toStdString();
     
     QMenu contextMenu(tr("Context Menu"), this);
-    QAction* renderAction = new QAction(tr("Render segment"), this);
     
+    // Render segment action
+    QAction* renderAction = new QAction(tr("Render segment"), this);
     connect(renderAction, &QAction::triggered, [this, segmentId]() {
         onRenderSegment(segmentId);
     });
     
-    contextMenu.addAction(renderAction);
+    // Grow segment from segment action
+    QAction* growSegmentAction = new QAction(tr("Grow segment from segment"), this);
+    connect(growSegmentAction, &QAction::triggered, [this, segmentId]() {
+        onGrowSegmentFromSegment(segmentId);
+    });
     
-    // separator for potential future options
-    contextMenu.addSeparator();
+    // Add overlap action
+    QAction* addOverlapAction = new QAction(tr("Add overlap"), this);
+    connect(addOverlapAction, &QAction::triggered, [this, segmentId]() {
+        onAddOverlap(segmentId);
+    });
+    
+    // Convert to OBJ action
+    QAction* convertToObjAction = new QAction(tr("Convert to OBJ"), this);
+    connect(convertToObjAction, &QAction::triggered, [this, segmentId]() {
+        onConvertToObj(segmentId);
+    });
+    
+    // Seed submenu with options
+    QMenu* seedMenu = new QMenu(tr("Seed"), &contextMenu);
+    
+    // Seed with Seed.json action
+    QAction* seedWithSeedAction = new QAction(tr("Seed"), seedMenu);
+    connect(seedWithSeedAction, &QAction::triggered, [this, segmentId]() {
+        onGrowSeeds(segmentId, false, false);
+    });
+    
+    // Random Seed with Seed.json action
+    QAction* randomSeedAction = new QAction(tr("Random Seed"), seedMenu);
+    connect(randomSeedAction, &QAction::triggered, [this, segmentId]() {
+        onGrowSeeds(segmentId, false, true);
+    });
+    
+    // Seed with Expand.json action
+    QAction* seedWithExpandAction = new QAction(tr("Expand"), seedMenu);
+    connect(seedWithExpandAction, &QAction::triggered, [this, segmentId]() {
+        onGrowSeeds(segmentId, true, false);
+    });
+    
+    seedMenu->addAction(seedWithSeedAction);
+    seedMenu->addAction(randomSeedAction);
+    seedMenu->addAction(seedWithExpandAction);
+    
+    // Add all actions to the context menu
+    contextMenu.addAction(renderAction);
+    contextMenu.addAction(growSegmentAction);
+    contextMenu.addAction(addOverlapAction);
+    contextMenu.addAction(convertToObjAction);
+    contextMenu.addMenu(seedMenu);
     
     // show the context menu at the position of the right-click
     contextMenu.exec(treeWidgetSurfaces->mapToGlobal(pos));
@@ -1166,4 +1235,264 @@ void CWindow::onRenderSegment(const SurfaceID& segmentId)
     _cmdRunner->execute(CommandLineToolRunner::Tool::RenderTifXYZ);
     
     statusBar->showMessage(tr("Rendering segment: %1").arg(QString::fromStdString(segmentId)), 5000);
+}
+
+void CWindow::onGrowSegmentFromSegment(const SurfaceID& segmentId)
+{
+    if (currentVolume == nullptr || !_vol_qsurfs.count(segmentId)) {
+        QMessageBox::warning(this, tr("Error"), tr("Cannot grow segment: No volume or invalid segment selected"));
+        return;
+    }
+    
+    // Initialize command line tool runner if needed
+    if (!initializeCommandLineRunner()) {
+        return;
+    }
+    
+    // Check if a tool is already running
+    if (_cmdRunner->isRunning()) {
+        QMessageBox::warning(this, tr("Warning"), tr("A command line tool is already running."));
+        return;
+    }
+    
+    // Get paths
+    QString volumePath = getCurrentVolumePath();
+    if (volumePath.isEmpty()) {
+        QMessageBox::warning(this, tr("Error"), tr("Cannot grow segment: No volume selected"));
+        return;
+    }
+    QString srcSegment = QString::fromStdString(_vol_qsurfs[segmentId]->path.string());
+    
+    // Get the volpkg path and create traces directory if it doesn't exist
+    fs::path volpkgPath = fs::path(fVpkgPath.toStdString());
+    fs::path tracesDir = volpkgPath / "traces";
+    fs::path jsonParamsPath = volpkgPath / "trace_params.json";
+    fs::path pathsDir = volpkgPath / "paths";
+    
+    // Log information for debugging - write to console via statusBar
+    QString debugInfo = tr("Volume path: %1\n").arg(volumePath);
+    debugInfo += tr("Source segment: %1\n").arg(srcSegment);
+    debugInfo += tr("Source directory: %1\n").arg(QString::fromStdString(pathsDir.string()));
+    debugInfo += tr("Target directory: %1\n").arg(QString::fromStdString(tracesDir.string()));
+    debugInfo += tr("JSON parameters: %1").arg(QString::fromStdString(jsonParamsPath.string()));
+    statusBar->showMessage(tr("Preparing to run grow_seg_from_segment..."), 2000);
+    
+    // Create traces directory if it doesn't exist
+    if (!fs::exists(tracesDir)) {
+        try {
+            fs::create_directory(tracesDir);
+        } catch (const std::exception& e) {
+            QMessageBox::warning(this, tr("Error"), tr("Failed to create traces directory: %1").arg(e.what()));
+            return;
+        }
+    }
+    
+    // Check if trace_params.json exists
+    if (!fs::exists(jsonParamsPath)) {
+        QMessageBox::warning(this, tr("Error"), tr("trace_params.json not found in the volpkg"));
+        return;
+    }
+    
+    // Set up parameters and execute the tool
+    _cmdRunner->setTraceParams(
+        volumePath,
+        QString::fromStdString(pathsDir.string()),
+        QString::fromStdString(tracesDir.string()),
+        QString::fromStdString(jsonParamsPath.string()),
+        srcSegment
+    );
+    
+    // Show console before executing to see any debug output
+    _cmdRunner->showConsoleOutput();
+    
+    _cmdRunner->execute(CommandLineToolRunner::Tool::GrowSegFromSegment);
+    
+    statusBar->showMessage(tr("Growing segment from: %1").arg(QString::fromStdString(segmentId)), 5000);
+}
+
+void CWindow::onAddOverlap(const SurfaceID& segmentId)
+{
+    if (currentVolume == nullptr || !_vol_qsurfs.count(segmentId)) {
+        QMessageBox::warning(this, tr("Error"), tr("Cannot add overlap: No volume or invalid segment selected"));
+        return;
+    }
+    
+    // Initialize command line tool runner if needed
+    if (!initializeCommandLineRunner()) {
+        return;
+    }
+    
+    // Check if a tool is already running
+    if (_cmdRunner->isRunning()) {
+        QMessageBox::warning(this, tr("Warning"), tr("A command line tool is already running."));
+        return;
+    }
+    
+    // Get paths
+    fs::path volpkgPath = fs::path(fVpkgPath.toStdString());
+    fs::path pathsDir = volpkgPath / "paths";
+    QString tifxyzPath = QString::fromStdString(_vol_qsurfs[segmentId]->path.string());
+    
+    // Set up parameters and execute the tool
+    _cmdRunner->setAddOverlapParams(
+        QString::fromStdString(pathsDir.string()),
+        tifxyzPath
+    );
+    
+    _cmdRunner->execute(CommandLineToolRunner::Tool::SegAddOverlap);
+    
+    statusBar->showMessage(tr("Adding overlap for segment: %1").arg(QString::fromStdString(segmentId)), 5000);
+}
+
+void CWindow::onConvertToObj(const SurfaceID& segmentId)
+{
+    if (currentVolume == nullptr || !_vol_qsurfs.count(segmentId)) {
+        QMessageBox::warning(this, tr("Error"), tr("Cannot convert to OBJ: No volume or invalid segment selected"));
+        return;
+    }
+    
+    // Initialize command line tool runner if needed
+    if (!initializeCommandLineRunner()) {
+        return;
+    }
+    
+    // Check if a tool is already running
+    if (_cmdRunner->isRunning()) {
+        QMessageBox::warning(this, tr("Warning"), tr("A command line tool is already running."));
+        return;
+    }
+    
+    // Get source tifxyz path
+    fs::path tifxyzPath = _vol_qsurfs[segmentId]->path;
+    
+    // Generate output OBJ path (same directory with .obj extension)
+    fs::path objPath = tifxyzPath;
+    objPath.replace_extension(".obj");
+    
+    // Set up parameters and execute the tool
+    _cmdRunner->setToObjParams(
+        QString::fromStdString(tifxyzPath.string()),
+        QString::fromStdString(objPath.string())
+    );
+    
+    _cmdRunner->execute(CommandLineToolRunner::Tool::tifxyz2obj);
+    
+    statusBar->showMessage(tr("Converting segment to OBJ: %1").arg(QString::fromStdString(segmentId)), 5000);
+}
+
+void CWindow::onGrowSeeds(const SurfaceID& segmentId, bool isExpand, bool isRandomSeed)
+{
+    if (currentVolume == nullptr) {
+        QMessageBox::warning(this, tr("Error"), tr("Cannot grow seeds: No volume loaded"));
+        return;
+    }
+    
+    // Initialize command line tool runner if needed
+    if (!initializeCommandLineRunner()) {
+        return;
+    }
+    
+    // Check if a tool is already running
+    if (_cmdRunner->isRunning()) {
+        QMessageBox::warning(this, tr("Warning"), tr("A command line tool is already running."));
+        return;
+    }
+    
+    // Get paths
+    QString volumePath = getCurrentVolumePath();
+    if (volumePath.isEmpty()) {
+        QMessageBox::warning(this, tr("Error"), tr("Cannot grow seeds: No volume selected"));
+        return;
+    }
+    fs::path volpkgPath = fs::path(fVpkgPath.toStdString());
+    fs::path tracesDir = volpkgPath / "traces";
+    
+    // Create traces directory if it doesn't exist
+    if (!fs::exists(tracesDir)) {
+        try {
+            fs::create_directory(tracesDir);
+        } catch (const std::exception& e) {
+            QMessageBox::warning(this, tr("Error"), tr("Failed to create traces directory: %1").arg(e.what()));
+            return;
+        }
+    }
+    
+    // Get JSON parameters file
+    QString jsonFileName = isExpand ? "expand.json" : "seed.json";
+    fs::path jsonParamsPath = volpkgPath / jsonFileName.toStdString();
+    
+    // Check if JSON file exists
+    if (!fs::exists(jsonParamsPath)) {
+        QMessageBox::warning(this, tr("Error"), tr("%1 not found in the volpkg").arg(jsonFileName));
+        return;
+    }
+    
+    // Get current POI (focus point) for seed coordinates if needed
+    int seedX = 0, seedY = 0, seedZ = 0;
+    if (!isExpand && !isRandomSeed) {
+        POI *poi = _surf_col->poi("focus");
+        if (!poi) {
+            QMessageBox::warning(this, tr("Error"), tr("No focus point selected. Click on a volume with Ctrl key to set a seed point."));
+            return;
+        }
+        seedX = static_cast<int>(poi->p[0]);
+        seedY = static_cast<int>(poi->p[1]);
+        seedZ = static_cast<int>(poi->p[2]);
+    }
+    
+    // Set up parameters and execute the tool
+    _cmdRunner->setGrowParams(
+        volumePath,
+        QString::fromStdString(tracesDir.string()),
+        QString::fromStdString(jsonParamsPath.string()),
+        seedX,
+        seedY,
+        seedZ,
+        isExpand,
+        isRandomSeed
+    );
+    
+    _cmdRunner->execute(CommandLineToolRunner::Tool::GrowSegFromSeeds);
+    
+    QString modeDesc = isExpand ? "expand mode" : 
+                      (isRandomSeed ? "random seed mode" : "seed mode");
+    statusBar->showMessage(tr("Growing segment using %1 in %2").arg(jsonFileName).arg(modeDesc), 5000);
+}
+
+// Helper method to initialize command line runner
+bool CWindow::initializeCommandLineRunner()
+{
+    if (!_cmdRunner) {
+        _cmdRunner = new CommandLineToolRunner(statusBar, this);
+        
+        // Read parallel processes and iteration count settings from INI file
+        QSettings settings("VC.ini", QSettings::IniFormat);
+        int parallelProcesses = settings.value("perf/parallel_processes", 8).toInt();
+        int iterationCount = settings.value("perf/iteration_count", 1000).toInt();
+        
+        // Apply the settings
+        _cmdRunner->setParallelProcesses(parallelProcesses);
+        _cmdRunner->setIterationCount(iterationCount);
+        
+        connect(_cmdRunner, &CommandLineToolRunner::toolStarted, 
+                [this](CommandLineToolRunner::Tool tool, const QString& message) {
+                    statusBar->showMessage(message, 0);
+                });
+        connect(_cmdRunner, &CommandLineToolRunner::toolFinished, 
+                [this](CommandLineToolRunner::Tool tool, bool success, const QString& message, 
+                       const QString& outputPath, bool copyToClipboard) {
+                    if (success) {
+                        QString displayMsg = message;
+                        if (copyToClipboard) {
+                            displayMsg += tr(" - Path copied to clipboard");
+                        }
+                        statusBar->showMessage(displayMsg, 5000);
+                        QMessageBox::information(this, tr("Operation Complete"), displayMsg);
+                    } else {
+                        statusBar->showMessage(tr("Operation failed"), 5000);
+                        QMessageBox::critical(this, tr("Error"), message);
+                    }
+                });
+    }
+    return true;
 }
