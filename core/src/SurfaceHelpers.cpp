@@ -2362,11 +2362,9 @@ void optimize_surface_mapping(SurfTrackerData &data, cv::Mat_<uint8_t> &state, c
     
     {
         cv::Mat_<cv::Vec3d> points_hr_inp = surftrack_genpoints_hr(data, new_state, points_inpainted, used_area, step, src_step, true);
-        cv::Mat3d roiMat;
         try {
-            roiMat = points_hr_inp(used_area_hr);
-            QuadSurface *dbg_surf = new QuadSurface(roiMat, {1/src_step,1/src_step});
-            std::string uuid = "z_dbg_gen_"+strint(dbg_counter, 5)+"_inp_hr";
+            QuadSurface *dbg_surf = new QuadSurface(points_hr_inp(used_area_hr), {1/src_step,1/src_step});
+            std::string uuid = Z_DBG_GEN_PREFIX+strint(dbg_counter, 5)+"_inp_hr";
             dbg_surf->save(tgt_dir / uuid, uuid);
             delete dbg_surf;
         } catch (cv::Exception) {
@@ -2533,11 +2531,9 @@ void optimize_surface_mapping(SurfTrackerData &data, cv::Mat_<uint8_t> &state, c
             
     {
         cv::Mat_<cv::Vec3d> points_hr_inp = surftrack_genpoints_hr(data, state, points, used_area, step, src_step, true);
-        cv::Mat3d roiMat;
         try {
-            roiMat = points_hr_inp(used_area_hr);
-            QuadSurface *dbg_surf = new QuadSurface(roiMat, {1/src_step,1/src_step});
-            std::string uuid = "z_dbg_gen_"+strint(dbg_counter, 5)+"_opt_inp_hr";
+            QuadSurface *dbg_surf = new QuadSurface(points_hr_inp(used_area_hr), {1/src_step,1/src_step});
+            std::string uuid = Z_DBG_GEN_PREFIX+strint(dbg_counter, 5)+"_opt_inp_hr";
             dbg_surf->save(tgt_dir / uuid, uuid);
             delete dbg_surf;
         } catch (cv::Exception) {
@@ -3067,7 +3063,7 @@ QuadSurface *grow_surf_from_surfs(SurfaceMeta *seed, const std::vector<SurfaceMe
                 QuadSurface *dbg_surf = new QuadSurface(points_hr(used_area_hr), {1/src_step,1/src_step});
                 dbg_surf->meta = new nlohmann::json;
                 (*dbg_surf->meta)["vc_grow_seg_from_segments_params"] = params;
-                std::string uuid = "z_dbg_gen_"+strint(generation, 5);
+                std::string uuid = Z_DBG_GEN_PREFIX+strint(generation, 5);
                 dbg_surf->save(tgt_dir / uuid, uuid);
                 delete dbg_surf;
             }
@@ -3106,7 +3102,7 @@ QuadSurface *grow_surf_from_surfs(SurfaceMeta *seed, const std::vector<SurfaceMe
             {
                 cv::Mat_<cv::Vec3d> points_hr = surftrack_genpoints_hr(data, state, points, used_area, step, src_step);
                 QuadSurface *dbg_surf = new QuadSurface(points_hr(used_area_hr), {1/src_step,1/src_step});
-                std::string uuid = "z_dbg_gen_"+strint(generation, 5)+"_opt";
+                std::string uuid = Z_DBG_GEN_PREFIX+strint(generation, 5)+"_opt";
                 dbg_surf->save(tgt_dir / uuid, uuid);
                 delete dbg_surf;
             }
@@ -3167,7 +3163,7 @@ QuadSurface *grow_surf_from_surfs(SurfaceMeta *seed, const std::vector<SurfaceMe
 
     cv::Mat_<cv::Vec3d> points_hr = surftrack_genpoints_hr(data, state, points, used_area, step, src_step);
 
-    QuadSurface *surf = new QuadSurface(points_hr(used_area), {1/src_step,1/src_step});
+    QuadSurface *surf = new QuadSurface(points_hr(used_area_hr), {1/src_step,1/src_step});
 
     surf->meta = new nlohmann::json;
 

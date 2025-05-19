@@ -127,6 +127,17 @@ int main(int argc, char *argv[])
     SurfaceMeta *src = new SurfaceMeta(src_path, meta);
     src->readOverlapping();
 
+    // Remove debug output folders from previous runs
+    std::string debug_prefix = Z_DBG_GEN_PREFIX;
+    for (const auto& entry : fs::directory_iterator(tgt_dir)) {
+        if (fs::is_directory(entry)) {
+            std::string name = entry.path().filename();
+            if (name.compare(0, debug_prefix.size(), debug_prefix) == 0) {
+                std::filesystem::remove_all(entry.path());
+            }
+        }
+    }
+
     for (const auto& entry : fs::directory_iterator(src_dir))
         if (fs::is_directory(entry)) {
             std::string name = entry.path().filename();
