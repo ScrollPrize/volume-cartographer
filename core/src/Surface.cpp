@@ -1508,17 +1508,13 @@ SurfaceMeta::~SurfaceMeta()
     if (meta) {
         delete meta;
     }
-
-    overlapping_str.clear();
 }
 
 void SurfaceMeta::readOverlapping()
 {
     if (std::filesystem::exists(path / "overlapping"))
-        for (const auto& entry : fs::directory_iterator(path / "overlapping")) {
-            auto filename = entry.path().filename();
-            overlapping_str.insert(filename);
-        }
+        for (const auto& entry : fs::directory_iterator(path / "overlapping"))
+            overlapping_str.insert(entry.path().filename());
 }
 
 QuadSurface *SurfaceMeta::surface()

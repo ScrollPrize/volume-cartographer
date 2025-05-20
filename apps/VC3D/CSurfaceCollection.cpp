@@ -1,8 +1,24 @@
 #include "CSurfaceCollection.hpp"
 
 #include "vc/core/util/Slicing.hpp"
+#include "vc/core/util/Surface.hpp"
 
 using namespace ChaoVis;
+
+CSurfaceCollection::~CSurfaceCollection()
+{
+    for (auto& pair : _surfs) {
+        delete pair.second;
+    }
+
+    for (auto& pair : _pois) {
+        delete pair.second;
+    }
+
+    for (auto& pair : _intersections) {
+        delete pair.second;
+    }
+}
 
 void CSurfaceCollection::setSurface(const std::string &name, Surface* surf, bool noSignalSend)
 {

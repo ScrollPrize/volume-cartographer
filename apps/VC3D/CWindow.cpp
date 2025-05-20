@@ -123,6 +123,8 @@ CWindow::CWindow() :
 CWindow::~CWindow(void)
 {
     CloseVolume();
+    delete chunk_cache;
+    delete _surf_col;
 }
 
 CVolumeViewer *CWindow::newConnectedCVolumeViewer(std::string surfaceName, QString title, QMdiArea *mdiArea)
@@ -603,6 +605,8 @@ void CWindow::OpenRecent()
 
 void CWindow::LoadSurfaces(bool reload)
 {
+    std::cout << "Start of loading surfaces..." << std::endl;
+
     if (reload && !InitializeVolumePkg(fVpkgPath.toStdString() + "/")) {
         return;
     }
@@ -659,6 +663,8 @@ void CWindow::LoadSurfaces(bool reload)
             treeWidgetSurfaces->setCurrentItem(item);
         }
     }
+
+    std::cout << "Loading of surfaces completed." << std::endl;
 }
 
 // Pop up about dialog
