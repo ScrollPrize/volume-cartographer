@@ -122,6 +122,7 @@ CWindow::CWindow() :
 // Destructor
 CWindow::~CWindow(void)
 {
+    CloseVolume();
 }
 
 CVolumeViewer *CWindow::newConnectedCVolumeViewer(std::string surfaceName, QString title, QMdiArea *mdiArea)
@@ -565,6 +566,18 @@ void CWindow::CloseVolume(void)
     fVpkg = nullptr;
     currentVolume = nullptr;
     UpdateView();
+    treeWidgetSurfaces->clear();
+
+    for (auto& pair : _vol_qsurfs) {
+        _surf_col->setSurface(pair.first, nullptr, true);
+        delete pair.second;
+    }
+    _vol_qsurfs.clear();
+
+    for (auto& pair : _opchains) {
+        delete pair.second;
+    }
+    _opchains.clear();
 }
 
 // Handle open request
@@ -605,6 +618,7 @@ void CWindow::LoadSurfaces(bool reload)
 
     for (auto& pair : _vol_qsurfs) {
         _surf_col->setSurface(pair.first, nullptr, true);
+        delete pair.second;
     }
 
     _vol_qsurfs.clear();
@@ -612,20 +626,21 @@ void CWindow::LoadSurfaces(bool reload)
     
     std::vector<std::string> seg_ids = fVpkg->segmentationIDs();
     std::vector<std::pair<std::string,SurfaceMeta*>> load_sm(seg_ids.size());
-    
+
     #pragma omp parallel for
     for(int i = 0; i < seg_ids.size(); i++) {
         auto seg = fVpkg->segmentation(seg_ids[i]);
         if (seg->metadata().hasKey("format") && seg->metadata().get<std::string>("format") == "tifxyz") {
             SurfaceMeta *sm = new SurfaceMeta(seg->path());
             sm->surface();
+            sm->readOverlapping();
             load_sm[i] = {seg_ids[i], sm};
         }
     }
         
     for(auto &pair : load_sm) {
         if (pair.second) {
-            //FIXME replace _vol_surfs with _suf_col by either upgrading surf col to surfacemeta
+            //FIXME replace _vol_surfs with _surf_col by either upgrading _surf_col to surfacemeta
             _vol_qsurfs[pair.first] = pair.second;
             _surf_col->setSurface(pair.first, pair.second->surface(), true);
         }
@@ -934,7 +949,6 @@ void CWindow::FillSurfaceTree()
         item->setText(2, QString::number(size, 'f', 3));
         double cost = _vol_qsurfs[id]->meta->value("avg_cost", -1.f);
         item->setText(3, QString::number(cost, 'f', 3));
-        _vol_qsurfs[id]->readOverlapping();
         item->setText(4, QString::number(_vol_qsurfs[id]->overlapping_str.size()));
 
         UpdateSurfaceTreeIcon(item);
