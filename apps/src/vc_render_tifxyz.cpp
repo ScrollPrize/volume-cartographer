@@ -159,8 +159,7 @@ int main(int argc, char *argv[])
     if (argc == 11) {
         crop = {atoi(argv[7]),atoi(argv[8]),atoi(argv[9]),atoi(argv[10])};
         tgt_size = crop.size();
-    }
-        
+    }        
     
     std::cout << "rendering size " << tgt_size << " at scale " << tgt_scale << " crop " << crop << std::endl;
     
@@ -214,6 +213,8 @@ int main(int argc, char *argv[])
             cv::imwrite(buf, img);
         }
     }
+
+    delete surf;
 
     return EXIT_SUCCESS;
 }

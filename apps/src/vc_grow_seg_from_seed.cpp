@@ -222,7 +222,7 @@ int main(int argc, char *argv[])
                         cv::Vec2i p_eval = p;
                         for(int r=0;r<5;r++) {
                             cv::Vec2i p_eval = p+r*searchdir;
-                            if (points(p_eval)[0] == -1 ||get_val<double,CachedChunked3dInterpolator<uint8_t,passTroughComputor>>(interpolator, points(p_eval)) < 128) {
+                            if (points(p_eval)[0] == -1 || get_val<double,CachedChunked3dInterpolator<uint8_t,passTroughComputor>>(interpolator, points(p_eval)) < 128) {
                                 found = false;
                                 break;
                             }
@@ -252,7 +252,7 @@ int main(int argc, char *argv[])
                 break;
         }
 
-        std::cout << "found potential overlapping starting seed" << origin << "with overlap " << count_overlap << std::endl;
+        std::cout << "found potential overlapping starting seed " << origin << " with overlap " << count_overlap << std::endl;
     }
     else {
         if (argc == 7) {
@@ -388,6 +388,11 @@ int main(int argc, char *argv[])
                     std::ofstream touch_you(overlap_other/current.name());
                 }
             }
+    }
+
+    delete surf;
+    for (auto sm : surfs_v) {
+        delete sm;
     }
     
     return EXIT_SUCCESS;
