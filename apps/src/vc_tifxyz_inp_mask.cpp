@@ -67,6 +67,8 @@ int main(int argc, char *argv[])
 
     surf->setRawPoints(points);
     surf->save(tgt_path);
+
+    delete surf;
     
     return EXIT_SUCCESS;
 }

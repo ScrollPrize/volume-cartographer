@@ -43,7 +43,7 @@ void surf_write_obj(QuadSurface *surf, const fs::path &out_fn)
 
     out << std::fixed << std::setprecision(6);
 
-    std::cout << "Point dims:" << points.size() << " cols: " << points.cols << " rows: " << points.rows << std::endl;
+    std::cout << "Point dims: " << points.size() << " cols: " << points.cols << " rows: " << points.rows << std::endl;
 
     int v_idx = 1;
     for(int j=0;j<points.rows-1;j++)
@@ -80,6 +80,8 @@ int main(int argc, char *argv[])
     }
 
     surf_write_obj(surf, obj_path);
+
+    delete surf;
 
     return EXIT_SUCCESS;
 }
