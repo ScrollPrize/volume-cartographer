@@ -32,13 +32,13 @@ int main(int argc, char *argv[])
         return EXIT_FAILURE;
     }
 
-    cv::Mat_<cv::Vec3f> points = surf->rawPoints();
+    cv::Mat_<cv::Vec3f> *points = surf->rawPointsPtr();
     cv::Mat_<uint8_t> mask = cv::imread(mask_path, cv::IMREAD_GRAYSCALE);
     cv::Mat_<uint8_t> mask_points(mask.size(), 0);
 
-    for(int j=0;j<points.rows;j++)
-        for(int i=0;i<points.cols;i++)
-            if (points(j,i)[0] == -1)
+    for(int j=0;j<points->rows;j++)
+        for(int i=0;i<points->cols;i++)
+            if ((*points)(j,i)[0] == -1)
                 mask_points(j,i) = 1;
 
     //closing operation to skip 1-2 pixel holes
@@ -49,23 +49,22 @@ int main(int argc, char *argv[])
     for(int r=0;r<12;r++)
         cv::dilate(mask_points, mask_points, m, {-1,-1}, 1);
 
-    std::cout << "sizes " << points.size() << mask.size() << std::endl;
-    if (mask.size() != points.size())
+    std::cout << "sizes " << points->size() << mask.size() << std::endl;
+    if (mask.size() != points->size())
         throw std::runtime_error("mask must be same size as tiffxyz");
 
     cv::erode(mask, mask, m, {-1,-1}, 1);
 
-    cv::Mat_<cv::Vec3f> points_orig = points.clone();
+    cv::Mat_<cv::Vec3f> points_orig = points->clone();
 
     for(int r=0;r<100;r++) {
         int dia = int(float(100-r)/100*11)*2+1;
         std::cout << dia << std::endl;
-        cv::GaussianBlur(points, points, {dia,dia}, 0);
-        points_orig.copyTo(points, mask);
+        cv::GaussianBlur((*points), (*points), {dia,dia}, 0);
+        points_orig.copyTo((*points), mask);
     }
-    points.setTo(cv::Vec3f(-1,-1,-1), mask_points);
+    points->setTo(cv::Vec3f(-1,-1,-1), mask_points);
 
-    surf->setRawPoints(points);
     surf->save(tgt_path);
 
     delete surf;

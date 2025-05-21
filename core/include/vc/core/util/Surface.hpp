@@ -112,7 +112,11 @@ class QuadSurface : public Surface
 public:
     TrivialSurfacePointer *pointer();
     QuadSurface() {};
+    // points will be cloned in constructor
     QuadSurface(const cv::Mat_<cv::Vec3f> &points, const cv::Vec2f &scale);
+    // points will not be cloned in constructor, but pointer stored
+    QuadSurface(cv::Mat_<cv::Vec3f> *points, const cv::Vec2f &scale);
+    ~QuadSurface();
     void move(SurfacePointer *ptr, const cv::Vec3f &offset) override;
     bool valid(SurfacePointer *ptr, const cv::Vec3f &offset = {0,0,0}) override;
     cv::Vec3f loc(SurfacePointer *ptr, const cv::Vec3f &offset = {0,0,0}) override;
@@ -127,15 +131,15 @@ public:
     void save_meta();
     Rect3D bbox();
 
-    virtual cv::Mat_<cv::Vec3f> rawPoints() { return _points; }
-    virtual void setRawPoints(cv::Mat_<cv::Vec3f> points) { _points = points; }
+    virtual cv::Mat_<cv::Vec3f> rawPoints() { return *_points; }
+    virtual cv::Mat_<cv::Vec3f> *rawPointsPtr() { return _points; }
 
     friend QuadSurface *regularized_local_quad(QuadSurface *src, SurfacePointer *ptr, int w, int h, int step_search, int step_out);
     friend QuadSurface *smooth_vc_segmentation(QuadSurface *src);
     friend class ControlPointSurface;
     cv::Vec2f _scale;
 protected:
-    cv::Mat_<cv::Vec3f> _points;
+    cv::Mat_<cv::Vec3f>* _points = nullptr;
     cv::Rect _bounds;
     cv::Vec3f _center;
     Rect3D _bbox = {{-1,-1,-1},{-1,-1,-1}};
