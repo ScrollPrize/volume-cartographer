@@ -103,18 +103,6 @@ target_link_libraries(vc_tiffxyz_upscale_grounding
 #     VC::slicing
 # )
 
-## Packager ##
-add_executable(vc_packager src/Packager.cpp src/SliceImage.cpp)
-target_link_libraries(vc_packager
-    VC::core
-    VC::app_support
-    ${VC_FS_LIB}
-    Boost::program_options
-)
-target_include_directories(vc_packager PUBLIC
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-)
-
 # Install targets
 if(VC_INSTALL_APPS)
 install(
@@ -128,7 +116,6 @@ install(
         vc_tifxyz2obj
         vc_tifxyz_winding
         vc_fill_quadmesh
-        vc_packager
         ${extra_apps}
     RUNTIME DESTINATION bin
     COMPONENT Programs
