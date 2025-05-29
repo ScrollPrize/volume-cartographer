@@ -3,12 +3,12 @@
 #include <QObject>
 #include <QApplication>
 
-QTreeWidgetItem* SurfaceTreeWidget::findItemForSurface(SurfaceID id)
+SurfaceTreeWidgetItem* SurfaceTreeWidget::findItemForSurface(SurfaceID id)
 {
     QTreeWidgetItemIterator it(this);
     while (*it) {
         if (id == (*it)->data(SURFACE_ID_COLUMN, Qt::UserRole).toString().toStdString()) {
-            return (*it);
+            return static_cast<SurfaceTreeWidgetItem*>(*it);
         }
 
         ++it;

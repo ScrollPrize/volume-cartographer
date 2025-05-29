@@ -17,7 +17,7 @@
    </sizepolicy>
   </property>
   <property name="windowTitle">
-   <string>Volume Cartographer</string>
+   <string>Volume Cartographer 3D</string>
   </property>
   <property name="dockOptions">
    <set>QMainWindow::DockOption::AllowNestedDocks|QMainWindow::DockOption::AllowTabbedDocks|QMainWindow::DockOption::AnimatedDocks</set>
@@ -188,7 +188,7 @@
            </widget>
           </item>
           <item>
-           <widget class="QTreeWidget" name="treeWidgetSurfaces">
+           <widget class="SurfaceTreeWidget" name="treeWidgetSurfaces">
             <property name="alternatingRowColors">
              <bool>true</bool>
             </property>
@@ -901,6 +901,13 @@
   </action>
   <zorder>dockWidgetOpList</zorder>
  </widget>
+ <customwidgets>
+  <customwidget>
+   <class>SurfaceTreeWidget</class>
+   <extends>QTreeWidget</extends>
+   <header>../../../../../apps/VC3D/SurfaceTreeWidget.hpp</header>
+  </customwidget>
+ </customwidgets>
  <resources/>
  <connections/>
  <buttongroups>
