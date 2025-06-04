@@ -202,6 +202,16 @@ public:
      */
     auto segmentation(const Segmentation::Identifier& id)
         -> Segmentation::Pointer;
+        
+    /** @brief Set the active segmentation directory (e.g., "paths", "traces") */
+    void setSegmentationDirectory(const std::string& dirName);
+    
+    /** @brief Get the current segmentation directory name */
+    [[nodiscard]] auto getSegmentationDirectory() const -> std::string;
+    
+    /** @brief Get list of available segmentation directories */
+    [[nodiscard]] auto getAvailableSegmentationDirectories() const 
+        -> std::vector<std::string>;
     /**@}*/
 
     /**
@@ -228,6 +238,8 @@ private:
     /** The list of all Segmentations in the VolumePkg. */
     std::map<Segmentation::Identifier, Segmentation::Pointer> segmentations_;
     std::vector<filesystem::path> segmentation_files_;
+    /** Current segmentation directory name */
+    std::string currentSegmentationDir_ = "paths";
 
     /**
      * @brief Populates an empty VolumePkg::config from a volcart::Dictionary
@@ -240,5 +252,8 @@ private:
      * @return volcart::Metadata populated with default keys
      */
     static auto InitConfig(const Dictionary& dict, int version) -> Metadata;
+    
+    /** @brief Load segmentations from the specified directory */
+    void loadSegmentationsFromDirectory(const std::string& dirName);
 };
 }  // namespace volcart

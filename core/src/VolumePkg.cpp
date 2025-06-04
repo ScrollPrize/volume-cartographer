@@ -21,9 +21,9 @@ inline auto VolsDir(const fs::path& baseDir) -> fs::path
     return baseDir / "volumes";
 }
 
-inline auto SegsDir(const fs::path& baseDir) -> fs::path
+inline auto SegsDir(const fs::path& baseDir, const std::string& dirName = "paths") -> fs::path
 {
-    return baseDir / "paths";
+    return baseDir / dirName;
 }
 
 inline auto RendDir(const fs::path& baseDir) -> fs::path
@@ -304,20 +304,8 @@ VolumePkg::VolumePkg(const fs::path& fileLocation) : rootDir_{fileLocation}
         }
     }
 
-    // Load segmentations into the segmentations_
-    for (const auto& entry : fs::directory_iterator(::SegsDir(rootDir_))) {
-        fs::path dirpath = fs::canonical(entry);
-        if (fs::is_directory(dirpath)) {
-            try {
-                auto s = Segmentation::New(dirpath);
-                segmentations_.emplace(s->id(), s);
-            }
-            catch (const std::exception &exc) {
-                std::cout << "WARNING: some exception occured, skipping segment dir: " << dirpath << std::endl;
-                std::cerr << exc.what();
-            }
-        }
-    }
+    // Load segmentations from default directory
+    loadSegmentationsFromDirectory(currentSegmentationDir_);
 }
 
 auto VolumePkg::New(fs::path fileLocation, int version) -> VolumePkg::Pointer
@@ -550,4 +538,63 @@ void VolumePkg::Upgrade(const fs::path& path, int version, bool force)
     }
     // Save the final metadata
     meta.save();
+}
+
+// SEGMENTATION DIRECTORY METHODS //
+void VolumePkg::loadSegmentationsFromDirectory(const std::string& dirName)
+{
+    // Clear existing segmentations
+    segmentations_.clear();
+    segmentation_files_.clear();
+    
+    // Check if directory exists
+    const auto segDir = ::SegsDir(rootDir_, dirName);
+    if (!fs::exists(segDir)) {
+        Logger()->warn("Segmentation directory '{}' does not exist", dirName);
+        return;
+    }
+    
+    // Load segmentations from the specified directory
+    for (const auto& entry : fs::directory_iterator(segDir)) {
+        fs::path dirpath = fs::canonical(entry);
+        if (fs::is_directory(dirpath)) {
+            try {
+                auto s = Segmentation::New(dirpath);
+                segmentations_.emplace(s->id(), s);
+                segmentation_files_.push_back(dirpath);
+            }
+            catch (const std::exception &exc) {
+                std::cout << "WARNING: some exception occured, skipping segment dir: " << dirpath << std::endl;
+                std::cerr << exc.what();
+            }
+        }
+    }
+}
+
+void VolumePkg::setSegmentationDirectory(const std::string& dirName)
+{
+    if (currentSegmentationDir_ != dirName) {
+        currentSegmentationDir_ = dirName;
+        loadSegmentationsFromDirectory(dirName);
+    }
+}
+
+auto VolumePkg::getSegmentationDirectory() const -> std::string
+{
+    return currentSegmentationDir_;
+}
+
+auto VolumePkg::getAvailableSegmentationDirectories() const -> std::vector<std::string>
+{
+    std::vector<std::string> dirs;
+    
+    // Check for common segmentation directories
+    const std::vector<std::string> commonDirs = {"paths", "traces"};
+    for (const auto& dir : commonDirs) {
+        if (fs::exists(rootDir_ / dir) && fs::is_directory(rootDir_ / dir)) {
+            dirs.push_back(dir);
+        }
+    }
+    
+    return dirs;
 }

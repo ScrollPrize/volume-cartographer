@@ -188,6 +188,27 @@
            </widget>
           </item>
           <item>
+           <layout class="QHBoxLayout" name="segDirLayout">
+            <item>
+             <widget class="QLabel" name="lblSegDir">
+              <property name="text">
+               <string>Segmentation Directory:</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QComboBox" name="cmbSegmentationDir">
+              <property name="sizePolicy">
+               <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+                <horstretch>0</horstretch>
+                <verstretch>0</verstretch>
+               </sizepolicy>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+          <item>
            <widget class="SurfaceTreeWidget" name="treeWidgetSurfaces">
             <property name="alternatingRowColors">
              <bool>true</bool>
