@@ -836,7 +836,7 @@ float local_optimization(int radius, const cv::Vec2i &p, cv::Mat_<uint8_t> &stat
 
 
     ceres::Solver::Options options;
-    options.linear_solver_type = ceres::DENSE_QR;
+    options.linear_solver_type = ceres::SPARSE_SCHUR;
     options.minimizer_progress_to_stdout = false;
     options.max_num_iterations = 10000;
     options.function_tolerance = 1e-4;
