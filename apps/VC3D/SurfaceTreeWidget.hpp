@@ -6,16 +6,6 @@
 
 #define SURFACE_ID_COLUMN 1
 
-class SurfaceTreeWidget : public QTreeWidget
-{
-public:
-    SurfaceTreeWidget(QTreeWidget* parent) : QTreeWidget(parent) {
-        setContextMenuPolicy(Qt::CustomContextMenu);
-    }
-    
-    QTreeWidgetItem* findItemForSurface(SurfaceID id);
-};
-
 class SurfaceTreeWidgetItem : public QTreeWidgetItem
 {
 public:
@@ -35,4 +25,16 @@ private:
         else
             return text(column).toDouble() < other.text(column).toDouble();
     }
+};
+
+class SurfaceTreeWidget : public QTreeWidget
+{
+    Q_OBJECT
+
+public:
+    SurfaceTreeWidget(QWidget* parent = nullptr) : QTreeWidget(parent) {
+        setContextMenuPolicy(Qt::CustomContextMenu);
+    }
+    
+    SurfaceTreeWidgetItem* findItemForSurface(SurfaceID id);
 };

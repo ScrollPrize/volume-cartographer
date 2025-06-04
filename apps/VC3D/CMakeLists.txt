@@ -6,6 +6,7 @@ set(srcs
     VCAppMain.cpp
     CMesh.cpp
     CWindow.cpp
+    CWindowContextMenu.cpp
     UDataManipulateUtils.cpp
     CVolumeViewer.cpp
     CVolumeViewerView.cpp

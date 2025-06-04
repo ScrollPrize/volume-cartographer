@@ -1,4 +1,4 @@
-FROM ubuntu:noble
+FROM ubuntu:plucky
 
 RUN apt-get update
 RUN apt-get -y upgrade
@@ -7,7 +7,6 @@ RUN add-apt-repository universe
 RUN apt-get update
 RUN apt-get -y install build-essential git cmake 
 RUN apt-get -y install qt6-base-dev libboost-system-dev libboost-program-options-dev
-RUN apt-get update
 RUN apt-get -y install libceres-dev xtensor-dev libopencv-dev libxsimd-dev libblosc-dev libspdlog-dev
 RUN apt-get -y install libgsl-dev libsdl2-dev libcurl4-openssl-dev
 RUN apt-get -y install file

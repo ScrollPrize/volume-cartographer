@@ -24,15 +24,15 @@ list(APPEND VC_CUSTOM_MODULES "${CMAKE_MODULE_PATH}/FindFilesystem.cmake")
 if((VC_BUILD_APPS OR VC_BUILD_UTILS) AND VC_BUILD_GUI)
     find_package(Qt6 QUIET REQUIRED COMPONENTS Widgets Gui Core Network)
     # qt_standard_project_setup() #NOTE below settings for QT < 6.3, commented command for qt >= 6.3, ubuntu 22.04 has qt 6.2!
-     set(CMAKE_AUTOMOC ON)
-     set(CMAKE_AUTORCC ON)
-     set(CMAKE_AUTOUIC ON)
+    set(CMAKE_AUTOMOC ON)
+    set(CMAKE_AUTORCC ON)
+    set(CMAKE_AUTOUIC ON)
      
-     if(NOT DEFINED qt_generate_deploy_app_script)
-            message(WARNING "WARNING qt_generate_deploy_app_script MISSING!")
+    if(NOT DEFINED qt_generate_deploy_app_script)
+        message(WARNING "WARNING qt_generate_deploy_app_script MISSING!")
         function(qt_generate_deploy_app_script)
         endfunction()
-     endif()
+    endif()
      
 endif()
 
@@ -41,7 +41,7 @@ if (VC_WITH_CUDA_SPARSE)
     add_definitions(-DVC_USE_CUDA_SPARSE=1)
 endif()
 
-#ceres-solver
+### ceres-solver ###
 find_package(Ceres REQUIRED)
 
 ### Z5 ###
@@ -75,7 +75,7 @@ include(BuildJSON)
 ### CURL library (needed for GDAL) ###
 find_package(CURL REQUIRED)
 
-### Boost and indicators (for app use only)
+### Boost and indicators (for app use only) ###
 if(VC_BUILD_APPS OR VC_BUILD_UTILS)
     find_package(Boost 1.58 REQUIRED COMPONENTS system program_options)
     include(BuildIndicators)
