@@ -202,6 +202,7 @@ void CWindow::CreateWidgets(void)
 
     treeWidgetSurfaces = this->findChild<SurfaceTreeWidget*>("treeWidgetSurfaces");
     treeWidgetSurfaces->setContextMenuPolicy(Qt::CustomContextMenu);
+    treeWidgetSurfaces->setSelectionMode(QAbstractItemView::ExtendedSelection);
     connect(treeWidgetSurfaces, &QWidget::customContextMenuRequested, this, &CWindow::onSurfaceContextMenuRequested);
     btnReloadSurfaces = this->findChild<QPushButton*>("btnReloadSurfaces");
     auto dockWidgetOpList = this->findChild<QDockWidget*>("dockWidgetOpList");
@@ -640,8 +641,8 @@ void CWindow::LoadSurfaces(bool reload)
     // Prevent unwanted callbacks during (re-)loading
     const QSignalBlocker blocker{treeWidgetSurfaces};
     
-    // First clear the segmentation surface to notify viewers
-    _surf_col->setSurface("segmentation", nullptr, true);
+    // First clear the segmentation surface and notify viewers
+    _surf_col->setSurface("segmentation", nullptr, false);
     
     // Clear current surface selection
     _surf = nullptr;
@@ -650,9 +651,9 @@ void CWindow::LoadSurfaces(bool reload)
     // Then clear the tree
     treeWidgetSurfaces->clear();
 
-    // Clear all surfaces from the collection
+    // Clear all surfaces from the collection and notify viewers
     for (auto& pair : _vol_qsurfs) {
-        _surf_col->setSurface(pair.first, nullptr, true);
+        _surf_col->setSurface(pair.first, nullptr, false);
         delete pair.second;
     }
 
@@ -920,10 +921,15 @@ void CWindow::onTagChanged(void)
 
 void CWindow::onSurfaceSelected(QTreeWidgetItem *current, QTreeWidgetItem *previous)
 {
-    if (!current) {
+    // Get the first selected item for single-segment operations
+    QList<QTreeWidgetItem*> selectedItems = treeWidgetSurfaces->selectedItems();
+    if (selectedItems.isEmpty()) {
         return;
     }
-    _surfID = current->data(SURFACE_ID_COLUMN, Qt::UserRole).toString().toStdString();
+    
+    // Use the first selected item for all existing functionality
+    QTreeWidgetItem* firstSelected = selectedItems.first();
+    _surfID = firstSelected->data(SURFACE_ID_COLUMN, Qt::UserRole).toString().toStdString();
 
     // Update sub window title with surface ID
     for (auto &viewer : _viewers) {
@@ -1159,9 +1165,39 @@ void CWindow::onSurfaceContextMenuRequested(const QPoint& pos)
         return;
     }
     
-    SurfaceID segmentId = item->data(SURFACE_ID_COLUMN, Qt::UserRole).toString().toStdString();
+    // Get all selected segments
+    QList<QTreeWidgetItem*> selectedItems = treeWidgetSurfaces->selectedItems();
+    std::vector<SurfaceID> selectedSegmentIds;
+    for (auto* selectedItem : selectedItems) {
+        selectedSegmentIds.push_back(selectedItem->data(SURFACE_ID_COLUMN, Qt::UserRole).toString().toStdString());
+    }
+    
+    // Use the first selected segment for single-segment operations
+    SurfaceID segmentId = selectedSegmentIds.empty() ? 
+        item->data(SURFACE_ID_COLUMN, Qt::UserRole).toString().toStdString() : 
+        selectedSegmentIds.front();
     
     QMenu contextMenu(tr("Context Menu"), this);
+    
+    // Copy segment path action
+    QAction* copyPathAction = new QAction(tr("Copy Segment Path"), this);
+    connect(copyPathAction, &QAction::triggered, [this, segmentId]() {
+        if (_vol_qsurfs.count(segmentId)) {
+            QString path = QString::fromStdString(_vol_qsurfs[segmentId]->path.string());
+            QApplication::clipboard()->setText(path);
+            statusBar->showMessage(tr("Copied segment path to clipboard: %1").arg(path), 3000);
+        }
+    });
+    
+    // Delete segment(s) action
+    QString deleteText = selectedSegmentIds.size() > 1 ? 
+        tr("Delete %1 Segments").arg(selectedSegmentIds.size()) : 
+        tr("Delete Segment");
+    QAction* deleteAction = new QAction(deleteText, this);
+    deleteAction->setIcon(style()->standardIcon(QStyle::SP_TrashIcon));
+    connect(deleteAction, &QAction::triggered, [this, selectedSegmentIds]() {
+        onDeleteSegments(selectedSegmentIds);
+    });
     
     // Render segment action
     QAction* renderAction = new QAction(tr("Render segment"), this);
@@ -1170,7 +1206,7 @@ void CWindow::onSurfaceContextMenuRequested(const QPoint& pos)
     });
     
     // Grow segment from segment action
-    QAction* growSegmentAction = new QAction(tr("Run Trace / Grow segment"), this);
+    QAction* growSegmentAction = new QAction(tr("Run Trace"), this);
     connect(growSegmentAction, &QAction::triggered, [this, segmentId]() {
         onGrowSegmentFromSegment(segmentId);
     });
@@ -1213,13 +1249,17 @@ void CWindow::onSurfaceContextMenuRequested(const QPoint& pos)
     seedMenu->addAction(seedWithExpandAction);
     
     // Add all actions to the context menu
+    contextMenu.addAction(copyPathAction);
+    contextMenu.addSeparator();
     contextMenu.addMenu(seedMenu);
     contextMenu.addAction(growSegmentAction);
     contextMenu.addAction(addOverlapAction);
     contextMenu.addSeparator();
     contextMenu.addAction(renderAction);
     contextMenu.addSeparator();
-    contextMenu.addAction(convertToObjAction);    
+    contextMenu.addAction(convertToObjAction);
+    contextMenu.addSeparator();
+    contextMenu.addAction(deleteAction);
     
     // show the context menu at the position of the right-click
     contextMenu.exec(treeWidgetSurfaces->mapToGlobal(pos));

@@ -2,6 +2,7 @@
 #include "CSurfaceCollection.hpp"
 
 #include <QSettings>
+#include <QMessageBox>
 
 #include "vc/core/types/VolumePkg.hpp"
 #include "vc/core/util/Surface.hpp"
@@ -19,32 +20,18 @@ void CWindow::onRenderSegment(const SurfaceID& segmentId)
     
     QSettings settings("VC.ini", QSettings::IniFormat);
     
-    QString defaultVolume = settings.value("rendering/default_volume", "").toString();
     QString outputFormat = settings.value("rendering/output_path_format", "%s/layers/%02d.tif").toString();
     float scale = settings.value("rendering/scale", 1.0f).toFloat();
     int resolution = settings.value("rendering/resolution", 0).toInt();
     int layers = settings.value("rendering/layers", 21).toInt();
     
-    std::shared_ptr<volcart::Volume> volumeToRender;
-    if (defaultVolume.isEmpty()) {
-        volumeToRender = currentVolume;
-    } else {
-        try {
-            volumeToRender = fVpkg->volume(defaultVolume.toStdString());
-        } catch (const std::exception& e) {
-            QMessageBox::warning(this, tr("Error"), tr("Default volume not found. Using current volume instead."));
-            volumeToRender = currentVolume;
-        }
-    }
-    
-    QString volumePath = QString::fromStdString(volumeToRender->path().string());
     QString segmentPath = QString::fromStdString(_vol_qsurfs[segmentId]->path.string());
     QString segmentOutDir = QString::fromStdString(_vol_qsurfs[segmentId]->path.string());
     QString outputPattern = outputFormat.replace("%s", segmentOutDir);
     
     // Initialize command line tool runner if needed
     if (!_cmdRunner) {
-        _cmdRunner = new CommandLineToolRunner(statusBar, this);
+        _cmdRunner = new CommandLineToolRunner(statusBar, this, this);
         connect(_cmdRunner, &CommandLineToolRunner::toolStarted, 
                 [this](CommandLineToolRunner::Tool tool, const QString& message) {
                     statusBar->showMessage(message, 0);
@@ -73,7 +60,6 @@ void CWindow::onRenderSegment(const SurfaceID& segmentId)
     }
     
     // Set up parameters and execute the render tool
-    _cmdRunner->setVolumePath(volumePath);
     _cmdRunner->setSegmentPath(segmentPath);
     _cmdRunner->setOutputPattern(outputPattern);
     _cmdRunner->setRenderParams(scale, resolution, layers);
@@ -102,11 +88,6 @@ void CWindow::onGrowSegmentFromSegment(const SurfaceID& segmentId)
     }
     
     // Get paths
-    QString volumePath = getCurrentVolumePath();
-    if (volumePath.isEmpty()) {
-        QMessageBox::warning(this, tr("Error"), tr("Cannot grow segment: No volume selected"));
-        return;
-    }
     QString srcSegment = QString::fromStdString(_vol_qsurfs[segmentId]->path.string());
     
     // Get the volpkg path and create traces directory if it doesn't exist
@@ -115,12 +96,6 @@ void CWindow::onGrowSegmentFromSegment(const SurfaceID& segmentId)
     fs::path jsonParamsPath = volpkgPath / "trace_params.json";
     fs::path pathsDir = volpkgPath / "paths";
     
-    // Log information for debugging - write to console via statusBar
-    QString debugInfo = tr("Volume path: %1\n").arg(volumePath);
-    debugInfo += tr("Source segment: %1\n").arg(srcSegment);
-    debugInfo += tr("Source directory: %1\n").arg(QString::fromStdString(pathsDir.string()));
-    debugInfo += tr("Target directory: %1\n").arg(QString::fromStdString(tracesDir.string()));
-    debugInfo += tr("JSON parameters: %1").arg(QString::fromStdString(jsonParamsPath.string()));
     statusBar->showMessage(tr("Preparing to run grow_seg_from_segment..."), 2000);
     
     // Create traces directory if it doesn't exist
@@ -141,7 +116,7 @@ void CWindow::onGrowSegmentFromSegment(const SurfaceID& segmentId)
     
     // Set up parameters and execute the tool
     _cmdRunner->setTraceParams(
-        volumePath,
+        QString(),  // Volume path will be set automatically in execute()
         QString::fromStdString(pathsDir.string()),
         QString::fromStdString(tracesDir.string()),
         QString::fromStdString(jsonParamsPath.string()),
@@ -208,12 +183,11 @@ void CWindow::onConvertToObj(const SurfaceID& segmentId)
         return;
     }
     
-    // Get source tifxyz path
+    // Get source tifxyz path (this is a directory containing the TIFXYZ files)
     fs::path tifxyzPath = _vol_qsurfs[segmentId]->path;
     
-    // Generate output OBJ path (same directory with .obj extension)
-    fs::path objPath = tifxyzPath;
-    objPath.replace_extension(".obj");
+    // Generate output OBJ path inside the TIFXYZ directory with segment ID as filename
+    fs::path objPath = tifxyzPath / (segmentId + ".obj");
     
     // Set up parameters and execute the tool
     _cmdRunner->setToObjParams(
@@ -245,22 +219,13 @@ void CWindow::onGrowSeeds(const SurfaceID& segmentId, bool isExpand, bool isRand
     }
     
     // Get paths
-    QString volumePath = getCurrentVolumePath();
-    if (volumePath.isEmpty()) {
-        QMessageBox::warning(this, tr("Error"), tr("Cannot grow seeds: No volume selected"));
-        return;
-    }
     fs::path volpkgPath = fs::path(fVpkgPath.toStdString());
-    fs::path tracesDir = volpkgPath / "traces";
+    fs::path pathsDir = volpkgPath / "paths";
     
     // Create traces directory if it doesn't exist
-    if (!fs::exists(tracesDir)) {
-        try {
-            fs::create_directory(tracesDir);
-        } catch (const std::exception& e) {
-            QMessageBox::warning(this, tr("Error"), tr("Failed to create traces directory: %1").arg(e.what()));
-            return;
-        }
+    if (!fs::exists(pathsDir)) {
+        QMessageBox::warning(this, tr("Error"), tr("Paths directory not found in the volpkg"));
+        return;
     }
     
     // Get JSON parameters file
@@ -288,8 +253,8 @@ void CWindow::onGrowSeeds(const SurfaceID& segmentId, bool isExpand, bool isRand
     
     // Set up parameters and execute the tool
     _cmdRunner->setGrowParams(
-        volumePath,
-        QString::fromStdString(tracesDir.string()),
+        QString(),  // Volume path will be set automatically in execute()
+        QString::fromStdString(pathsDir.string()),
         QString::fromStdString(jsonParamsPath.string()),
         seedX,
         seedY,
@@ -309,7 +274,7 @@ void CWindow::onGrowSeeds(const SurfaceID& segmentId, bool isExpand, bool isRand
 bool CWindow::initializeCommandLineRunner()
 {
     if (!_cmdRunner) {
-        _cmdRunner = new CommandLineToolRunner(statusBar, this);
+        _cmdRunner = new CommandLineToolRunner(statusBar, this, this);
         
         // Read parallel processes and iteration count settings from INI file
         QSettings settings("VC.ini", QSettings::IniFormat);
@@ -341,4 +306,86 @@ bool CWindow::initializeCommandLineRunner()
                 });
     }
     return true;
+}
+
+void CWindow::onDeleteSegments(const std::vector<SurfaceID>& segmentIds)
+{
+    if (segmentIds.empty()) {
+        return;
+    }
+    
+    // Create confirmation message
+    QString message;
+    if (segmentIds.size() == 1) {
+        message = tr("Are you sure you want to delete segment '%1'?\n\nThis action cannot be undone.")
+                    .arg(QString::fromStdString(segmentIds[0]));
+    } else {
+        message = tr("Are you sure you want to delete %1 segments?\n\nThis action cannot be undone.")
+                    .arg(segmentIds.size());
+    }
+    
+    // Show confirmation dialog
+    QMessageBox::StandardButton reply = QMessageBox::question(
+        this, tr("Confirm Deletion"), message,
+        QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+    
+    if (reply != QMessageBox::Yes) {
+        return;
+    }
+    
+    // Delete each segment
+    int successCount = 0;
+    QStringList failedSegments;
+    bool needsReload = false;
+    
+    for (const auto& segmentId : segmentIds) {
+        try {
+            // Use the VolumePkg's removeSegmentation method
+            fVpkg->removeSegmentation(segmentId);
+            successCount++;
+            needsReload = true;
+        } catch (const fs::filesystem_error& e) {
+            std::cerr << "Failed to delete segment " << segmentId << ": " << e.what() << std::endl;
+            
+            // Check if it's a permission error
+            if (e.code() == std::errc::permission_denied) {
+                failedSegments << QString::fromStdString(segmentId) + " (permission denied)";
+            } else {
+                failedSegments << QString::fromStdString(segmentId) + " (filesystem error)";
+            }
+        } catch (const std::exception& e) {
+            failedSegments << QString::fromStdString(segmentId);
+            std::cerr << "Failed to delete segment " << segmentId << ": " << e.what() << std::endl;
+        }
+    }
+    
+    // Only reload surfaces if we successfully deleted something
+    if (needsReload) {
+        try {
+            LoadSurfaces(false);
+        } catch (const std::exception& e) {
+            std::cerr << "Error reloading surfaces after deletion: " << e.what() << std::endl;
+            QMessageBox::warning(this, tr("Warning"), 
+                               tr("Segments were deleted but there was an error refreshing the list. "
+                                  "Please reload surfaces manually."));
+        }
+    }
+    
+    // Show result message
+    if (successCount == segmentIds.size()) {
+        statusBar->showMessage(tr("Successfully deleted %1 segment(s)").arg(successCount), 5000);
+    } else if (successCount > 0) {
+        QMessageBox::warning(this, tr("Partial Success"),
+            tr("Deleted %1 segment(s), but failed to delete: %2\n\n"
+               "Note: Permission errors may require manual deletion or running with elevated privileges.")
+            .arg(successCount)
+            .arg(failedSegments.join(", ")));
+    } else {
+        QMessageBox::critical(this, tr("Deletion Failed"),
+            tr("Failed to delete any segments.\n\n"
+               "Failed segments: %1\n\n"
+               "This may be due to insufficient permissions. "
+               "Try running the application with elevated privileges or manually delete the folders.")
+            .arg(failedSegments.join(", ")));
+    }
 }

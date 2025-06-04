@@ -349,8 +349,16 @@ void CVolumeViewer::onSurfaceChanged(std::string name, Surface *surf)
 {
     if (_surf_name == name) {
         _surf = surf;
-        if (!_surf)
+        if (!_surf) {
             fScene->clear();
+            // Clear all item collections when scene is cleared
+            _intersect_items.clear();
+            slice_vis_items.clear();
+            _points_items.clear();
+            _cursor = nullptr;
+            _center_marker = nullptr;
+            fBaseImageItem = nullptr;
+        }
         else
             invalidateVis();
     }
@@ -396,7 +404,7 @@ QGraphicsItem *crossItem()
 //TODO make poi tracking optional and configurable
 void CVolumeViewer::onPOIChanged(std::string name, POI *poi)
 {    
-    if (!poi)
+    if (!poi || !_surf)
         return;
     
     if (name == "focus") {
@@ -415,6 +423,11 @@ void CVolumeViewer::onPOIChanged(std::string name, POI *poi)
         _surf_col->setSurface(_surf_name, plane);
     }
     else if (name == "cursor") {
+        // Add safety check before dynamic_cast
+        if (!_surf) {
+            return;
+        }
+        
         PlaneSurface *slice_plane = dynamic_cast<PlaneSurface*>(_surf);
         // QuadSurface *crop = dynamic_cast<QuadSurface*>(_surf_col->surface("visible_segmentation"));
         QuadSurface *crop = dynamic_cast<QuadSurface*>(_surf_col->surface("segmentation"));
@@ -788,8 +801,13 @@ void CVolumeViewer::onScrolled()
 
 void CVolumeViewer::renderPoints()
 {
-    for(auto &item : _points_items)
-        fScene->removeItem(item);
+    for(auto &item : _points_items) {
+        // Only remove item if it's actually in our scene
+        if (item && item->scene() == fScene) {
+            fScene->removeItem(item);
+        }
+        delete item;
+    }
     _points_items.resize(0);
     
     std::vector<cv::Vec3f> all_ps(_red_points);

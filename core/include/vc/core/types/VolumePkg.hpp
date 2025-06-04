@@ -203,6 +203,17 @@ public:
     auto segmentation(const Segmentation::Identifier& id)
         -> Segmentation::Pointer;
         
+    /** 
+     * @brief Remove a segmentation from the VolumePkg
+     * 
+     * This method removes the segmentation from the internal data structures
+     * and deletes the associated files from disk.
+     * 
+     * @param id The identifier of the segmentation to remove
+     * @throws std::runtime_error if the segmentation is not found
+     */
+    void removeSegmentation(const Segmentation::Identifier& id);
+        
     /** @brief Set the active segmentation directory (e.g., "paths", "traces") */
     void setSegmentationDirectory(const std::string& dirName);
     

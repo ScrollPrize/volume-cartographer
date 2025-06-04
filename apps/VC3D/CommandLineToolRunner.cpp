@@ -1,4 +1,5 @@
 #include "CommandLineToolRunner.hpp"
+#include "CWindow.hpp"
 #include <QDir>
 #include <QFileInfo>
 #include <QStatusBar>
@@ -7,8 +8,9 @@
 
 namespace ChaoVis {
 
-CommandLineToolRunner::CommandLineToolRunner(QStatusBar* statusBar, QObject* parent)
+CommandLineToolRunner::CommandLineToolRunner(QStatusBar* statusBar, CWindow* mainWindow, QObject* parent)
     : QObject(parent)
+    , _mainWindow(mainWindow)
     , _progressUtil(new ProgressUtil(statusBar, this))
     , _process(nullptr)
     , _consoleOutput(new ConsoleOutputWidget())
@@ -150,8 +152,16 @@ bool CommandLineToolRunner::execute(Tool tool)
         return false;
     }
     
-    if (_volumePath.isEmpty()) {
-        QMessageBox::warning(nullptr, tr("Error"), tr("Volume path not specified."));
+    // Get the current volume path from the main window
+    if (_mainWindow) {
+        QString currentVolumePath = _mainWindow->getCurrentVolumePath();
+        if (currentVolumePath.isEmpty()) {
+            QMessageBox::warning(nullptr, tr("Error"), tr("No volume selected."));
+            return false;
+        }
+        _volumePath = currentVolumePath;
+    } else if (_volumePath.isEmpty()) {
+        QMessageBox::warning(nullptr, tr("Error"), tr("Volume path not specified and no main window available."));
         return false;
     }
     

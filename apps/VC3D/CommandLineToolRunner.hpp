@@ -19,6 +19,9 @@
 
 namespace ChaoVis {
 
+// Forward declaration
+class CWindow;
+
 /**
  * @brief Class to manage execution of command-line tools
  */
@@ -28,7 +31,7 @@ class CommandLineToolRunner : public QObject
 
 public:
 
-    explicit CommandLineToolRunner(QStatusBar* statusBar, QObject* parent = nullptr);
+    explicit CommandLineToolRunner(QStatusBar* statusBar, CWindow* mainWindow, QObject* parent = nullptr);
     
     ~CommandLineToolRunner();
 
@@ -77,6 +80,7 @@ private:
     QString toolName(Tool tool) const;
     QString getOutputPath() const;
 
+    CWindow* _mainWindow;
     ProgressUtil* _progressUtil;
     
     QProcess* _process;
