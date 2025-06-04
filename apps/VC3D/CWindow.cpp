@@ -212,7 +212,7 @@ void CWindow::CreateWidgets(void)
     wOpsSettings = new OpsSettings(dockWidgetOpSettings);
     dockWidgetOpSettings->setWidget(wOpsSettings);
 
-    connect(treeWidgetSurfaces, &QTreeWidget::currentItemChanged, this, &CWindow::onSurfaceSelected);
+    connect(treeWidgetSurfaces, &QTreeWidget::itemSelectionChanged, this, &CWindow::onSurfaceSelected);
     connect(btnReloadSurfaces, &QPushButton::clicked, this, &CWindow::onRefreshSurfaces);
     connect(this, &CWindow::sendOpChainSelected, wOpsList, &OpsList::onOpChainSelected);
     connect(wOpsList, &OpsList::sendOpSelected, wOpsSettings, &OpsSettings::onOpSelected);
@@ -266,9 +266,14 @@ void CWindow::CreateWidgets(void)
     connect(spNorm[1], &QDoubleSpinBox::valueChanged, this, &CWindow::onManualPlaneChanged);
     connect(spNorm[2], &QDoubleSpinBox::valueChanged, this, &CWindow::onManualPlaneChanged);
     
+#if (QT_VERSION < QT_VERSION_CHECK(6, 8, 0))
     connect(_chkApproved, &QCheckBox::stateChanged, this, &CWindow::onTagChanged);
     connect(_chkDefective, &QCheckBox::stateChanged, this, &CWindow::onTagChanged);
-    
+#else
+    connect(_chkApproved, &QCheckBox::checkStateChanged, this, &CWindow::onTagChanged);
+    connect(_chkDefective, &QCheckBox::checkStateChanged, this, &CWindow::onTagChanged);
+#endif
+
     _lblPointsInfo = this->findChild<QLabel*>("lblPointsInfo");
     _btnResetPoints = this->findChild<QPushButton*>("btnResetPoints");
     connect(_btnResetPoints, &QPushButton::pressed, this, &CWindow::onResetPoints);
@@ -629,8 +634,13 @@ void CWindow::LoadSurfaces(bool reload)
 {
     std::cout << "Start of loading surfaces..." << std::endl;
 
-    if (reload && !InitializeVolumePkg(fVpkgPath.toStdString() + "/")) {
-        return;
+    if (reload) {
+        auto dir = fVpkg->getSegmentationDirectory();
+        if (!InitializeVolumePkg(fVpkgPath.toStdString() + "/")) {
+            return;
+        } else {
+            fVpkg->setSegmentationDirectory(dir);
+        }
     }
 
     SurfaceID id;
@@ -919,11 +929,19 @@ void CWindow::onTagChanged(void)
     UpdateSurfaceTreeIcon(static_cast<SurfaceTreeWidgetItem*>(treeWidgetSurfaces->currentItem()));
 }
 
-void CWindow::onSurfaceSelected(QTreeWidgetItem *current, QTreeWidgetItem *previous)
+void CWindow::onSurfaceSelected()
 {
     // Get the first selected item for single-segment operations
     QList<QTreeWidgetItem*> selectedItems = treeWidgetSurfaces->selectedItems();
     if (selectedItems.isEmpty()) {
+        // Reset sub window title
+        for (auto &viewer : _viewers) {
+            if (viewer->surfName() == "segmentation") {
+                viewer->setWindowTitle(tr("Surface"));
+                break;
+            }
+        }
+
         return;
     }
     
@@ -1281,6 +1299,8 @@ void CWindow::onSegmentationDirChanged(int index)
         // Clear current surface selection
         _surf = nullptr;
         _surfID.clear();
+        treeWidgetSurfaces->clearSelection();
+        wOpsList->onOpChainSelected(nullptr);
         
         // Clear checkboxes
         {

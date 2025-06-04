@@ -11,10 +11,10 @@ OpsList::OpsList(QWidget* parent) : QWidget(parent), ui(new Ui::OpsList)
 {
     ui->setupUi(this);
 
-    _tree = this->findChild<QTreeWidget*>("treeWidget");
-    _add_sel = this->findChild<QComboBox*>("comboOp");
+    _tree = ui->treeWidget;
+    _add_sel = ui->comboOp;
     connect(_tree, &QTreeWidget::currentItemChanged, this, &OpsList::onSelChanged);
-    connect(this->findChild<QPushButton*>("pushAppendOp"), &QPushButton::clicked, this, &OpsList::onAppendOpClicked);
+    connect(ui->pushAppendOp, &QPushButton::clicked, this, &OpsList::onAppendOpClicked);
 }
 
 OpsList::~OpsList() { delete ui; }
@@ -22,18 +22,20 @@ OpsList::~OpsList() { delete ui; }
 void OpsList::onOpChainSelected(OpChain *ops)
 {
     _op_chain = ops;
-    std::cout << "opchain selected " << ops << std::endl;
+    std::cout << "OpChain/Layer selected " << ops << std::endl;
 
     _tree->clear();
 
-    QTreeWidgetItem *item = new QTreeWidgetItem(_tree);
-    item->setText(0, QString(op_name(_op_chain)));
-    item->setData(0, Qt::UserRole, QVariant::fromValue((void*)_op_chain));
-
-    for (auto& op : _op_chain->ops()) {
+    if (_op_chain) {
         QTreeWidgetItem *item = new QTreeWidgetItem(_tree);
-        item->setText(0, QString(op_name(op)));
-        item->setData(0, Qt::UserRole, QVariant::fromValue((void*)op));
+        item->setText(0, QString(op_name(_op_chain)));
+        item->setData(0, Qt::UserRole, QVariant::fromValue((void*)_op_chain));
+
+        for (auto& op : _op_chain->ops()) {
+            QTreeWidgetItem *item = new QTreeWidgetItem(_tree);
+            item->setText(0, QString(op_name(op)));
+            item->setData(0, Qt::UserRole, QVariant::fromValue((void*)op));
+        }
     }
 }
 
