@@ -23,6 +23,7 @@
 #include "OpsSettings.hpp"
 #include "SurfaceTreeWidget.hpp"
 #include "CSegmentationEditorWindow.hpp"
+#include "CDistanceTransformWidget.hpp"
 
 #include "vc/core/types/Color.hpp"
 #include "vc/core/types/Exceptions.hpp"
@@ -42,7 +43,8 @@ namespace fs = std::filesystem;
 // Constructor
 CWindow::CWindow() :
     fVpkg(nullptr),
-    _cmdRunner(nullptr)
+    _cmdRunner(nullptr),
+    _distanceTransformWidget(nullptr)
 {
     const QSettings settings("VC.ini", QSettings::IniFormat);
     setWindowIcon(QPixmap(":/images/logo.png"));
@@ -200,17 +202,38 @@ void CWindow::CreateWidgets(void)
     newConnectedCVolumeViewer("segmentation", tr("Surface"), mdiArea)->setIntersects({"seg xz","seg yz"});
     mdiArea->tileSubWindows();
 
-    treeWidgetSurfaces = this->findChild<SurfaceTreeWidget*>("treeWidgetSurfaces");
+    treeWidgetSurfaces = ui.treeWidgetSurfaces;
     treeWidgetSurfaces->setContextMenuPolicy(Qt::CustomContextMenu);
     treeWidgetSurfaces->setSelectionMode(QAbstractItemView::ExtendedSelection);
     connect(treeWidgetSurfaces, &QWidget::customContextMenuRequested, this, &CWindow::onSurfaceContextMenuRequested);
-    btnReloadSurfaces = this->findChild<QPushButton*>("btnReloadSurfaces");
-    auto dockWidgetOpList = this->findChild<QDockWidget*>("dockWidgetOpList");
-    auto dockWidgetOpSettings = this->findChild<QDockWidget*>("dockWidgetOpSettings");
-    wOpsList = new OpsList(dockWidgetOpList);
-    dockWidgetOpList->setWidget(wOpsList);
-    wOpsSettings = new OpsSettings(dockWidgetOpSettings);
-    dockWidgetOpSettings->setWidget(wOpsSettings);
+    btnReloadSurfaces = ui.btnReloadSurfaces;
+    wOpsList = new OpsList(ui.dockWidgetOpList);
+    ui.dockWidgetOpList->setWidget(wOpsList);
+    wOpsSettings = new OpsSettings(ui.dockWidgetOpSettings);
+    ui.dockWidgetOpSettings->setWidget(wOpsSettings);
+    
+    // Create Distance Transform widget
+    _distanceTransformWidget = new CDistanceTransformWidget(ui.dockWidgetDistanceTransform);
+    ui.dockWidgetDistanceTransform->setWidget(_distanceTransformWidget);
+    
+    // Connect Distance Transform widget signals/slots
+    connect(this, &CWindow::sendVolumeChanged, _distanceTransformWidget, &CDistanceTransformWidget::onVolumeChanged);
+    connect(_distanceTransformWidget, &CDistanceTransformWidget::sendStatusMessageAvailable, this, &CWindow::onShowStatusMessage);
+    
+    // Set the chunk cache for the distance transform widget
+    _distanceTransformWidget->setCache(chunk_cache);
+    
+    // Connect distance transform widget to all existing viewers
+    for (auto& viewer : _viewers) {
+        connect(_distanceTransformWidget, &CDistanceTransformWidget::sendPointsChanged, 
+                viewer, &CVolumeViewer::onPointsChanged);
+    }
+    
+    // Tab the Distance Transform dock with the Segmentation dock
+    tabifyDockWidget(ui.dockWidgetSegmentation, ui.dockWidgetDistanceTransform);
+    
+    // Make segmentation dock the active tab by default
+    ui.dockWidgetDistanceTransform->raise();
 
     connect(treeWidgetSurfaces, &QTreeWidget::itemSelectionChanged, this, &CWindow::onSurfaceSelected);
     connect(btnReloadSurfaces, &QPushButton::clicked, this, &CWindow::onRefreshSurfaces);
@@ -225,7 +248,7 @@ void CWindow::CreateWidgets(void)
     // connect(ui.btnRemovePath, SIGNAL(clicked()), this, SLOT(OnRemovePathClicked()));
 
     // TODO CHANGE VOLUME LOADING; FIRST CHECK FOR OTHER VOLUMES IN THE STRUCTS
-    volSelect = this->findChild<QComboBox*>("volSelect");
+    volSelect = ui.volSelect;
     connect(
         volSelect, &QComboBox::currentIndexChanged, [this](const int& index) {
             vc::Volume::Pointer newVolume;
@@ -238,26 +261,26 @@ void CWindow::CreateWidgets(void)
             setVolume(newVolume);
         });
 
-    cmbFilterSegs = this->findChild<QComboBox*>("cmbFilterSegs");
+    cmbFilterSegs = ui.cmbFilterSegs;
     connect(cmbFilterSegs, &QComboBox::currentIndexChanged, this, &CWindow::onSegFilterChanged);
 
-    cmbSegmentationDir = this->findChild<QComboBox*>("cmbSegmentationDir");
+    cmbSegmentationDir = ui.cmbSegmentationDir;
     connect(cmbSegmentationDir, &QComboBox::currentIndexChanged, this, &CWindow::onSegmentationDirChanged);
 
     // Set up the status bar
-    statusBar = this->findChild<QStatusBar*>("statusBar");
+    statusBar = ui.statusBar;
 
     // Location input elements
-    lblLoc[0] = this->findChild<QLabel*>("sliceX");
-    lblLoc[1] = this->findChild<QLabel*>("sliceY");
-    lblLoc[2] = this->findChild<QLabel*>("sliceZ");
+    lblLoc[0] = ui.sliceX;
+    lblLoc[1] = ui.sliceY;
+    lblLoc[2] = ui.sliceZ;
     
-    spNorm[0] = this->findChild<QDoubleSpinBox*>("dspNX");
-    spNorm[1] = this->findChild<QDoubleSpinBox*>("dspNY");
-    spNorm[2] = this->findChild<QDoubleSpinBox*>("dspNZ");
+    spNorm[0] = ui.dspNX;
+    spNorm[1] = ui.dspNY;
+    spNorm[2] = ui.dspNZ;
     
-    _chkApproved = this->findChild<QCheckBox*>("chkApproved");
-    _chkDefective = this->findChild<QCheckBox*>("chkDefective");
+    _chkApproved = ui.chkApproved;
+    _chkDefective = ui.chkDefective;
     
     for(int i=0;i<3;i++)
         spNorm[i]->setRange(-10,10);
@@ -274,10 +297,10 @@ void CWindow::CreateWidgets(void)
     connect(_chkDefective, &QCheckBox::checkStateChanged, this, &CWindow::onTagChanged);
 #endif
 
-    _lblPointsInfo = this->findChild<QLabel*>("lblPointsInfo");
-    _btnResetPoints = this->findChild<QPushButton*>("btnResetPoints");
+    _lblPointsInfo = ui.lblPointsInfo;
+    _btnResetPoints = ui.btnResetPoints;
     connect(_btnResetPoints, &QPushButton::pressed, this, &CWindow::onResetPoints);
-    connect(this->findChild<QPushButton*>("btnEditMask"), &QPushButton::pressed, this, &CWindow::onEditMaskPressed);
+    connect(ui.btnEditMask, &QPushButton::pressed, this, &CWindow::onEditMaskPressed);
 }
 
 // Create menus
@@ -302,11 +325,12 @@ void CWindow::CreateMenus(void)
     fEditMenu = new QMenu(tr("&Edit"), this);
 
     fViewMenu = new QMenu(tr("&View"), this);
-    fViewMenu->addAction(findChild<QDockWidget*>("dockWidgetVolumes")->toggleViewAction());
-    fViewMenu->addAction(findChild<QDockWidget*>("dockWidgetSegmentation")->toggleViewAction());
-    fViewMenu->addAction(findChild<QDockWidget*>("dockWidgetOpList")->toggleViewAction());
-    fViewMenu->addAction(findChild<QDockWidget*>("dockWidgetOpSettings")->toggleViewAction());
-    fViewMenu->addAction(findChild<QDockWidget*>("dockWidgetLocation")->toggleViewAction());
+    fViewMenu->addAction(ui.dockWidgetVolumes->toggleViewAction());
+    fViewMenu->addAction(ui.dockWidgetSegmentation->toggleViewAction());
+    fViewMenu->addAction(ui.dockWidgetDistanceTransform->toggleViewAction());
+    fViewMenu->addAction(ui.dockWidgetOpList->toggleViewAction());
+    fViewMenu->addAction(ui.dockWidgetOpSettings->toggleViewAction());
+    fViewMenu->addAction(ui.dockWidgetLocation->toggleViewAction());
     fViewMenu->addSeparator();
     fViewMenu->addAction(fResetMdiView);
     fViewMenu->addSeparator();
@@ -438,9 +462,9 @@ void CWindow::closeEvent(QCloseEvent* event)
 
 void CWindow::setWidgetsEnabled(bool state)
 {
-    this->findChild<QGroupBox*>("grpVolManager")->setEnabled(state);
-    this->findChild<QGroupBox*>("grpSeg")->setEnabled(state);
-    this->findChild<QGroupBox*>("grpEditing")->setEnabled(state);
+    ui.grpVolManager->setEnabled(state);
+    ui.grpSeg->setEnabled(state);
+    ui.grpEditing->setEnabled(state);
 }
 
 auto CWindow::InitializeVolumePkg(const std::string& nVpkgPath) -> bool
@@ -468,8 +492,7 @@ void CWindow::UpdateView(void)
 {
     if (fVpkg == nullptr) {
         setWidgetsEnabled(false);  // Disable Widgets for User
-        this->findChild<QLabel*>("lblVpkgName")
-            ->setText("[ No Volume Package Loaded ]");
+        ui.lblVpkgName->setText("[ No Volume Package Loaded ]");
         return;
     }
 
@@ -486,7 +509,7 @@ void CWindow::UpdateView(void)
 void CWindow::UpdateVolpkgLabel(int filterCounter)
 {
     QString label = tr("%1 (%2 Surfaces | %3 filtered)").arg(QString::fromStdString(fVpkg->name())).arg(fVpkg->segmentationIDs().size()).arg(filterCounter);
-    this->findChild<QLabel*>("lblVpkgName")->setText(label);
+    ui.lblVpkgName->setText(label);
 }
 
 void CWindow::onShowStatusMessage(QString text, int timeout)
@@ -587,6 +610,11 @@ void CWindow::OpenVolume(const QString& path)
 
     LoadSurfaces();
     UpdateRecentVolpkgList(aVpkgPath);
+    
+    // Set volume package in Distance Transform widget
+    if (_distanceTransformWidget) {
+        _distanceTransformWidget->setVolumePkg(fVpkg);
+    }
 }
 
 void CWindow::CloseVolume(void)
@@ -814,6 +842,11 @@ void CWindow::onLocChanged(void)
 
 void CWindow::onVolumeClicked(cv::Vec3f vol_loc, cv::Vec3f normal, Surface *surf, Qt::MouseButton buttons, Qt::KeyboardModifiers modifiers)
 {
+    // Forward to Distance Transform widget if it exists
+    if (_distanceTransformWidget) {
+        _distanceTransformWidget->onPointSelected(vol_loc, normal);
+    }
+    
     if (modifiers & Qt::ShiftModifier) {
         if (modifiers & Qt::ControlModifier)
             _blue_points.push_back(vol_loc);

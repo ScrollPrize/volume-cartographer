@@ -40,6 +40,7 @@ namespace ChaoVis
 class CVolumeViewer;
 class CSurfaceCollection;
 class CSegmentationEditorWindow;
+class CDistanceTransformWidget;
 
 class CWindow : public QMainWindow
 {
@@ -169,6 +170,9 @@ private:
     QPushButton* _btnResetPoints;
     QuadSurface *_surf;
     SurfaceID _surfID;
+    
+    // Distance transform widget
+    CDistanceTransformWidget* _distanceTransformWidget;
 
     std::vector<cv::Vec3f> _red_points;
     std::vector<cv::Vec3f> _blue_points;

@@ -6,7 +6,9 @@
 #include <QThread>
 #include <QProcess>
 #include <QApplication>
+#include <QCoreApplication>
 #include <QFileInfo>
+#include <QProcessEnvironment>
 
 #include <opencv2/imgproc.hpp>
 
@@ -30,10 +32,20 @@ CDistanceTransformWidget::CDistanceTransformWidget(QWidget* parent)
     : QWidget(parent)
     , fVpkg(nullptr)
     , currentVolume(nullptr)
+    , chunkCache(nullptr)
     , currentZSlice(0)
     , hasSelectedPoint(false)
+    , waitingForSeedPoint(false)
 {
     setupUI();
+    
+    // Automatically find the executable path
+    executablePath = findExecutablePath();
+    if (executablePath.isEmpty()) {
+        QMessageBox::warning(this, "Warning", 
+            "Could not find vc_grow_seg_from_seed executable. "
+            "Please ensure it is built and in your PATH or in the build directory.");
+    }
 }
 
 CDistanceTransformWidget::~CDistanceTransformWidget() = default;
@@ -44,8 +56,24 @@ void CDistanceTransformWidget::setupUI()
     auto mainLayout = new QVBoxLayout(this);
     
     // Info label
-    infoLabel = new QLabel("Select a point to begin", this);
+    infoLabel = new QLabel("Click 'Set Seed' to begin", this);
     mainLayout->addWidget(infoLabel);
+    
+    // Set seed button
+    setSeedButton = new QPushButton("Set Seed", this);
+    setSeedButton->setToolTip("Click to enable point selection mode");
+    mainLayout->addWidget(setSeedButton);
+    
+    // Max radius control
+    auto maxRadiusLayout = new QHBoxLayout();
+    maxRadiusLayout->addWidget(new QLabel("Max Radius (pixels):", this));
+    maxRadiusSpinBox = new QSpinBox(this);
+    maxRadiusSpinBox->setRange(50, 20000);
+    maxRadiusSpinBox->setValue(1500);
+    maxRadiusSpinBox->setSingleStep(250);
+    maxRadiusSpinBox->setToolTip("Maximum distance from center point for ray casting");
+    maxRadiusLayout->addWidget(maxRadiusSpinBox);
+    mainLayout->addLayout(maxRadiusLayout);
     
     // Angle step control
     auto angleStepLayout = new QHBoxLayout();
@@ -86,62 +114,6 @@ void CDistanceTransformWidget::setupUI()
     windowSizeLayout->addWidget(windowSizeSpinBox);
     mainLayout->addLayout(windowSizeLayout);
     
-    // Volume selection for segmentation
-    auto volumeSelectLayout = new QHBoxLayout();
-    selectVolumeButton = new QPushButton("Select Volume Directory", this);
-    volumeSelectLayout->addWidget(selectVolumeButton);
-    mainLayout->addLayout(volumeSelectLayout);
-    
-    volumePathLabel = new QLabel("No volume directory selected", this);
-    volumePathLabel->setWordWrap(true);
-    volumePathLabel->setStyleSheet("color: gray; font-style: italic;");
-    mainLayout->addWidget(volumePathLabel);
-    
-    // Executable path input
-    auto execPathLayout = new QHBoxLayout();
-    execPathLayout->addWidget(new QLabel("vc_grow_seg_from_seed path:", this));
-    executablePathEdit = new QLineEdit(this);
-    executablePathEdit->setPlaceholderText("Path to vc_grow_seg_from_seed executable");
-    executablePathEdit->setText("vc_grow_seg_from_seed"); // Default assuming it's in PATH
-    executablePath = "vc_grow_seg_from_seed";
-    connect(executablePathEdit, &QLineEdit::textChanged, [this](const QString &text) {
-        executablePath = text;
-    });
-    
-    // Button to browse for executable
-    auto browseExecButton = new QPushButton("Browse...", this);
-    connect(browseExecButton, &QPushButton::clicked, this, [this]() {
-        QString filePath = QFileDialog::getOpenFileName(
-            this, 
-            "Select vc_grow_seg_from_seed Executable",
-            QString(),
-            "All Files (*)");
-        
-        if (!filePath.isEmpty()) {
-            executablePathEdit->setText(filePath);
-            executablePath = filePath;
-        }
-    });
-    
-    execPathLayout->addWidget(executablePathEdit);
-    execPathLayout->addWidget(browseExecButton);
-    mainLayout->addLayout(execPathLayout);
-    
-    // Connect volume selection button
-    connect(selectVolumeButton, &QPushButton::clicked, this, [this]() {
-        QString dirPath = QFileDialog::getExistingDirectory(
-            this, 
-            "Select Volume Directory", 
-            selectedVolumePath.isEmpty() ? QString() : selectedVolumePath,
-            QFileDialog::ShowDirsOnly | QFileDialog::DontResolveSymlinks);
-        
-        if (!dirPath.isEmpty()) {
-            selectedVolumePath = dirPath;
-            volumePathLabel->setText(selectedVolumePath);
-            volumePathLabel->setStyleSheet("color: black; font-style: normal;");
-        }
-    });
-    
     // Buttons
     castRaysButton = new QPushButton("Cast Rays", this);
     castRaysButton->setEnabled(false);
@@ -163,9 +135,16 @@ void CDistanceTransformWidget::setupUI()
     mainLayout->addWidget(progressBar);
     
     // Connect signals
+    connect(setSeedButton, &QPushButton::clicked, this, &CDistanceTransformWidget::onSetSeedClicked);
     connect(castRaysButton, &QPushButton::clicked, this, &CDistanceTransformWidget::onCastRaysClicked);
     connect(runSegmentationButton, &QPushButton::clicked, this, &CDistanceTransformWidget::onRunSegmentationClicked);
     connect(resetPointsButton, &QPushButton::clicked, this, &CDistanceTransformWidget::onResetPointsClicked);
+    
+    // Connect parameter changes to preview update
+    connect(maxRadiusSpinBox, QOverload<int>::of(&QSpinBox::valueChanged), 
+            this, &CDistanceTransformWidget::updateParameterPreview);
+    connect(angleStepSpinBox, QOverload<double>::of(&QDoubleSpinBox::valueChanged), 
+            this, &CDistanceTransformWidget::updateParameterPreview);
     
     // Set size policy
     setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);
@@ -185,6 +164,11 @@ void CDistanceTransformWidget::setCurrentVolume(std::shared_ptr<volcart::Volume>
         castRaysButton->setEnabled(false);
         runSegmentationButton->setEnabled(false);
     }
+}
+
+void CDistanceTransformWidget::setCache(ChunkCache* cache)
+{
+    chunkCache = cache;
 }
 
 void CDistanceTransformWidget::onVolumeChanged(std::shared_ptr<volcart::Volume> vol)
@@ -207,9 +191,19 @@ void CDistanceTransformWidget::updateCurrentZSlice(int z)
 
 void CDistanceTransformWidget::onPointSelected(cv::Vec3f point, cv::Vec3f normal)
 {
+    // Only accept points when waiting for seed selection
+    if (!waitingForSeedPoint) {
+        return;
+    }
+    
     selectedPoint = point;
     currentZSlice = static_cast<int>(point[2]);
     hasSelectedPoint = true;
+    waitingForSeedPoint = false;
+    
+    // Reset button text
+    setSeedButton->setText("Set Seed");
+    setSeedButton->setEnabled(true);
     
     infoLabel->setText(QString("Selected point: (%1, %2, %3)")
                            .arg(selectedPoint[0])
@@ -218,6 +212,9 @@ void CDistanceTransformWidget::onPointSelected(cv::Vec3f point, cv::Vec3f normal
     
     castRaysButton->setEnabled(currentVolume != nullptr);
     resetPointsButton->setEnabled(true);
+    
+    // Immediately show the parameter preview
+    updateParameterPreview();
 }
 
 void CDistanceTransformWidget::onCastRaysClicked()
@@ -270,7 +267,7 @@ void CDistanceTransformWidget::computeDistanceTransform()
     }
     
     // Read the slice data using the volume's dataset
-    readInterpolated3D(sliceData, currentVolume->zarrDataset(0), coords, nullptr);
+    readInterpolated3D(sliceData, currentVolume->zarrDataset(0), coords, chunkCache);
     
     // Threshold the slice to create a binary image for distance transform
     cv::Mat binaryImage;
@@ -304,7 +301,7 @@ void CDistanceTransformWidget::castRays()
     }
     
     // Read the slice data using the volume's dataset
-    readInterpolated3D(sliceData, currentVolume->zarrDataset(0), coords, nullptr);
+    readInterpolated3D(sliceData, currentVolume->zarrDataset(0), coords, chunkCache);
     
     // Setup progress tracking
     progressBar->setVisible(true);
@@ -337,7 +334,7 @@ void CDistanceTransformWidget::findPeaksAlongRay(
     const cv::Mat& distMap, 
     const cv::Mat& sliceData)
 {
-    const int maxDistance = std::max(distMap.cols, distMap.rows);
+    const int maxRadius = maxRadiusSpinBox->value();
     const int width = sliceData.cols;
     const int height = sliceData.rows;
     
@@ -348,8 +345,8 @@ void CDistanceTransformWidget::findPeaksAlongRay(
     // Get the window size from the spinbox
     const int window = windowSizeSpinBox->value();
     
-    // Trace ray
-    for (int dist = 1; dist < maxDistance; dist++) {
+    // Trace ray up to max radius
+    for (int dist = 1; dist < maxRadius; dist++) {
         int x = startPoint.x + dist * rayDir[0];
         int y = startPoint.y + dist * rayDir[1];
         
@@ -511,25 +508,18 @@ void CDistanceTransformWidget::onRunSegmentationClicked()
         return;
     }
     
-    // Prepare segmentation process
-    
-    // Verify we have a selected volume directory
-    if (selectedVolumePath.isEmpty()) {
-        QMessageBox::warning(this, "Error", "Please select a volume directory first.");
+    // Get the volume path from the current volume
+    if (!currentVolume) {
+        QMessageBox::warning(this, "Error", "No current volume selected.");
         progressBar->setVisible(false);
         runSegmentationButton->setEnabled(true);
         return;
     }
     
-    // Check if the selected volume directory exists
-    if (!QFileInfo(selectedVolumePath).exists() || !QFileInfo(selectedVolumePath).isDir()) {
-        QMessageBox::warning(this, "Error", "Selected volume directory does not exist or is not a directory.");
-        progressBar->setVisible(false);
-        runSegmentationButton->setEnabled(true);
-        return;
-    }
+    // Use the current volume's path
+    fs::path volumePath = currentVolume->path();
     
-    auto segmentationTask = [this, volumeId, pathsDir, seedJsonPath](const cv::Vec3f& point, int index) {
+    auto segmentationTask = [this, volumeId, pathsDir, seedJsonPath, volumePath](const cv::Vec3f& point, int index) {
         // Create a unique name for this segmentation point (for logging only)
         QString segName = QString("dt_seg_%1_%2_%3_%4")
                              .arg(point[0])
@@ -537,10 +527,9 @@ void CDistanceTransformWidget::onRunSegmentationClicked()
                              .arg(point[2])
                              .arg(index);
         
-        // Use the user-selected volume directory
-        fs::path zarr_path = selectedVolumePath.toStdString();
+        // Use the current volume's path
+        fs::path zarr_path = volumePath;
         
-        // Execute segmentation command using the user-specified executable path
         // From source: vc_grow_seg_from_seed <ome-zarr-volume> <tgt-dir> <json-params> <seed-x> <seed-y> <seed-z>
         QString cmd = QString("%1 \"%2\" \"%3\" \"%4\" %5 %6 %7")
                          .arg(executablePath)
@@ -617,7 +606,7 @@ void CDistanceTransformWidget::onRunSegmentationClicked()
         const auto& point = peakPoints[i];
         QString cmd = QString("%1 \"%2\" \"%3\" \"%4\" %5 %6 %7")
                          .arg(executablePath)
-                         .arg(QString::fromStdString(selectedVolumePath.toStdString()))
+                         .arg(QString::fromStdString(volumePath.string()))
                          .arg(QString::fromStdString(pathsDir.string()))
                          .arg(QString::fromStdString(seedJsonPath.string()))
                          .arg(point[0])
@@ -647,7 +636,7 @@ void CDistanceTransformWidget::onRunSegmentationClicked()
         // Start the process with nice and ionice for better system behavior
         std::cout << "Starting job " << i << ": " << cmd.toStdString() << std::endl;
         process->start("nice", QStringList() << "-n" << "19" << "ionice" << "-c" << "3" << executablePath <<
-                      QString::fromStdString(selectedVolumePath.toStdString()) <<
+                      QString::fromStdString(volumePath.string()) <<
                       QString::fromStdString(pathsDir.string()) <<
                       QString::fromStdString(seedJsonPath.string()) <<
                       QString::number(point[0]) <<
@@ -661,45 +650,39 @@ void CDistanceTransformWidget::onRunSegmentationClicked()
     // Keep track of next point to process
     int nextIndex = numProcesses;
     
-    // Main event loop to handle process completion and start new ones
-    while (!processes.isEmpty()) {
-        // Process events to handle finished signals
-        QApplication::processEvents();
-        
-        // Start new processes as slots become available
-        while (processes.size() < numProcesses && nextIndex < totalPoints) {
+    // Lambda to start next process
+    std::function<void()> startNextProcess = [&]() {
+        if (processes.size() < numProcesses && nextIndex < totalPoints) {
             // Create process for next point
             QProcess* process = new QProcess(this);
             process->setProcessChannelMode(QProcess::MergedChannels);
             process->setWorkingDirectory(QString::fromStdString(pathsDir.parent_path().string()));
             
-            // Prepare command for next point
             const auto& point = peakPoints[nextIndex];
+            const int currentIndex = nextIndex;
             
-            // Connect process finished signal
             connect(process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
-                [process, nextIndex, &processes, &activeIndices, &completedJobs, updateProgress, this](int exitCode, QProcess::ExitStatus exitStatus) {
+                [process, currentIndex, &processes, &activeIndices, &completedJobs, updateProgress, &startNextProcess, this](int exitCode, QProcess::ExitStatus exitStatus) {
                     // Log completion
                     if (exitCode != 0) {
-                        std::cerr << "Process " << nextIndex << " failed with exit code: " << exitCode << std::endl;
+                        std::cerr << "Process " << currentIndex << " failed with exit code: " << exitCode << std::endl;
                     } else {
-                        std::cout << "Completed segmentation for point " << nextIndex << std::endl;
+                        std::cout << "Completed segmentation for point " << currentIndex << std::endl;
                     }
                     
-                    // Remove from active list
-                    activeIndices.removeOne(nextIndex);
+                    activeIndices.removeOne(currentIndex);
                     processes.removeOne(process);
                     process->deleteLater();
                     
-                    // Update progress
                     completedJobs++;
                     updateProgress();
+                    
+                    startNextProcess();
                 });
             
-            // Start the process with nice and ionice for better system behavior
-            std::cout << "Starting job " << nextIndex << std::endl;
+            std::cout << "Starting job " << currentIndex << std::endl;
             process->start("nice", QStringList() << "-n" << "19" << "ionice" << "-c" << "3" << executablePath <<
-                          QString::fromStdString(selectedVolumePath.toStdString()) <<
+                          QString::fromStdString(volumePath.string()) <<
                           QString::fromStdString(pathsDir.string()) <<
                           QString::fromStdString(seedJsonPath.string()) <<
                           QString::number(point[0]) <<
@@ -707,12 +690,19 @@ void CDistanceTransformWidget::onRunSegmentationClicked()
                           QString::number(point[2]));
             
             processes.append(process);
-            activeIndices.append(nextIndex);
+            activeIndices.append(currentIndex);
             nextIndex++;
         }
+    };
+    
+    // Main event loop to handle process completion
+    while (!processes.isEmpty() || completedJobs < totalPoints) {
+        QApplication::processEvents(QEventLoop::AllEvents, 100);
         
-        // Small sleep to avoid CPU spinning
-        QThread::msleep(100);
+        // Start new processes as slots become available
+        while (processes.size() < numProcesses && nextIndex < totalPoints) {
+            startNextProcess();
+        }
     }
     
     // Final progress update
@@ -728,17 +718,102 @@ void CDistanceTransformWidget::onRunSegmentationClicked()
         5000);
 }
 
+void CDistanceTransformWidget::onSetSeedClicked()
+{
+    waitingForSeedPoint = true;
+    setSeedButton->setText("Click on volume to place seed...");
+    setSeedButton->setEnabled(false);
+    infoLabel->setText("Click on the volume viewer to select a seed point");
+    emit sendStatusMessageAvailable("Click on the volume to place a seed point", 5000);
+}
+
 void CDistanceTransformWidget::onResetPointsClicked()
 {
     peakPoints.clear();
     hasSelectedPoint = false;
-    infoLabel->setText("Select a point to begin");
+    waitingForSeedPoint = false;
+    
+    setSeedButton->setText("Set Seed");
+    setSeedButton->setEnabled(true);
+    infoLabel->setText("Click 'Set Seed' to begin");
     
     castRaysButton->setEnabled(false);
     runSegmentationButton->setEnabled(false);
     resetPointsButton->setEnabled(false);
     
     emit sendPointsChanged({}, {});
+}
+
+QString CDistanceTransformWidget::findExecutablePath()
+{
+    // vc_grow_seg_from_seed should be in the same directory as the VC3D application
+    QString execPath = QCoreApplication::applicationDirPath() + "/vc_grow_seg_from_seed";
+    
+    QFileInfo fileInfo(execPath);
+    if (fileInfo.exists() && fileInfo.isExecutable()) {
+        return fileInfo.absoluteFilePath();
+    }
+    
+    // If not found, return empty string
+    return QString();
+}
+
+void CDistanceTransformWidget::updateParameterPreview()
+{
+    if (!hasSelectedPoint || !currentVolume) {
+        return;
+    }
+    
+    // Clear any existing preview points
+    std::vector<cv::Vec3f> previewPoints;
+    std::vector<cv::Vec3f> seedPoints;
+    
+    // Add the seed point (will be displayed in blue)
+    seedPoints.push_back(selectedPoint);
+    
+    // Get parameter values
+    const double angleStep = angleStepSpinBox->value();
+    const int maxRadius = maxRadiusSpinBox->value();
+    const int numRays = static_cast<int>(360.0 / angleStep);
+    
+    // Generate preview points to show the radius and ray directions
+    for (int i = 0; i < numRays; i++) {
+        const double angle = i * angleStep * M_PI / 180.0;
+        const cv::Vec2f rayDir(cos(angle), sin(angle));
+        
+        // Add points along the radius circle
+        float x = selectedPoint[0] + maxRadius * rayDir[0];
+        float y = selectedPoint[1] + maxRadius * rayDir[1];
+        
+        // Check bounds
+        if (x >= 0 && x < currentVolume->sliceWidth() && 
+            y >= 0 && y < currentVolume->sliceHeight()) {
+            previewPoints.push_back(cv::Vec3f(x, y, currentZSlice));
+        }
+        
+        // Add a few intermediate points along each ray for visualization
+        for (int r = maxRadius / 4; r < maxRadius; r += maxRadius / 4) {
+            x = selectedPoint[0] + r * rayDir[0];
+            y = selectedPoint[1] + r * rayDir[1];
+            
+            if (x >= 0 && x < currentVolume->sliceWidth() && 
+                y >= 0 && y < currentVolume->sliceHeight()) {
+                previewPoints.push_back(cv::Vec3f(x, y, currentZSlice));
+            }
+        }
+    }
+    
+    // Send the preview points to the volume viewer
+    // Red points show the preview, blue point shows the seed
+    emit sendPointsChanged(previewPoints, seedPoints);
+    
+    // Update the info label
+    infoLabel->setText(QString("Seed at (%1, %2, %3) | Preview: %4 rays, radius %5px")
+                           .arg(selectedPoint[0])
+                           .arg(selectedPoint[1])
+                           .arg(selectedPoint[2])
+                           .arg(numRays)
+                           .arg(maxRadius));
 }
 
 } // namespace ChaoVis

@@ -17,6 +17,8 @@ namespace volcart {
     class VolumePkg;
 }
 
+class ChunkCache;
+
 namespace ChaoVis {
 
 class CDistanceTransformWidget : public QWidget {
@@ -28,6 +30,7 @@ public:
     
     void setVolumePkg(std::shared_ptr<volcart::VolumePkg> vpkg);
     void setCurrentVolume(std::shared_ptr<volcart::Volume> volume);
+    void setCache(ChunkCache* cache);
     
 signals:
     void sendPointsChanged(const std::vector<cv::Vec3f> red, const std::vector<cv::Vec3f> blue);
@@ -39,6 +42,7 @@ public slots:
     void updateCurrentZSlice(int z);
     
 private slots:
+    void onSetSeedClicked();
     void onCastRaysClicked();
     void onRunSegmentationClicked();
     void onResetPointsClicked();
@@ -49,21 +53,19 @@ private:
     void castRays();
     void findPeaksAlongRay(const cv::Vec2f& rayDir, const cv::Point& startPoint, const cv::Mat& distMap, const cv::Mat& sliceData);
     void runSegmentation();
+    QString findExecutablePath();
+    void updateParameterPreview();
     
     // UI elements
     QLabel* infoLabel;
+    QPushButton* setSeedButton;
     QDoubleSpinBox* angleStepSpinBox;
     QSpinBox* processesSpinBox;
     QSpinBox* thresholdSpinBox;  // Intensity threshold for peak detection
     QSpinBox* windowSizeSpinBox; // Window size for peak detection
+    QSpinBox* maxRadiusSpinBox;  // Max radius for ray casting
     
-    // Volume selection for segmentation
-    QPushButton* selectVolumeButton;
-    QLabel* volumePathLabel;
-    QString selectedVolumePath;
-    
-    // Executable path
-    QLineEdit* executablePathEdit;
+    // Executable path (automatically discovered)
     QString executablePath;
     
     QPushButton* castRaysButton;
@@ -74,11 +76,13 @@ private:
     // Data
     std::shared_ptr<volcart::VolumePkg> fVpkg;
     std::shared_ptr<volcart::Volume> currentVolume;
+    ChunkCache* chunkCache;
     cv::Vec3f selectedPoint;
     int currentZSlice;
     std::vector<cv::Vec3f> peakPoints;
     cv::Mat distanceTransform;
     bool hasSelectedPoint;
+    bool waitingForSeedPoint;
 };
 
 } // namespace ChaoVis

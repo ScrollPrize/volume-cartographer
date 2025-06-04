@@ -121,6 +121,36 @@
    </layout>
   </widget>
   <widget class="QStatusBar" name="statusBar"/>
+  <widget class="QDockWidget" name="dockWidgetDistanceTransform">
+   <property name="minimumSize">
+    <size>
+     <width>352</width>
+     <height>400</height>
+    </size>
+   </property>
+   <property name="allowedAreas">
+    <set>Qt::DockWidgetArea::LeftDockWidgetArea|Qt::DockWidgetArea::RightDockWidgetArea</set>
+   </property>
+   <property name="windowTitle">
+    <string>Distance Transform</string>
+   </property>
+   <attribute name="dockWidgetArea">
+    <number>2</number>
+   </attribute>
+   <widget class="QWidget" name="dockWidgetDistanceTransformContent">
+    <layout class="QVBoxLayout" name="verticalLayout_13">
+     <property name="leftMargin">
+      <number>3</number>
+     </property>
+     <property name="topMargin">
+      <number>3</number>
+     </property>
+     <property name="rightMargin">
+      <number>3</number>
+     </property>
+    </layout>
+   </widget>
+  </widget>
   <widget class="QDockWidget" name="dockWidgetVolumes">
    <property name="minimumSize">
     <size>
@@ -392,7 +422,7 @@
     <set>Qt::DockWidgetArea::LeftDockWidgetArea|Qt::DockWidgetArea::RightDockWidgetArea</set>
    </property>
    <property name="windowTitle">
-    <string>Segmentation</string>
+    <string>Tools</string>
    </property>
    <attribute name="dockWidgetArea">
     <number>2</number>
