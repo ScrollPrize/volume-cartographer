@@ -493,6 +493,39 @@ auto VolumePkg::segmentationNames() const -> std::vector<std::string>
     return names;
 }
 
+auto VolumePkg::segmentationIDsFromDirectory(const std::string& directory) const 
+    -> std::vector<Segmentation::Identifier>
+{
+    std::vector<Segmentation::Identifier> ids;
+    
+    // Build the path to the specified directory
+    fs::path segsDir = rootDir_ / directory;
+    
+    // Check if directory exists
+    if (!fs::exists(segsDir) || !fs::is_directory(segsDir)) {
+        return ids; // Return empty vector if directory doesn't exist
+    }
+    
+    // Scan the directory for segmentations
+    for (const auto& entry : fs::directory_iterator(segsDir)) {
+        fs::path dirpath = fs::canonical(entry);
+        if (fs::is_directory(dirpath)) {
+            // Check if it has a meta.json file (valid segmentation)
+            if (fs::exists(dirpath / "meta.json")) {
+                ids.push_back(dirpath.filename().string());
+            }
+        }
+    }
+    
+    return ids;
+}
+
+auto VolumePkg::hasDirectory(const std::string& directory) const -> bool
+{
+    fs::path dir = rootDir_ / directory;
+    return fs::exists(dir) && fs::is_directory(dir);
+}
+
 auto VolumePkg::InitConfig(const Dictionary& dict, int version) -> Metadata
 {
     Metadata config;

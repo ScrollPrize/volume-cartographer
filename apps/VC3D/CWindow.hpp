@@ -74,8 +74,14 @@ private:
     void UpdateRecentVolpkgActions(void);
     void UpdateRecentVolpkgList(const QString& path);
     void RemoveEntryFromRecentVolpkg(const QString& path);
+    
+    // Helper method for command line tools
+    bool initializeCommandLineRunner(void);
+    
+    // Helper method to get the current segment directory
+    std::string getCurrentSegmentDirectory() const;
 
-    CVolumeViewer *newConnectedCVolumeViewer(std::string show_slice, QMdiArea *mdiArea);
+    CVolumeViewer *newConnectedCVolumeViewer(std::string surfaceName, QString title, QMdiArea *mdiArea);
     void closeEvent(QCloseEvent* event);
 
     void setWidgetsEnabled(bool state);
@@ -100,6 +106,7 @@ private slots:
     void ShowSettings();
     void onSurfaceSelected(QTreeWidgetItem *current, QTreeWidgetItem *previous);
     void onSegFilterChanged(int index);
+    void onSegmentSourceChanged(int index);
     void onEditMaskPressed();
 private:
     std::shared_ptr<volcart::VolumePkg> fVpkg;
@@ -130,6 +137,7 @@ private:
 
     QComboBox* volSelect;
     QComboBox* cmbFilterSegs;
+    QComboBox* cmbSegmentSource;
     
     QCheckBox* _chkApproved;
     QCheckBox* _chkDefective;

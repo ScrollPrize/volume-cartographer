@@ -212,6 +212,9 @@ void CWindow::CreateWidgets(void)
 
     cmbFilterSegs = this->findChild<QComboBox*>("cmbFilterSegs");
     connect(cmbFilterSegs, &QComboBox::currentIndexChanged, this, &CWindow::onSegFilterChanged);
+    
+    cmbSegmentSource = this->findChild<QComboBox*>("cmbSegmentSource");
+    connect(cmbSegmentSource, &QComboBox::currentIndexChanged, this, &CWindow::onSegmentSourceChanged);
 
     // Set up the status bar
     statusBar = this->findChild<QStatusBar*>("statusBar");
@@ -574,6 +577,132 @@ void CWindow::OpenRecent()
         Open(action->data().toString());
 }
 
+void CWindow::LoadSurfaces(bool reload)
+{
+    std::cout << "Start of loading surfaces..." << std::endl;
+    std::cout << "Current segment directory: " << getCurrentSegmentDirectory() << std::endl;
+
+    if (reload && !InitializeVolumePkg(fVpkgPath.toStdString() + "/")) {
+        return;
+    }
+
+    SurfaceID id;
+    if (treeWidgetSurfaces->currentItem()) {
+        id = treeWidgetSurfaces->currentItem()->data(SURFACE_ID_COLUMN, Qt::UserRole).toString().toStdString();
+    }
+
+    // Prevent unwanted callbacks during (re-)loading
+    const QSignalBlocker blocker{treeWidgetSurfaces};
+    treeWidgetSurfaces->clear();
+
+    std::cout << "Clearing " << _vol_qsurfs.size() << " existing surfaces" << std::endl;
+    for (auto& pair : _vol_qsurfs) {
+        _surf_col->setSurface(pair.first, nullptr, true);
+        delete pair.second;
+    }
+
+    _vol_qsurfs.clear();
+    _opchains.clear();
+    
+    // Get segment IDs from the current directory
+    std::vector<std::string> seg_ids;
+    std::string currentDir = getCurrentSegmentDirectory();
+    
+    if (fVpkg->hasDirectory(currentDir)) {
+        seg_ids = fVpkg->segmentationIDsFromDirectory(currentDir);
+        std::cout << "Found " << seg_ids.size() << " segmentation IDs in " << currentDir << std::endl;
+    } else {
+        // Fallback to default if directory doesn't exist
+        seg_ids = fVpkg->segmentationIDs();
+        std::cout << "Directory " << currentDir << " not found, using default paths" << std::endl;
+    }
+    std::vector<std::pair<std::string,SurfaceMeta*>> load_sm(seg_ids.size());
+
+    int tracesCount = 0;
+    int pathsCount = 0;
+
+    #pragma omp parallel for
+    for(int i = 0; i < seg_ids.size(); i++) {
+        fs::path segPath;
+        bool validSegment = false;
+        
+        if (currentDir == "traces") {
+            // For traces directory, construct path directly
+            fs::path volpkgPath = fs::path(fVpkgPath.toStdString());
+            segPath = volpkgPath / "traces" / seg_ids[i];
+            
+            // Check if it's a valid tifxyz segment
+            if (fs::exists(segPath / "meta.json")) {
+                try {
+                    vc::Metadata segMeta(segPath / "meta.json");
+                    if (segMeta.hasKey("format") && segMeta.get<std::string>("format") == "tifxyz") {
+                        validSegment = true;
+                        #pragma omp atomic
+                        tracesCount++;
+                    }
+                } catch (const std::exception& e) {
+                    // Skip invalid metadata
+                }
+            }
+        } else {
+            // For paths directory, use the existing segmentation object
+            try {
+                auto seg = fVpkg->segmentation(seg_ids[i]);
+                if (seg->metadata().hasKey("format") && seg->metadata().get<std::string>("format") == "tifxyz") {
+                    segPath = seg->path();
+                    validSegment = true;
+                    #pragma omp atomic
+                    pathsCount++;
+                }
+            } catch (const std::exception& e) {
+                // Skip if segmentation not found
+            }
+        }
+        
+        if (validSegment) {
+            SurfaceMeta *sm = new SurfaceMeta(segPath);
+            sm->surface();
+            sm->readOverlapping();
+            load_sm[i] = {seg_ids[i], sm};
+        }
+    }
+    
+    if (getCurrentSegmentDirectory() == "traces") {
+        std::cout << "Loaded " << tracesCount << " surfaces from traces directory" << std::endl;
+    } else {
+        std::cout << "Loaded " << pathsCount << " surfaces from paths directory" << std::endl;
+    }
+        
+    for(auto &pair : load_sm) {
+        if (pair.second) {
+            //FIXME replace _vol_surfs with _surf_col by either upgrading _surf_col to surfacemeta
+            _vol_qsurfs[pair.first] = pair.second;
+            _surf_col->setSurface(pair.first, pair.second->surface(), true);
+        }
+    }
+    
+    FillSurfaceTree();
+
+    // Force tree widget refresh
+    treeWidgetSurfaces->update();
+    treeWidgetSurfaces->viewport()->update();
+    QApplication::processEvents();
+
+    // Re-apply filter to update views
+    onSegFilterChanged(cmbFilterSegs->currentIndex());
+
+    // Check if the previously selected item still exists and if yes, select it again.
+    if (!id.empty()) {
+        auto item = treeWidgetSurfaces->findItemForSurface(id);
+        if (item) {
+            item->setSelected(true);
+            treeWidgetSurfaces->setCurrentItem(item);
+        }
+    }
+
+    std::cout << "Loading of surfaces completed." << std::endl;
+}
+
 // Pop up about dialog
 void CWindow::Keybindings(void)
 {
@@ -816,9 +945,50 @@ void CWindow::onSurfaceSelected(QTreeWidgetItem *current, QTreeWidgetItem *previ
         }
     }
     else
-        std::cout << "ERROR loading " << surf_id << std::endl;
+        std::cout << "ERROR loading " << _surfID << std::endl;
 }
 
+void CWindow::FillSurfaceTree()
+{
+    const QSignalBlocker blocker{treeWidgetSurfaces};
+    treeWidgetSurfaces->clear();
+
+    for (auto& id : fVpkg->segmentationIDs()) {
+        auto* item = new SurfaceTreeWidgetItem(treeWidgetSurfaces);
+        item->setText(SURFACE_ID_COLUMN, QString(id.c_str()));
+        item->setData(SURFACE_ID_COLUMN, Qt::UserRole, QVariant(id.c_str()));
+        double size = _vol_qsurfs[id]->meta->value("area_cm2", -1.f);
+        item->setText(2, QString::number(size, 'f', 3));
+        double cost = _vol_qsurfs[id]->meta->value("avg_cost", -1.f);
+        item->setText(3, QString::number(cost, 'f', 3));
+        item->setText(4, QString::number(_vol_qsurfs[id]->overlapping_str.size()));
+
+        UpdateSurfaceTreeIcon(item);
+    }
+
+    treeWidgetSurfaces->resizeColumnToContents(0);
+    treeWidgetSurfaces->resizeColumnToContents(1);
+    treeWidgetSurfaces->resizeColumnToContents(2);
+    treeWidgetSurfaces->resizeColumnToContents(3);
+
+    if (!appInitComplete) {
+        // Apply initial sorting during apps tartup, but afterwards keep
+        // whatever the user chose
+        treeWidgetSurfaces->sortByColumn(SURFACE_ID_COLUMN, Qt::AscendingOrder);
+    }
+}
+
+void CWindow::UpdateSurfaceTreeIcon(SurfaceTreeWidgetItem *item)
+{
+    std::string id = item->data(SURFACE_ID_COLUMN, Qt::UserRole).toString().toStdString();
+
+    // Approved / defective icon
+    if (_vol_qsurfs[id]->surface()->meta) {
+        item->updateItemIcon(
+            _vol_qsurfs[id]->surface()->meta->value("tags", nlohmann::json::object_t()).count("approved"),
+            _vol_qsurfs[id]->surface()->meta->value("tags", nlohmann::json::object_t()).count("defective"));
+    }
+}
 
 void CWindow::onSegFilterChanged(int index)
 {
@@ -928,3 +1098,100 @@ void CWindow::onEditMaskPressed(void)
     
     QDesktopServices::openUrl(QUrl::fromLocalFile(path.string().c_str()));
 }
+
+void CWindow::onRefreshSurfaces()
+{
+    LoadSurfaces(true);
+}
+
+QString CWindow::getCurrentVolumePath() const
+{
+    if (currentVolume == nullptr) {
+        return QString();
+    }
+    return QString::fromStdString(currentVolume->path().string());
+}
+
+void CWindow::onToggleConsoleOutput()
+{
+    if (_cmdRunner) {
+        _cmdRunner->showConsoleOutput();
+    } else {
+        QMessageBox::information(this, tr("Console Output"), 
+                                tr("No command line tool has been run yet. The console will be available after running a tool."));
+    }
+}
+
+void CWindow::onSurfaceContextMenuRequested(const QPoint& pos)
+{
+    QTreeWidgetItem* item = treeWidgetSurfaces->itemAt(pos);
+    if (!item) {
+        return;
+    }
+    
+    SurfaceID segmentId = item->data(SURFACE_ID_COLUMN, Qt::UserRole).toString().toStdString();
+    
+    QMenu contextMenu(tr("Context Menu"), this);
+    
+    // Render segment action
+    QAction* renderAction = new QAction(tr("Render segment"), this);
+    connect(renderAction, &QAction::triggered, [this, segmentId]() {
+        onRenderSegment(segmentId);
+    });
+    
+    // Grow segment from segment action
+    QAction* growSegmentAction = new QAction(tr("Run Trace / Grow segment"), this);
+    connect(growSegmentAction, &QAction::triggered, [this, segmentId]() {
+        onGrowSegmentFromSegment(segmentId);
+    });
+    
+    // Add overlap action
+    QAction* addOverlapAction = new QAction(tr("Add overlap"), this);
+    connect(addOverlapAction, &QAction::triggered, [this, segmentId]() {
+        onAddOverlap(segmentId);
+    });
+    
+    // Convert to OBJ action
+    QAction* convertToObjAction = new QAction(tr("Convert to OBJ"), this);
+    connect(convertToObjAction, &QAction::triggered, [this, segmentId]() {
+        onConvertToObj(segmentId);
+    });
+    
+    // Seed submenu with options
+    QMenu* seedMenu = new QMenu(tr("Run Seed"), &contextMenu);
+    
+    // Seed with Seed.json action
+    QAction* seedWithSeedAction = new QAction(tr("Seed from Focus Point"), seedMenu);
+    connect(seedWithSeedAction, &QAction::triggered, [this, segmentId]() {
+        onGrowSeeds(segmentId, false, false);
+    });
+    
+    // Random Seed with Seed.json action
+    QAction* seedWithRandomAction = new QAction(tr("Random Seed"), seedMenu);
+    connect(seedWithRandomAction, &QAction::triggered, [this, segmentId]() {
+        onGrowSeeds(segmentId, false, true);
+    });
+    
+    // Seed with Expand.json action
+    QAction* seedWithExpandAction = new QAction(tr("Expand Seed"), seedMenu);
+    connect(seedWithExpandAction, &QAction::triggered, [this, segmentId]() {
+        onGrowSeeds(segmentId, true, false);
+    });
+    
+    seedMenu->addAction(seedWithSeedAction);
+    seedMenu->addAction(seedWithRandomAction);
+    seedMenu->addAction(seedWithExpandAction);
+    
+    // Add all actions to the context menu
+    contextMenu.addMenu(seedMenu);
+    contextMenu.addAction(growSegmentAction);
+    contextMenu.addAction(addOverlapAction);
+    contextMenu.addSeparator();
+    contextMenu.addAction(renderAction);
+    contextMenu.addSeparator();
+    contextMenu.addAction(convertToObjAction);    
+    
+    // show the context menu at the position of the right-click
+    contextMenu.exec(treeWidgetSurfaces->mapToGlobal(pos));
+}
+

@@ -188,6 +188,48 @@
            </widget>
           </item>
           <item>
+           <widget class="QLabel" name="label_segment_source">
+            <property name="text">
+             <string>Segment Source</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QComboBox" name="cmbSegmentSource">
+            <item>
+             <property name="text">
+              <string>Paths</string>
+             </property>
+            </item>
+            <item>
+             <property name="text">
+              <string>Traces</string>
+             </property>
+            </item>
+           </widget>
+          </item>
+          <item>
+           <widget class="QLabel" name="label_segment_source">
+            <property name="text">
+             <string>Segment Source</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QComboBox" name="cmbSegmentSource">
+            <item>
+             <property name="text">
+              <string>Paths</string>
+             </property>
+            </item>
+            <item>
+             <property name="text">
+              <string>Traces</string>
+             </property>
+            </item>
+           </widget>
+          </item>
+          <item>
            <widget class="QTreeWidget" name="treeWidgetSurfaces">
             <property name="indentation">
              <number>0</number>

@@ -192,6 +192,13 @@ public:
     /** @brief Get the list of Segmentation names */
     [[nodiscard]] auto segmentationNames() const -> std::vector<std::string>;
 
+    /** @brief Get the list of Segmentation IDs from a specific directory */
+    [[nodiscard]] auto segmentationIDsFromDirectory(const std::string& directory) const
+        -> std::vector<Segmentation::Identifier>;
+
+    /** @brief Check if a directory exists in the volpkg */
+    [[nodiscard]] auto hasDirectory(const std::string& directory) const -> bool;
+
     /** @brief Get a Segmentation by uuid */
     [[nodiscard]] auto segmentation(const Segmentation::Identifier& id) const
         -> const Segmentation::Pointer;
