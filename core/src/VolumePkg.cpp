@@ -598,3 +598,30 @@ auto VolumePkg::getAvailableSegmentationDirectories() const -> std::vector<std::
     
     return dirs;
 }
+
+void VolumePkg::removeSegmentation(const Segmentation::Identifier& id)
+{
+    // Check if segmentation exists
+    auto it = segmentations_.find(id);
+    if (it == segmentations_.end()) {
+        throw std::runtime_error("Segmentation not found: " + id);
+    }
+    
+    // Get the path before removing
+    fs::path segPath = it->second->path();
+    
+    // Remove from internal map
+    segmentations_.erase(it);
+    
+    // Remove from files vector
+    auto fileIt = std::find(segmentation_files_.begin(), 
+                           segmentation_files_.end(), segPath);
+    if (fileIt != segmentation_files_.end()) {
+        segmentation_files_.erase(fileIt);
+    }
+    
+    // Delete the physical folder
+    if (fs::exists(segPath)) {
+        fs::remove_all(segPath);
+    }
+}

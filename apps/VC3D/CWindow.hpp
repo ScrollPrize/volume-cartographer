@@ -72,10 +72,14 @@ public slots:
     void onConvertToObj(const SurfaceID& segmentId);
     void onGrowSeeds(const SurfaceID& segmentId, bool isExpand, bool isRandomSeed = false);
     void onToggleConsoleOutput();
+    void onDeleteSegments(const std::vector<SurfaceID>& segmentIds);
 
 public:
     CWindow();
     ~CWindow(void);
+    
+    // Helper method to get the current volume path
+    QString getCurrentVolumePath() const;
 
 private:
     void CreateWidgets(void);
@@ -111,9 +115,6 @@ private:
     void playPing();
 
     void setVolume(std::shared_ptr<volcart::Volume> newvol);
-    
-    // Helper method to get the current volume path
-    QString getCurrentVolumePath() const;
 
 private slots:
     void Open(void);
