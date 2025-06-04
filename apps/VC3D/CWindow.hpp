@@ -125,6 +125,7 @@ private slots:
     void ResetSegmentationViews();
     void onSurfaceSelected(QTreeWidgetItem *current, QTreeWidgetItem *previous);
     void onSegFilterChanged(int index);
+    void onSegmentationDirChanged(int index);
     void onEditMaskPressed();
     void onRefreshSurfaces();
 
@@ -159,6 +160,7 @@ private:
 
     QComboBox* volSelect;
     QComboBox* cmbFilterSegs;
+    QComboBox* cmbSegmentationDir;
     
     QCheckBox* _chkApproved;
     QCheckBox* _chkDefective;

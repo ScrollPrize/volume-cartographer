@@ -100,6 +100,13 @@ QPointF visible_center(QGraphicsView *view)
 
 void scene2vol(cv::Vec3f &p, cv::Vec3f &n, Surface *_surf, const std::string &_surf_name, CSurfaceCollection *_surf_col, const QPointF &scene_loc, const cv::Vec2f &_vis_center, float _ds_scale)
 {
+    // Safety check for null surface
+    if (!_surf) {
+        p = cv::Vec3f(0, 0, 0);
+        n = cv::Vec3f(0, 0, 1);
+        return;
+    }
+    
     //for PlaneSurface we work with absolute coordinates only
     // if (dynamic_cast<PlaneSurface*>(_surf)) {
         cv::Vec3f surf_loc = {scene_loc.x()/_ds_scale, scene_loc.y()/_ds_scale,0};
@@ -127,7 +134,7 @@ void scene2vol(cv::Vec3f &p, cv::Vec3f &n, Surface *_surf, const std::string &_s
 
 void CVolumeViewer::onCursorMove(QPointF scene_loc)
 {
-    if (!_surf)
+    if (!_surf || !_surf_col)
         return;
 
     POI *cursor = _surf_col->poi("cursor");

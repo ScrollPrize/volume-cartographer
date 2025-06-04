@@ -240,6 +240,9 @@ void CWindow::CreateWidgets(void)
     cmbFilterSegs = this->findChild<QComboBox*>("cmbFilterSegs");
     connect(cmbFilterSegs, &QComboBox::currentIndexChanged, this, &CWindow::onSegFilterChanged);
 
+    cmbSegmentationDir = this->findChild<QComboBox*>("cmbSegmentationDir");
+    connect(cmbSegmentationDir, &QComboBox::currentIndexChanged, this, &CWindow::onSegmentationDirChanged);
+
     // Set up the status bar
     statusBar = this->findChild<QStatusBar*>("statusBar");
 
@@ -559,6 +562,23 @@ void CWindow::OpenVolume(const QString& path)
             QVariant(QString::fromStdString(id)));
     }
 
+    // Populate the segmentation directory dropdown
+    {
+        const QSignalBlocker blocker{cmbSegmentationDir};
+        cmbSegmentationDir->clear();
+        
+        auto availableDirs = fVpkg->getAvailableSegmentationDirectories();
+        for (const auto& dirName : availableDirs) {
+            cmbSegmentationDir->addItem(QString::fromStdString(dirName));
+        }
+        
+        // Select the current directory (default is "paths")
+        int currentIndex = cmbSegmentationDir->findText(QString::fromStdString(fVpkg->getSegmentationDirectory()));
+        if (currentIndex >= 0) {
+            cmbSegmentationDir->setCurrentIndex(currentIndex);
+        }
+    }
+
     LoadSurfaces();
     UpdateRecentVolpkgList(aVpkgPath);
 }
@@ -619,14 +639,29 @@ void CWindow::LoadSurfaces(bool reload)
 
     // Prevent unwanted callbacks during (re-)loading
     const QSignalBlocker blocker{treeWidgetSurfaces};
+    
+    // First clear the segmentation surface to notify viewers
+    _surf_col->setSurface("segmentation", nullptr, true);
+    
+    // Clear current surface selection
+    _surf = nullptr;
+    _surfID.clear();
+    
+    // Then clear the tree
     treeWidgetSurfaces->clear();
 
+    // Clear all surfaces from the collection
     for (auto& pair : _vol_qsurfs) {
         _surf_col->setSurface(pair.first, nullptr, true);
         delete pair.second;
     }
 
     _vol_qsurfs.clear();
+    
+    // Clear opchains
+    for (auto& pair : _opchains) {
+        delete pair.second;
+    }
     _opchains.clear();
     
     std::vector<std::string> seg_ids = fVpkg->segmentationIDs();
@@ -1190,3 +1225,40 @@ void CWindow::onSurfaceContextMenuRequested(const QPoint& pos)
     contextMenu.exec(treeWidgetSurfaces->mapToGlobal(pos));
 }
 
+void CWindow::onSegmentationDirChanged(int index)
+{
+    if (!fVpkg || index < 0 || !cmbSegmentationDir) {
+        return;
+    }
+    
+    std::string newDir = cmbSegmentationDir->itemText(index).toStdString();
+    
+    // Only reload if the directory actually changed
+    if (newDir != fVpkg->getSegmentationDirectory()) {
+        // Clear the current segmentation surface first to ensure viewers update
+        _surf_col->setSurface("segmentation", nullptr, true);
+        
+        // Clear current surface selection
+        _surf = nullptr;
+        _surfID.clear();
+        
+        // Clear checkboxes
+        {
+            const QSignalBlocker b1{_chkApproved};
+            const QSignalBlocker b2{_chkDefective};
+            _chkApproved->setCheckState(Qt::Unchecked);
+            _chkDefective->setCheckState(Qt::Unchecked);
+            _chkApproved->setEnabled(false);
+            _chkDefective->setEnabled(false);
+        }
+        
+        // Set the new directory in the VolumePkg
+        fVpkg->setSegmentationDirectory(newDir);
+        
+        // Reload surfaces from the new directory
+        LoadSurfaces(false);
+        
+        // Update the status bar to show the change
+        statusBar->showMessage(tr("Switched to %1 directory").arg(QString::fromStdString(newDir)), 3000);
+    }
+}
