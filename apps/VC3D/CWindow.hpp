@@ -124,7 +124,7 @@ private slots:
     void About(void);
     void ShowSettings();
     void ResetSegmentationViews();
-    void onSurfaceSelected(QTreeWidgetItem *current, QTreeWidgetItem *previous);
+    void onSurfaceSelected();
     void onSegFilterChanged(int index);
     void onSegmentationDirChanged(int index);
     void onEditMaskPressed();
