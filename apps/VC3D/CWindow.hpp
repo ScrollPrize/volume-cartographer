@@ -6,16 +6,20 @@
 #include <opencv2/core.hpp>
 #include "ui_VCMain.h"
 
+#include "CommandLineToolRunner.hpp"
+#include "vc/core/util/SurfaceDef.hpp"
+
 #define MAX_RECENT_VOLPKG 10
 
 // Volpkg version required by this app
 static constexpr int VOLPKG_MIN_VERSION = 6;
 static constexpr int VOLPKG_SLICE_MIN_INDEX = 0;
 
-//our own fw declarations
+// Our own forward declarations
 class ChunkCache;
 class Surface;
 class QuadSurface;
+class SurfaceMeta;
 class OpChain;
 
 namespace volcart {
@@ -23,17 +27,19 @@ namespace volcart {
     class VolumePkg;
 }
 
-//Qt fw declaration
+// Qt related forward declaration
 class QMdiArea;
 class OpsList;
 class OpsSettings;
-class SurfaceMeta;
+class SurfaceTreeWidget;
+class SurfaceTreeWidgetItem;
 
 namespace ChaoVis
 {
 
 class CVolumeViewer;
 class CSurfaceCollection;
+class CSegmentationEditorWindow;
 
 class CWindow : public QMainWindow
 {
@@ -59,6 +65,13 @@ public slots:
     void onOpChainChanged(OpChain *chain);
     void onTagChanged(void);
     void onResetPoints(void);
+    void onSurfaceContextMenuRequested(const QPoint& pos);
+    void onRenderSegment(const SurfaceID& segmentId);
+    void onGrowSegmentFromSegment(const SurfaceID& segmentId);
+    void onAddOverlap(const SurfaceID& segmentId);
+    void onConvertToObj(const SurfaceID& segmentId);
+    void onGrowSeeds(const SurfaceID& segmentId, bool isExpand, bool isRandomSeed = false);
+    void onToggleConsoleOutput();
 
 public:
     CWindow();
@@ -69,7 +82,11 @@ private:
     void CreateMenus(void);
     void CreateActions(void);
 
+    void FillSurfaceTree(void);
+    void UpdateSurfaceTreeIcon(SurfaceTreeWidgetItem *item);
+
     void UpdateView(void);
+    void UpdateVolpkgLabel(int filterCounter);
 
     void UpdateRecentVolpkgActions(void);
     void UpdateRecentVolpkgList(const QString& path);
@@ -91,11 +108,15 @@ private:
 
     void OpenVolume(const QString& path);
     void CloseVolume(void);
+    void LoadSurfaces(bool reload = false);
 
     static void audio_callback(void *user_data, uint8_t *raw_buffer, int bytes);
     void playPing();
 
     void setVolume(std::shared_ptr<volcart::Volume> newvol);
+    
+    // Helper method to get the current volume path
+    QString getCurrentVolumePath() const;
 
 private slots:
     void Open(void);
@@ -104,11 +125,15 @@ private slots:
     void Keybindings(void);
     void About(void);
     void ShowSettings();
+    void ResetSegmentationViews();
     void onSurfaceSelected(QTreeWidgetItem *current, QTreeWidgetItem *previous);
     void onSegFilterChanged(int index);
     void onSegmentSourceChanged(int index);
     void onEditMaskPressed();
+    void onRefreshSurfaces();
+
 private:
+    bool appInitComplete{false};
     std::shared_ptr<volcart::VolumePkg> fVpkg;
     Surface *_seg_surf;
     QString fVpkgPath;
@@ -133,7 +158,8 @@ private:
     QAction* fExitAct;
     QAction* fKeybinds;
     QAction* fAboutAct;
-    QAction* fPrintDebugInfo;
+    QAction* fResetMdiView;
+    QAction* fShowConsoleOutputAct;
 
     QComboBox* volSelect;
     QComboBox* cmbFilterSegs;
@@ -144,20 +170,23 @@ private:
     QLabel* _lblPointsInfo;
     QPushButton* _btnResetPoints;
     QuadSurface *_surf;
+    SurfaceID _surfID;
 
     std::vector<cv::Vec3f> _red_points;
     std::vector<cv::Vec3f> _blue_points;
     
-    QTreeWidget *treeWidgetSurfaces;
+    SurfaceTreeWidget *treeWidgetSurfaces;
     OpsList *wOpsList;
     OpsSettings *wOpsSettings;
+    QPushButton *btnReloadSurfaces;
     
     //TODO abstract these into separate QWidget class?
     QLabel* lblLoc[3];
     QDoubleSpinBox* spNorm[3];
 
-    Ui_VCMainWindow ui;
 
+    Ui_VCMainWindow ui;
+    QMdiArea *mdiArea;
     QStatusBar* statusBar;
 
     bool can_change_volume_();
@@ -166,8 +195,11 @@ private:
     std::vector<CVolumeViewer*> _viewers;
     CSurfaceCollection *_surf_col;
 
-    std::unordered_map<std::string,OpChain*> _opchains;
-    std::unordered_map<std::string,SurfaceMeta*> _vol_qsurfs;
+    std::unordered_map<std::string, OpChain*> _opchains;
+    std::unordered_map<std::string, SurfaceMeta*> _vol_qsurfs;
+    
+    // runner for command line tools 
+    CommandLineToolRunner* _cmdRunner;
 };  // class CWindow
 
 }  // namespace ChaoVis

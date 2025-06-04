@@ -5,6 +5,10 @@
 #include <opencv2/core.hpp> 
 #include <nlohmann/json_fwd.hpp>
 
+#include "SurfaceDef.hpp"
+
+#define Z_DBG_GEN_PREFIX "z_dbg_gen_"
+
 class QuadSurface;
 class ChunkCache;
 
@@ -47,7 +51,9 @@ cv::Vec3f vy_from_orig_norm(const cv::Vec3f &o, const cv::Vec3f &n);
 //base surface class
 class Surface
 {
-public:    
+public:
+    virtual ~Surface();
+
     // a pointer in some central location
     virtual SurfacePointer *pointer() = 0;
     
@@ -66,13 +72,14 @@ public:
     virtual void gen(cv::Mat_<cv::Vec3f> *coords, cv::Mat_<cv::Vec3f> *normals, cv::Size size, SurfacePointer *ptr, float scale, const cv::Vec3f &offset) = 0;
     nlohmann::json *meta = nullptr;
     std::filesystem::path path;
+    SurfaceID id;
 };
 
 class PlaneSurface : public Surface
 {
 public:
     //Surface API FIXME
-    SurfacePointer *pointer() override;
+    TrivialSurfacePointer *pointer() override;
     void move(SurfacePointer *ptr, const cv::Vec3f &offset);
     bool valid(SurfacePointer *ptr, const cv::Vec3f &offset = {0,0,0}) override { return true; };
     cv::Vec3f loc(SurfacePointer *ptr, const cv::Vec3f &offset = {0,0,0}) override;
@@ -103,9 +110,13 @@ protected:
 class QuadSurface : public Surface
 {
 public:
-    SurfacePointer *pointer();
+    TrivialSurfacePointer *pointer();
     QuadSurface() {};
+    // points will be cloned in constructor
     QuadSurface(const cv::Mat_<cv::Vec3f> &points, const cv::Vec2f &scale);
+    // points will not be cloned in constructor, but pointer stored
+    QuadSurface(cv::Mat_<cv::Vec3f> *points, const cv::Vec2f &scale);
+    ~QuadSurface();
     void move(SurfacePointer *ptr, const cv::Vec3f &offset) override;
     bool valid(SurfacePointer *ptr, const cv::Vec3f &offset = {0,0,0}) override;
     cv::Vec3f loc(SurfacePointer *ptr, const cv::Vec3f &offset = {0,0,0}) override;
@@ -120,15 +131,15 @@ public:
     void save_meta();
     Rect3D bbox();
 
-    virtual cv::Mat_<cv::Vec3f> rawPoints() { return _points; }
-    virtual void setRawPoints(cv::Mat_<cv::Vec3f> points) { _points = points; }
+    virtual cv::Mat_<cv::Vec3f> rawPoints() { return *_points; }
+    virtual cv::Mat_<cv::Vec3f> *rawPointsPtr() { return _points; }
 
     friend QuadSurface *regularized_local_quad(QuadSurface *src, SurfacePointer *ptr, int w, int h, int step_search, int step_out);
     friend QuadSurface *smooth_vc_segmentation(QuadSurface *src);
     friend class ControlPointSurface;
     cv::Vec2f _scale;
 protected:
-    cv::Mat_<cv::Vec3f> _points;
+    cv::Mat_<cv::Vec3f>* _points = nullptr;
     cv::Rect _bounds;
     cv::Vec3f _center;
     Rect3D _bbox = {{-1,-1,-1},{-1,-1,-1}};
@@ -205,14 +216,15 @@ public:
     SurfaceMeta() {};
     SurfaceMeta(const std::filesystem::path &path_, const nlohmann::json &json);
     SurfaceMeta(const std::filesystem::path &path_);
+    ~SurfaceMeta();
     void readOverlapping();
-    QuadSurface *surf();
-    void setSurf(QuadSurface *surf);
+    QuadSurface *surface();
+    void setSurface(QuadSurface *surf);
     std::string name();
     std::filesystem::path path;
     QuadSurface *_surf = nullptr;
     Rect3D bbox;
-    nlohmann::json *meta;
+    nlohmann::json *meta = nullptr;
     std::set<std::string> overlapping_str;
     std::set<SurfaceMeta*> overlapping;
 };
@@ -222,7 +234,7 @@ bool overlap(SurfaceMeta &a, SurfaceMeta &b, int max_iters = 1000);
 bool contains(SurfaceMeta &a, const cv::Vec3f &loc, int max_iters = 1000);
 bool contains(SurfaceMeta &a, const std::vector<cv::Vec3f> &locs);
 
-//TODO constrain to visible area? or add visiable area disaplay?
+//TODO constrain to visible area? or add visible area display?
 void find_intersect_segments(std::vector<std::vector<cv::Vec3f>> &seg_vol, std::vector<std::vector<cv::Vec2f>> &seg_grid, const cv::Mat_<cv::Vec3f> &points, PlaneSurface *plane, const cv::Rect &plane_roi, float step, int min_tries = 10);
 
 float min_loc(const cv::Mat_<cv::Vec3f> &points, cv::Vec2f &loc, cv::Vec3f &out, const std::vector<cv::Vec3f> &tgts, const std::vector<float> &tds, PlaneSurface *plane, float init_step = 16.0, float min_step = 0.125);

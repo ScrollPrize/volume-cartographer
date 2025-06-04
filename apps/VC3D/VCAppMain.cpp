@@ -20,9 +20,9 @@ auto main(int argc, char* argv[]) -> int
     
     QApplication app(argc, argv);
     QApplication::setOrganizationName("EduceLab");
-    QApplication::setApplicationName("VC");
-    QApplication::setApplicationVersion(
-        QString::fromStdString(vc::ProjectInfo::VersionString()));
+    QApplication::setApplicationName("VC3D");
+    QApplication::setWindowIcon(QIcon(":/images/logo.png"));
+    QApplication::setApplicationVersion(QString::fromStdString(vc::ProjectInfo::VersionString()));
 
     CWindow aWin;
     aWin.show();

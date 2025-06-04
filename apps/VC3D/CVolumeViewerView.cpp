@@ -22,12 +22,15 @@ void CVolumeViewerView::scrollContentsBy(int dx, int dy)
 
 void CVolumeViewerView::wheelEvent(QWheelEvent *event)
 {
+    // Get raw delta value and use smaller divisor for higher sensitivity
     int num_degrees = event->angleDelta().y() / 8;
     
     QPointF global_loc = viewport()->mapFromGlobal(event->globalPosition());
     QPointF scene_loc = mapToScene({int(global_loc.x()),int(global_loc.y())});
 
-    sendZoom(num_degrees/15, scene_loc, event->modifiers());
+    // Send the zoom event with a more sensitive delta value
+    // Changed from /15 to /5 to make it more responsive to small wheel movements
+    sendZoom(num_degrees/5, scene_loc, event->modifiers());
     
     event->accept();
 }

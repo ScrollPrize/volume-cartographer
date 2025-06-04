@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>400</width>
-    <height>300</height>
+    <height>50</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -18,12 +18,12 @@
     <widget class="QComboBox" name="comboBox">
      <item>
       <property name="text">
-       <string>raw</string>
+       <string>Raw</string>
       </property>
      </item>
      <item>
       <property name="text">
-       <string>blur</string>
+       <string>Blur</string>
       </property>
      </item>
     </widget>
@@ -31,7 +31,7 @@
    <item row="0" column="0">
     <widget class="QLabel" name="label">
      <property name="text">
-      <string>meshing algorithm</string>
+      <string>Meshing Algorithm</string>
      </property>
     </widget>
    </item>

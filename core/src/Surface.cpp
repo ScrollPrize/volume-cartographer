@@ -33,6 +33,13 @@ static cv::Vec3f nominal_loc(const cv::Vec3f &nominal, const cv::Vec3f &internal
     return nominal + cv::Vec3f(internal[0]/scale[0], internal[1]/scale[1], internal[2]);
 }
 
+Surface::~Surface()
+{
+    if (meta) {
+        delete meta;
+    }
+}
+
 PlaneSurface::PlaneSurface(cv::Vec3f origin_, cv::Vec3f normal) : _origin(origin_)
 {
     cv::normalize(normal, _normal);
@@ -196,7 +203,7 @@ void PlaneSurface::gen(cv::Mat_<cv::Vec3f> *coords, cv::Mat_<cv::Vec3f> *normals
         }
 }
 
-SurfacePointer *PlaneSurface::pointer()
+TrivialSurfacePointer *PlaneSurface::pointer()
 {
     return new TrivialSurfacePointer({0,0,0});
 }
@@ -231,19 +238,30 @@ cv::Vec3f PlaneSurface::normal(SurfacePointer *ptr, const cv::Vec3f &offset)
     return _normal;
 }
 
-//TODO add non-cloning variant?
-QuadSurface::QuadSurface(const cv::Mat_<cv::Vec3f> &points, const cv::Vec2f &scale)
+QuadSurface::QuadSurface(const cv::Mat_<cv::Vec3f> &points, const cv::Vec2f &scale) : 
+    QuadSurface(new cv::Mat_<cv::Vec3f>(points.clone()), scale)
 {
-    _points = points.clone();
+}
+
+QuadSurface::QuadSurface(cv::Mat_<cv::Vec3f> *points, const cv::Vec2f &scale)
+{
+    _points = points;
     //-1 as many times we read with linear interpolation and access +1 locations
-    _bounds = {0,0,points.cols-1,points.rows-1};
+    _bounds = {0,0,_points->cols-1,_points->rows-1};
     _scale = scale;
-    _center = {points.cols/2.0/_scale[0],points.rows/2.0/_scale[1],0};
+    _center = {_points->cols/2.0/_scale[0],_points->rows/2.0/_scale[1],0};
+}
+
+QuadSurface::~QuadSurface()
+{
+    if (_points) {
+        delete _points;
+    }
 }
 
 QuadSurface *smooth_vc_segmentation(QuadSurface *src)
 {
-    cv::Mat_<cv::Vec3f> points = smooth_vc_segmentation(src->_points);
+    cv::Mat_<cv::Vec3f> points = smooth_vc_segmentation(src->rawPoints());
     
     double sx, sy;
     vc_segmentation_scales(points, sx, sy);
@@ -251,7 +269,7 @@ QuadSurface *smooth_vc_segmentation(QuadSurface *src)
     return new QuadSurface(points, {sx,sy});
 }
 
-SurfacePointer *QuadSurface::pointer()
+TrivialSurfacePointer *QuadSurface::pointer()
 {
     return new TrivialSurfacePointer({0,0,0});
 }
@@ -279,11 +297,11 @@ cv::Vec3f QuadSurface::coord(SurfacePointer *ptr, const cv::Vec3f &offset)
     assert(ptr_inst);
     cv::Vec3f p = internal_loc(offset+_center, ptr_inst->loc, _scale);
 
-    cv::Rect bounds = {0,0,_points.cols-2,_points.rows-2};
+    cv::Rect bounds = {0,0,_points->cols-2,_points->rows-2};
     if (!bounds.contains(cv::Point(p[0],p[1])))
         return {-1,-1,-1};
         
-    return at_int(_points, {p[0],p[1]});
+    return at_int((*_points), {p[0],p[1]});
 }
 
 cv::Vec3f QuadSurface::loc(SurfacePointer *ptr, const cv::Vec3f &offset)
@@ -308,7 +326,7 @@ cv::Vec3f QuadSurface::normal(SurfacePointer *ptr, const cv::Vec3f &offset)
     assert(ptr_inst);
     cv::Vec3f p = internal_loc(offset+_center, ptr_inst->loc, _scale);
     
-    return grid_normal(_points, p);
+    return grid_normal((*_points), p);
 }
 
 static inline float sdist(const cv::Vec3f &a, const cv::Vec3f &b)
@@ -598,10 +616,10 @@ float QuadSurface::pointTo(SurfacePointer *ptr, const cv::Vec3f &tgt, float th, 
     cv::Vec3f _out;
     
     cv::Vec2f step_small = {std::max(1.0f,_scale[0]),std::max(1.0f,_scale[1])};
-    float min_mul = std::min(0.1*_points.cols/_scale[0],0.1*_points.rows/_scale[1]);
+    float min_mul = std::min(0.1*_points->cols/_scale[0],0.1*_points->rows/_scale[1]);
     cv::Vec2f step_large = {min_mul*_scale[0],min_mul*_scale[1]};
 
-    float dist = search_min_loc(_points, loc, _out, tgt, step_small, _scale[0]*0.1);
+    float dist = search_min_loc(*_points, loc, _out, tgt, step_small, _scale[0]*0.1);
     
     if (dist < th && dist >= 0) {
         tgt_ptr->loc = cv::Vec3f(loc[0],loc[1],0) - cv::Vec3f(_center[0]*_scale[0],_center[1]*_scale[1],0);
@@ -611,21 +629,21 @@ float QuadSurface::pointTo(SurfacePointer *ptr, const cv::Vec3f &tgt, float th, 
     cv::Vec2f min_loc = loc;
     float min_dist = dist;
     if (min_dist < 0)
-        min_dist = 10*(_points.cols/_scale[0]+_points.rows/_scale[1]);
+        min_dist = 10*(_points->cols/_scale[0]+_points->rows/_scale[1]);
     
     int r_full = 0;
     for(int r=0;r<10*max_iters && r_full < max_iters;r++) {
-        loc = {1 + (rand() % (_points.cols-3)), 1 + (rand() % (_points.rows-3))};
+        loc = {1 + (rand() % (_points->cols-3)), 1 + (rand() % (_points->rows-3))};
         
-        if (_points(loc[1],loc[0])[0] == -1)
+        if ((*_points)(loc[1],loc[0])[0] == -1)
             continue;
         
         r_full++;
 
-        float dist = search_min_loc(_points, loc, _out, tgt, step_large, _scale[0]*0.1);
+        float dist = search_min_loc(*_points, loc, _out, tgt, step_large, _scale[0]*0.1);
         
         if (dist < th && dist >= 0) {
-            dist = search_min_loc(_points, loc, _out, tgt, step_small, _scale[0]*0.1);
+            dist = search_min_loc((*_points), loc, _out, tgt, step_small, _scale[0]*0.1);
             tgt_ptr->loc = cv::Vec3f(loc[0],loc[1],0) - cv::Vec3f(_center[0]*_scale[0],_center[1]*_scale[1],0);
             return dist;
         } else if (dist >= 0 && dist < min_dist) {
@@ -740,7 +758,7 @@ void QuadSurface::gen(cv::Mat_<cv::Vec3f> *coords, cv::Mat_<cv::Vec3f> *normals,
     std::vector<cv::Vec2f> src = {off2d,off2d+cv::Vec2f((w+8)*_scale[0]/scale,0),off2d+cv::Vec2f(0,(h+8)*_scale[1]/scale)};
     
     cv::Mat affine = cv::getAffineTransform(src, dst);
-    cv::warpAffine(_points, *coords, affine, size+cv::Size(8,8));
+    cv::warpAffine(*_points, *coords, affine, size+cv::Size(8,8));
     
     //TODO create normals directly from input points instead off on sampled output ...
     if (create_normals) {
@@ -780,7 +798,6 @@ SurfacePointer *DeltaSurface::pointer()
 {
     return _base->pointer();
 }
-
 
 void DeltaSurface::move(SurfacePointer *ptr, const cv::Vec3f &offset)
 {
@@ -1286,12 +1303,16 @@ void QuadSurface::save(const std::string &path_, const std::string &uuid)
 {
     path = path_;
     
-    if (!fs::create_directories(path))
-        throw std::runtime_error("error creating dir for QuadSurface::save(): "+path.string());
+    if (!fs::create_directories(path)) {
+        if (fs::exists(path))
+            throw std::runtime_error("dir already exists => cannot run QuadSurface::save(): " + path.string());
+        else
+            throw std::runtime_error("error creating dir for QuadSurface::save(): " + path.string());
+    }
 
     std::vector<cv::Mat> xyz;
 
-    cv::split(_points, xyz);
+    cv::split((*_points), xyz);
 
     cv::imwrite(path/"x.tif", xyz[0]);
     cv::imwrite(path/"y.tif", xyz[1]);
@@ -1329,16 +1350,15 @@ void QuadSurface::save_meta()
 Rect3D QuadSurface::bbox()
 {
     if (_bbox.low[0] == -1) {
-        _bbox.low = _points(0,0);
-        _bbox.high = _points(0,0);
+        _bbox.low = (*_points)(0,0);
+        _bbox.high = (*_points)(0,0);
 
-        for(int j=0;j<_points.rows;j++)
-            for(int i=0;i<_points.cols;i++)
-                for(int c=0;c<3;c++)
-                    if (_bbox.low[0] == -1)
-                        _bbox = {_points(j,i),_points(j,i)};
-                    else if (_points(j,i)[0] != -1)
-                        _bbox = expand_rect(_bbox, _points(j,i));
+        for(int j=0;j<_points->rows;j++)
+            for(int i=0;i<_points->cols;i++)
+                if (_bbox.low[0] == -1)
+                    _bbox = {(*_points)(j,i),(*_points)(j,i)};
+                else if ((*_points)(j,i)[0] != -1)
+                    _bbox = expand_rect(_bbox, (*_points)(j,i));
     }
 
     return _bbox;
@@ -1348,35 +1368,36 @@ QuadSurface *load_quad_from_tifxyz(const std::string &path)
 {
     std::vector<cv::Mat_<float>> xyz = {cv::imread(path+"/x.tif",cv::IMREAD_UNCHANGED),cv::imread(path+"/y.tif",cv::IMREAD_UNCHANGED),cv::imread(path+"/z.tif",cv::IMREAD_UNCHANGED)};
 
-    cv::Mat_<cv::Vec3f> points;
-    cv::merge(xyz, points);
+    auto points = new cv::Mat_<cv::Vec3f>;
+    cv::merge(xyz, (*points));
 
     std::ifstream meta_f(path+"/meta.json");
     nlohmann::json metadata = nlohmann::json::parse(meta_f);
 
     cv::Vec2f scale = {metadata["scale"][0].get<float>(), metadata["scale"][1].get<float>()};
 
-    for(int j=0;j<points.rows;j++)
-        for(int i=0;i<points.cols;i++)
+    for(int j=0;j<points->rows;j++)
+        for(int i=0;i<points->cols;i++)
             //TODO fix this in the patch gen, also check bounds here in general!
-            if (points(j,i)[2] <= 0) {
-                points(j,i) = {-1,-1,-1};
+            if ((*points)(j,i)[2] <= 0) {
+                (*points)(j,i) = {-1,-1,-1};
             }
             
     if (fs::exists(path+"/mask.tif")) {
         std::vector<cv::Mat> layers;
         cv::imreadmulti(path+"/mask.tif", layers, cv::IMREAD_GRAYSCALE);
         cv::Mat_<uint8_t> mask = layers[0];
-        cv::resize(mask, mask, points.size(), cv::INTER_NEAREST);
-        for(int j=0;j<points.rows;j++)
-            for(int i=0;i<points.cols;i++)
+        cv::resize(mask, mask, points->size(), cv::INTER_NEAREST);
+        for(int j=0;j<points->rows;j++)
+            for(int i=0;i<points->cols;i++)
                 if (!mask(j,i))
-                    points(j,i) = {-1,-1,-1};
+                    (*points)(j,i) = {-1,-1,-1};
     }
     
     QuadSurface *surf = new QuadSurface(points, scale);
     
     surf->path = path;
+    surf->id   = metadata["uuid"];
     surf->meta = new nlohmann::json(metadata);
     
     return surf;
@@ -1416,17 +1437,21 @@ bool overlap(SurfaceMeta &a, SurfaceMeta &b, int max_iters)
     if (!intersect(a.bbox, b.bbox))
         return false;
 
-    cv::Mat_<cv::Vec3f> points = a.surf()->rawPoints();
+    cv::Mat_<cv::Vec3f> points = a.surface()->rawPoints();
     for(int r=0;r<std::max(10, max_iters/10);r++) {
         cv::Vec2f p = {rand() % points.cols, rand() % points.rows};
         cv::Vec3f loc = points(p[1],p[0]);
         if (loc[0] == -1)
             continue;
 
-        SurfacePointer *ptr = b.surf()->pointer();
+        auto *ptr = b.surface()->pointer();
 
-        if (b.surf()->pointTo(ptr, loc, 2.0, max_iters) <= 2.0)
+        if (b.surface()->pointTo(ptr, loc, 2.0, max_iters) <= 2.0) {
+            delete ptr;
             return true;
+        }
+        
+        delete ptr;
     }
 
     return false;
@@ -1437,11 +1462,14 @@ bool contains(SurfaceMeta &a, const cv::Vec3f &loc, int max_iters)
     if (!intersect(a.bbox, {loc,loc}))
         return false;
         
-        SurfacePointer *ptr = a.surf()->pointer();
-        
-        if (a.surf()->pointTo(ptr, loc, 2.0, max_iters) <= 2.0)
-            return true;
+    auto *ptr = a.surface()->pointer();
     
+    if (a.surface()->pointTo(ptr, loc, 2.0, max_iters) <= 2.0) {
+        delete ptr;
+        return true;
+    }
+    
+    delete ptr;
     return false;
 }
 
@@ -1471,6 +1499,17 @@ SurfaceMeta::SurfaceMeta(const std::filesystem::path &path_) : path(path_)
         bbox = rect_from_json((*meta)["bbox"]);
 }
 
+SurfaceMeta::~SurfaceMeta()
+{
+    if (_surf) {
+        delete _surf;
+    }
+
+    if (meta) {
+        delete meta;
+    }
+}
+
 void SurfaceMeta::readOverlapping()
 {
     if (std::filesystem::exists(path / "overlapping"))
@@ -1478,14 +1517,14 @@ void SurfaceMeta::readOverlapping()
             overlapping_str.insert(entry.path().filename());
 }
 
-QuadSurface *SurfaceMeta::surf()
+QuadSurface *SurfaceMeta::surface()
 {
     if (!_surf)
         _surf = load_quad_from_tifxyz(path);
     return _surf;
 }
 
-void SurfaceMeta::setSurf(QuadSurface *surf)
+void SurfaceMeta::setSurface(QuadSurface *surf)
 {
     _surf = surf;
 }
