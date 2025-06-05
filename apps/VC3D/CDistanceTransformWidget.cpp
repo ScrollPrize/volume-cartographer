@@ -89,7 +89,7 @@ void CDistanceTransformWidget::setupUI()
     angleStepLabel = new QLabel("Angle Step (degrees):", this);
     angleStepLayout->addWidget(angleStepLabel);
     angleStepSpinBox = new QDoubleSpinBox(this);
-    angleStepSpinBox->setRange(1.0, 90.0);
+    angleStepSpinBox->setRange(1.0, 180.0);
     angleStepSpinBox->setValue(15.0);
     angleStepSpinBox->setSingleStep(1.0);
     angleStepLayout->addWidget(angleStepSpinBox);
@@ -99,8 +99,8 @@ void CDistanceTransformWidget::setupUI()
     auto processesLayout = new QHBoxLayout();
     processesLayout->addWidget(new QLabel("Parallel Processes:", this));
     processesSpinBox = new QSpinBox(this);
-    processesSpinBox->setRange(1, 16);
-    processesSpinBox->setValue(4);
+    processesSpinBox->setRange(1, 256);
+    processesSpinBox->setValue(16);
     processesLayout->addWidget(processesSpinBox);
     mainLayout->addLayout(processesLayout);
     
@@ -109,7 +109,7 @@ void CDistanceTransformWidget::setupUI()
     thresholdLayout->addWidget(new QLabel("Intensity Threshold:", this));
     thresholdSpinBox = new QSpinBox(this);
     thresholdSpinBox->setRange(1, 255);
-    thresholdSpinBox->setValue(30); 
+    thresholdSpinBox->setValue(20); 
     thresholdSpinBox->setToolTip("Minimum intensity value for peak detection");
     thresholdLayout->addWidget(thresholdSpinBox);
     mainLayout->addLayout(thresholdLayout);
@@ -119,7 +119,7 @@ void CDistanceTransformWidget::setupUI()
     windowSizeLayout->addWidget(new QLabel("Peak Detection Window:", this));
     windowSizeSpinBox = new QSpinBox(this);
     windowSizeSpinBox->setRange(1, 10);
-    windowSizeSpinBox->setValue(3);  // Default window size
+    windowSizeSpinBox->setValue(7);  // Default window size
     windowSizeSpinBox->setToolTip("Size of window for local maxima detection (larger values detect broader peaks)");
     windowSizeLayout->addWidget(windowSizeSpinBox);
     mainLayout->addLayout(windowSizeLayout);
