@@ -660,6 +660,11 @@ void CWindow::CloseVolume(void)
         delete pair.second;
     }
     _opchains.clear();
+    
+    // Clear points
+    _red_points.clear();
+    _blue_points.clear();
+    sendPointsChanged(_red_points, _blue_points);
 }
 
 // Handle open request
