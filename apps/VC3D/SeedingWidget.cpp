@@ -39,6 +39,7 @@ SeedingWidget::SeedingWidget(QWidget* parent)
     , currentMode(Mode::PointMode)
     , isDrawing(false)
     , colorIndex(0)
+    , jobsRunning(false)
 {
     setupUI();
     
@@ -124,6 +125,16 @@ void SeedingWidget::setupUI()
     windowSizeLayout->addWidget(windowSizeSpinBox);
     mainLayout->addLayout(windowSizeLayout);
     
+    // Expansion iterations control
+    auto expansionLayout = new QHBoxLayout();
+    expansionLayout->addWidget(new QLabel("Expansion Iterations:", this));
+    expansionIterationsSpinBox = new QSpinBox(this);
+    expansionIterationsSpinBox->setRange(1, 5000000);
+    expansionIterationsSpinBox->setValue(1000000);
+    expansionIterationsSpinBox->setToolTip("Number of expansion iterations to run");
+    expansionLayout->addWidget(expansionIterationsSpinBox);
+    mainLayout->addLayout(expansionLayout);
+    
     // Buttons
     castRaysButton = new QPushButton("Cast Rays", this);
     castRaysButton->setEnabled(false);
@@ -133,9 +144,20 @@ void SeedingWidget::setupUI()
     runSegmentationButton->setEnabled(false);
     mainLayout->addWidget(runSegmentationButton);
     
+    expandSeedsButton = new QPushButton("Expand Seeds", this);
+    expandSeedsButton->setEnabled(false);
+    expandSeedsButton->setToolTip("Run seed expansion using expand.json");
+    mainLayout->addWidget(expandSeedsButton);
+    
     resetPointsButton = new QPushButton("Reset Points", this);
     resetPointsButton->setEnabled(false);
     mainLayout->addWidget(resetPointsButton);
+    
+    // Cancel button (only visible when jobs are running)
+    cancelButton = new QPushButton("Cancel", this);
+    cancelButton->setVisible(false);
+    cancelButton->setToolTip("Cancel running jobs");
+    mainLayout->addWidget(cancelButton);
     
     // Progress bar
     progressBar = new QProgressBar(this);
@@ -161,7 +183,9 @@ void SeedingWidget::setupUI()
     connect(setSeedButton, &QPushButton::clicked, this, &SeedingWidget::onSetSeedClicked);
     connect(castRaysButton, &QPushButton::clicked, this, &SeedingWidget::onCastRaysClicked);
     connect(runSegmentationButton, &QPushButton::clicked, this, &SeedingWidget::onRunSegmentationClicked);
+    connect(expandSeedsButton, &QPushButton::clicked, this, &SeedingWidget::onExpandSeedsClicked);
     connect(resetPointsButton, &QPushButton::clicked, this, &SeedingWidget::onResetPointsClicked);
+    connect(cancelButton, &QPushButton::clicked, this, &SeedingWidget::onCancelClicked);
     
     // Connect parameter changes to preview update
     connect(maxRadiusSpinBox, QOverload<int>::of(&QSpinBox::valueChanged), 
@@ -176,17 +200,13 @@ void SeedingWidget::setupUI()
 void SeedingWidget::setVolumePkg(std::shared_ptr<volcart::VolumePkg> vpkg)
 {
     fVpkg = vpkg;
+    updateButtonStates();
 }
 
 void SeedingWidget::setCurrentVolume(std::shared_ptr<volcart::Volume> volume)
 {
     currentVolume = volume;
-    if (currentVolume) {
-        castRaysButton->setEnabled(hasSelectedPoint);
-    } else {
-        castRaysButton->setEnabled(false);
-        runSegmentationButton->setEnabled(false);
-    }
+    updateButtonStates();
 }
 
 void SeedingWidget::setCache(ChunkCache* cache)
@@ -474,6 +494,12 @@ void SeedingWidget::onRunSegmentationClicked()
     progressBar->setValue(0);
     infoLabel->setText("Running segmentation jobs...");
     runSegmentationButton->setEnabled(false);
+    expandSeedsButton->setEnabled(false);
+    
+    // Show cancel button and set jobs running
+    jobsRunning = true;
+    cancelButton->setVisible(true);
+    runningProcesses.clear();
     
     const int numProcesses = processesSpinBox->value();
     const int totalPoints = static_cast<int>(allPoints.size());
@@ -676,6 +702,7 @@ void SeedingWidget::onRunSegmentationClicked()
         
         processes.append(process);
         activeIndices.append(i);
+        runningProcesses.append(process);
     }
     
     // Keep track of next point to process
@@ -741,8 +768,13 @@ void SeedingWidget::onRunSegmentationClicked()
     
     // Update UI
     progressBar->setVisible(false);
+    cancelButton->setVisible(false);
+    jobsRunning = false;
+    runningProcesses.clear();
     infoLabel->setText(QString("Segmentation complete for %1 points.").arg(peakPoints.size()));
     runSegmentationButton->setEnabled(true);
+    expandSeedsButton->setEnabled(true);
+    updateButtonStates();
     
     emit sendStatusMessageAvailable(
         QString("Completed segmentation for %1 points").arg(peakPoints.size()), 
@@ -1193,6 +1225,10 @@ void SeedingWidget::updateButtonStates()
     bool hasAnyPoints = !peakPoints.empty() || !userPlacedPoints.empty();
     runSegmentationButton->setEnabled(hasAnyPoints && currentVolume != nullptr);
     
+    // Enable expansion if we have a volume AND at least one segmentation
+    bool hasSegmentations = fVpkg && fVpkg->hasSegmentations();
+    expandSeedsButton->setEnabled(currentVolume != nullptr && hasSegmentations);
+    
     // Enable reset if we have any points or paths
     bool hasAnyData = hasAnyPoints || !paths.empty() || hasSelectedPoint;
     resetPointsButton->setEnabled(hasAnyData);
@@ -1229,6 +1265,237 @@ void SeedingWidget::onMouseRelease(cv::Vec3f vol_point, Qt::MouseButton button, 
     }
     
     finalizePath();
+}
+
+void SeedingWidget::onExpandSeedsClicked()
+{
+    if (!fVpkg || !currentVolume) {
+        QMessageBox::warning(this, "Error", "Volume package or volume not loaded.");
+        return;
+    }
+    
+    // Update UI
+    progressBar->setVisible(true);
+    progressBar->setValue(0);
+    infoLabel->setText("Running expansion jobs...");
+    expandSeedsButton->setEnabled(false);
+    runSegmentationButton->setEnabled(false);
+    
+    // Show cancel button and set jobs running
+    jobsRunning = true;
+    cancelButton->setVisible(true);
+    runningProcesses.clear();
+    
+    const int numProcesses = processesSpinBox->value();
+    const int expansionIterations = expansionIterationsSpinBox->value();
+    
+    // Use the existing segmentation directory structure
+    fs::path pathsDir;
+    fs::path expandJsonPath;
+    
+    if (fVpkg->hasSegmentations()) {
+        // If we have segmentations, get the path from one of them
+        auto segID = fVpkg->segmentationIDs()[0];
+        auto seg = fVpkg->segmentation(segID);
+        pathsDir = seg->path().parent_path(); // This should be the "paths" directory
+        expandJsonPath = pathsDir.parent_path() / "expand.json";
+    } else {
+        // Fallback: derive the path from the volume
+        if (!fVpkg->hasVolumes()) {
+            QMessageBox::warning(this, "Error", "No volumes in volume package.");
+            progressBar->setVisible(false);
+            expandSeedsButton->setEnabled(true);
+            return;
+        }
+        
+        auto vol = fVpkg->volume();
+        // Volume is in "volumes/UUID", so we need to go up two levels to get to the volpkg root
+        fs::path vpkgPath = vol->path().parent_path().parent_path();
+        pathsDir = vpkgPath / "paths";
+        expandJsonPath = vpkgPath / "expand.json";
+        
+        // Check if the paths directory exists
+        if (!fs::exists(pathsDir)) {
+            QMessageBox::warning(this, "Error", "Segmentation paths directory not found in volume package.");
+            progressBar->setVisible(false);
+            expandSeedsButton->setEnabled(true);
+            return;
+        }
+    }
+    
+    // Check if expand.json exists
+    if (!fs::exists(expandJsonPath)) {
+        QMessageBox::warning(this, "Error", "expand.json not found in volume package.");
+        progressBar->setVisible(false);
+        expandSeedsButton->setEnabled(true);
+        return;
+    }
+    
+    // Use the current volume's path
+    fs::path volumePath = currentVolume->path();
+    
+    // Execute expansion jobs in parallel, limited by the number of processes
+    QList<QProcess*> processes;
+    QList<int> activeIndices;
+    int completedJobs = 0;
+    
+    // Process status update function
+    auto updateProgress = [&]() {
+        progressBar->setValue(completedJobs * 100 / expansionIterations);
+        QApplication::processEvents();
+    };
+    
+    // Start as many initial processes as configured in the spinbox
+    for (int i = 0; i < std::min(numProcesses, expansionIterations); i++) {
+        // Create process for this iteration
+        QProcess* process = new QProcess(this);
+        process->setProcessChannelMode(QProcess::MergedChannels);
+        process->setWorkingDirectory(QString::fromStdString(pathsDir.parent_path().string()));
+        
+        // Command without seed coordinates: vc_grow_seg_from_seed <ome-zarr-volume> <tgt-dir> <json-params>
+        QString cmd = QString("%1 \"%2\" \"%3\" \"%4\"")
+                         .arg(executablePath)
+                         .arg(QString::fromStdString(volumePath.string()))
+                         .arg(QString::fromStdString(pathsDir.string()))
+                         .arg(QString::fromStdString(expandJsonPath.string()));
+        
+        // Connect process finished signal
+        connect(process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+            [process, i, &processes, &activeIndices, &completedJobs, updateProgress, this](int exitCode, QProcess::ExitStatus exitStatus) {
+                // Log completion
+                if (exitCode != 0) {
+                    std::cerr << "Expansion process " << i << " failed with exit code: " << exitCode << std::endl;
+                } else {
+                    std::cout << "Completed expansion iteration " << i << std::endl;
+                }
+                
+                // Remove from active list
+                activeIndices.removeOne(i);
+                processes.removeOne(process);
+                process->deleteLater();
+                
+                // Update progress
+                completedJobs++;
+                updateProgress();
+            });
+        
+        // Start the process with nice and ionice for better system behavior
+        std::cout << "Starting expansion job " << i << ": " << cmd.toStdString() << std::endl;
+        process->start("nice", QStringList() << "-n" << "19" << "ionice" << "-c" << "3" << executablePath <<
+                      QString::fromStdString(volumePath.string()) <<
+                      QString::fromStdString(pathsDir.string()) <<
+                      QString::fromStdString(expandJsonPath.string()));
+        
+        processes.append(process);
+        activeIndices.append(i);
+        runningProcesses.append(process);
+    }
+    
+    // Keep track of next iteration to process
+    int nextIndex = numProcesses;
+    
+    // Lambda to start next process
+    std::function<void()> startNextProcess = [&]() {
+        if (processes.size() < numProcesses && nextIndex < expansionIterations) {
+            // Create process for next iteration
+            QProcess* process = new QProcess(this);
+            process->setProcessChannelMode(QProcess::MergedChannels);
+            process->setWorkingDirectory(QString::fromStdString(pathsDir.parent_path().string()));
+            
+            const int currentIndex = nextIndex;
+            
+            connect(process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+                [process, currentIndex, &processes, &activeIndices, &completedJobs, updateProgress, &startNextProcess, this](int exitCode, QProcess::ExitStatus exitStatus) {
+                    // Log completion
+                    if (exitCode != 0) {
+                        std::cerr << "Expansion process " << currentIndex << " failed with exit code: " << exitCode << std::endl;
+                    } else {
+                        std::cout << "Completed expansion iteration " << currentIndex << std::endl;
+                    }
+                    
+                    activeIndices.removeOne(currentIndex);
+                    processes.removeOne(process);
+                    process->deleteLater();
+                    
+                    completedJobs++;
+                    updateProgress();
+                    
+                    startNextProcess();
+                });
+            
+            std::cout << "Starting expansion job " << currentIndex << std::endl;
+            process->start("nice", QStringList() << "-n" << "19" << "ionice" << "-c" << "3" << executablePath <<
+                          QString::fromStdString(volumePath.string()) <<
+                          QString::fromStdString(pathsDir.string()) <<
+                          QString::fromStdString(expandJsonPath.string()));
+            
+            processes.append(process);
+            activeIndices.append(currentIndex);
+            nextIndex++;
+        }
+    };
+    
+    // Main event loop to handle process completion
+    while (!processes.isEmpty() || completedJobs < expansionIterations) {
+        QApplication::processEvents(QEventLoop::AllEvents, 100);
+        
+        // Start new processes as slots become available
+        while (processes.size() < numProcesses && nextIndex < expansionIterations) {
+            startNextProcess();
+        }
+    }
+    
+    // Final progress update
+    progressBar->setValue(100);
+    
+    // Update UI
+    progressBar->setVisible(false);
+    cancelButton->setVisible(false);
+    jobsRunning = false;
+    runningProcesses.clear();
+    infoLabel->setText(QString("Expansion complete after %1 iterations.").arg(expansionIterations));
+    expandSeedsButton->setEnabled(true);
+    runSegmentationButton->setEnabled(true);
+    updateButtonStates();
+    
+    emit sendStatusMessageAvailable(
+        QString("Completed %1 expansion iterations").arg(expansionIterations), 
+        5000);
+}
+
+void SeedingWidget::onCancelClicked()
+{
+    if (!jobsRunning || runningProcesses.isEmpty()) {
+        return;
+    }
+    
+    // Kill all running processes
+    for (QProcess* process : runningProcesses) {
+        if (process && process->state() != QProcess::NotRunning) {
+            process->kill();
+            process->waitForFinished(3000); // Wait up to 3 seconds for graceful termination
+        }
+        process->deleteLater();
+    }
+    
+    // Clear the process list
+    runningProcesses.clear();
+    
+    // Update state
+    jobsRunning = false;
+    
+    // Update UI
+    cancelButton->setVisible(false);
+    progressBar->setVisible(false);
+    progressBar->setValue(0);
+    infoLabel->setText("Jobs cancelled by user");
+    
+    // Re-enable buttons
+    runSegmentationButton->setEnabled(true);
+    expandSeedsButton->setEnabled(true);
+    updateButtonStates();
+    
+    emit sendStatusMessageAvailable("Jobs cancelled by user", 3000);
 }
 
 } // namespace ChaoVis

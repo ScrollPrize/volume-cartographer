@@ -9,6 +9,7 @@
 #include <QFileDialog>
 #include <QLineEdit>
 #include <QHBoxLayout>
+#include <QProcess>
 #include <opencv2/core.hpp>
 #include <vector>
 #include <memory>
@@ -53,7 +54,9 @@ private slots:
     void onSetSeedClicked();
     void onCastRaysClicked();
     void onRunSegmentationClicked();
+    void onExpandSeedsClicked();
     void onResetPointsClicked();
+    void onCancelClicked();
     void onDrawModeToggled();
     
 private:
@@ -90,6 +93,7 @@ private:
     QSpinBox* thresholdSpinBox;  // Intensity threshold for peak detection
     QSpinBox* windowSizeSpinBox; // Window size for peak detection
     QSpinBox* maxRadiusSpinBox;  // Max radius for ray casting
+    QSpinBox* expansionIterationsSpinBox; // Number of expansion iterations
     
     // Layout and label references for hiding/showing
     QHBoxLayout* maxRadiusLayout;
@@ -101,7 +105,9 @@ private:
     
     QPushButton* castRaysButton;
     QPushButton* runSegmentationButton;
+    QPushButton* expandSeedsButton;
     QPushButton* resetPointsButton;
+    QPushButton* cancelButton;
     QProgressBar* progressBar;
     
     // Data
@@ -122,6 +128,10 @@ private:
     bool isDrawing;
     PathData currentPath;
     int colorIndex;
+    
+    // Process management
+    QList<QProcess*> runningProcesses;
+    bool jobsRunning;
 };
 
 } // namespace ChaoVis
