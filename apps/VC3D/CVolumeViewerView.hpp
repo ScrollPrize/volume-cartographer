@@ -16,6 +16,7 @@ public:
     void mouseMoveEvent(QMouseEvent *event);
     void wheelEvent(QWheelEvent *event);
     void scrollContentsBy(int dx, int dy);
+    void keyPressEvent(QKeyEvent *event);
     
 signals:
     void sendScrolled();

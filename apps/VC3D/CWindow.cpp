@@ -326,6 +326,45 @@ void CWindow::CreateWidgets(void)
     _btnResetPoints = ui.btnResetPoints;
     connect(_btnResetPoints, &QPushButton::pressed, this, &CWindow::onResetPoints);
     connect(ui.btnEditMask, &QPushButton::pressed, this, &CWindow::onEditMaskPressed);
+    
+    // Connect composite view controls
+    connect(ui.chkCompositeEnabled, &QCheckBox::toggled, this, [this](bool checked) {
+        // Find the segmentation viewer and update its composite setting
+        for (auto& viewer : _viewers) {
+            if (viewer->surfName() == "segmentation") {
+                viewer->setCompositeEnabled(checked);
+                break;
+            }
+        }
+    });
+    
+    connect(ui.spinCompositeLayers, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int value) {
+        // Find the segmentation viewer and update its composite layers
+        for (auto& viewer : _viewers) {
+            if (viewer->surfName() == "segmentation") {
+                viewer->setCompositeLayers(value);
+                break;
+            }
+        }
+    });
+    
+    connect(ui.cmbCompositeMethod, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int index) {
+        // Find the segmentation viewer and update its composite method
+        std::string method = "max";
+        switch (index) {
+            case 0: method = "max"; break;
+            case 1: method = "mean"; break;
+            case 2: method = "min"; break;
+        }
+        
+        for (auto& viewer : _viewers) {
+            if (viewer->surfName() == "segmentation") {
+                viewer->setCompositeMethod(method);
+                break;
+            }
+        }
+    });
+    
 }
 
 // Create menus
@@ -355,6 +394,7 @@ void CWindow::CreateMenus(void)
     fViewMenu->addAction(ui.dockWidgetDistanceTransform->toggleViewAction());
     fViewMenu->addAction(ui.dockWidgetOpList->toggleViewAction());
     fViewMenu->addAction(ui.dockWidgetOpSettings->toggleViewAction());
+    fViewMenu->addAction(ui.dockWidgetComposite->toggleViewAction());
     fViewMenu->addAction(ui.dockWidgetLocation->toggleViewAction());
     fViewMenu->addSeparator();
     fViewMenu->addAction(fResetMdiView);

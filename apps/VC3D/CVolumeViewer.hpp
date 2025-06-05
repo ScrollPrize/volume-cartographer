@@ -50,6 +50,12 @@ public:
     void renderPoints();
     void renderPaths();
     
+    // Composite view methods
+    void setCompositeEnabled(bool enabled);
+    void setCompositeLayers(int layers);
+    void setCompositeMethod(const std::string& method);
+    bool isCompositeEnabled() const { return _composite_enabled; }
+    
     // Get current scale for coordinate transformation
     float getCurrentScale() const { return _scale; }
     // Transform scene coordinates to volume coordinates
@@ -122,6 +128,11 @@ protected:
     QLabel *_lbl = nullptr;
 
     float _z_off = 0.0;
+    
+    // Composite view settings
+    bool _composite_enabled = false;
+    int _composite_layers = 7;
+    std::string _composite_method = "max";
     
     QGraphicsItem *_center_marker = nullptr;
     QGraphicsItem *_cursor = nullptr;

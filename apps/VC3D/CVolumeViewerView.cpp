@@ -1,10 +1,12 @@
 // CVolumeViewer.cpp
 // Chao Du 2015 April
 #include "CVolumeViewerView.hpp"
+#include "CVolumeViewer.hpp"
 
 #include <QGraphicsView>
 #include <QMouseEvent>
 #include <QScrollBar>
+#include <QKeyEvent>
 
 using namespace ChaoVis;
 
@@ -62,6 +64,22 @@ void CVolumeViewerView::mouseReleaseEvent(QMouseEvent *event)
         return;
     }
     event->ignore();
+}
+
+void CVolumeViewerView::keyPressEvent(QKeyEvent *event)
+{
+    if (event->key() == Qt::Key_C && !event->isAutoRepeat()) {
+        // Toggle composite view when 'C' is pressed
+        CVolumeViewer* viewer = qobject_cast<CVolumeViewer*>(parent());
+        if (viewer && viewer->surfName() == "segmentation") {
+            viewer->setCompositeEnabled(!viewer->isCompositeEnabled());
+        }
+        event->accept();
+        return;
+    }
+    
+    // Pass the event to the base class
+    QGraphicsView::keyPressEvent(event);
 }
 
 void CVolumeViewerView::mousePressEvent(QMouseEvent *event)
