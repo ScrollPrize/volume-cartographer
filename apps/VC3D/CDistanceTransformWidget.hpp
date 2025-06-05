@@ -78,6 +78,9 @@ private:
     void finalizePath();
     QColor generatePathColor();
     void displayPaths();
+    void updatePointsDisplay();
+    void updateInfoLabel();
+    void updateButtonStates();
     
     // UI elements
     QLabel* infoLabel;
