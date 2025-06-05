@@ -761,6 +761,7 @@ void SeedingWidget::onRunSegmentationClicked()
             
             processes.append(process);
             activeIndices.append(currentIndex);
+            runningProcesses.append(process);
             nextIndex++;
         }
     };
@@ -777,15 +778,27 @@ void SeedingWidget::onRunSegmentationClicked()
     
     // Clean up any remaining processes if cancelled
     if (!jobsRunning) {
-        for (QProcess* p : processes) {
-            if (p && p->state() != QProcess::NotRunning) {
+        // Make a copy to avoid issues with concurrent modifications
+        QList<QProcess*> processesToClean = processes;
+        processes.clear();
+        
+        for (QProcess* p : processesToClean) {
+            if (p) {
                 disconnect(p, nullptr, nullptr, nullptr);
-                p->kill();
-                p->waitForFinished(1000);
+                
+                // Only check state if we're sure the process is still valid
+                try {
+                    if (p->state() != QProcess::NotRunning) {
+                        p->kill();
+                        p->waitForFinished(1000);
+                    }
+                } catch (...) {
+                    // Process might have been deleted, ignore
+                }
+                
                 p->deleteLater();
             }
         }
-        processes.clear();
     }
     
     // Final progress update
@@ -1468,6 +1481,7 @@ void SeedingWidget::onExpandSeedsClicked()
             
             processes.append(process);
             activeIndices.append(currentIndex);
+            runningProcesses.append(process);
             nextIndex++;
         }
     };
@@ -1484,15 +1498,27 @@ void SeedingWidget::onExpandSeedsClicked()
     
     // Clean up any remaining processes if cancelled
     if (!jobsRunning) {
-        for (QProcess* p : processes) {
-            if (p && p->state() != QProcess::NotRunning) {
+        // Make a copy to avoid issues with concurrent modifications
+        QList<QProcess*> processesToClean = processes;
+        processes.clear();
+        
+        for (QProcess* p : processesToClean) {
+            if (p) {
                 disconnect(p, nullptr, nullptr, nullptr);
-                p->kill();
-                p->waitForFinished(1000);
+                
+                // Only check state if we're sure the process is still valid
+                try {
+                    if (p->state() != QProcess::NotRunning) {
+                        p->kill();
+                        p->waitForFinished(1000);
+                    }
+                } catch (...) {
+                    // Process might have been deleted, ignore
+                }
+                
                 p->deleteLater();
             }
         }
-        processes.clear();
     }
     
     // Final progress update
