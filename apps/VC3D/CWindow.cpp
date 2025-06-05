@@ -24,7 +24,7 @@
 #include "OpsSettings.hpp"
 #include "SurfaceTreeWidget.hpp"
 #include "CSegmentationEditorWindow.hpp"
-#include "CDistanceTransformWidget.hpp"
+#include "SeedingWidget.hpp"
 
 #include "vc/core/types/Color.hpp"
 #include "vc/core/types/Exceptions.hpp"
@@ -45,7 +45,7 @@ namespace fs = std::filesystem;
 CWindow::CWindow() :
     fVpkg(nullptr),
     _cmdRunner(nullptr),
-    _distanceTransformWidget(nullptr)
+    _seedingWidget(nullptr)
 {
     const QSettings settings("VC.ini", QSettings::IniFormat);
     setWindowIcon(QPixmap(":/images/logo.png"));
@@ -213,23 +213,23 @@ void CWindow::CreateWidgets(void)
     wOpsSettings = new OpsSettings(ui.dockWidgetOpSettings);
     ui.dockWidgetOpSettings->setWidget(wOpsSettings);
     
-    // Create Distance Transform widget
-    _distanceTransformWidget = new CDistanceTransformWidget(ui.dockWidgetDistanceTransform);
-    ui.dockWidgetDistanceTransform->setWidget(_distanceTransformWidget);
+    // Create Seeding widget
+    _seedingWidget = new SeedingWidget(ui.dockWidgetDistanceTransform);
+    ui.dockWidgetDistanceTransform->setWidget(_seedingWidget);
     
-    // Connect Distance Transform widget signals/slots
-    connect(this, &CWindow::sendVolumeChanged, _distanceTransformWidget, &CDistanceTransformWidget::onVolumeChanged);
-    connect(_distanceTransformWidget, &CDistanceTransformWidget::sendStatusMessageAvailable, this, &CWindow::onShowStatusMessage);
+    // Connect Seeding widget signals/slots
+    connect(this, &CWindow::sendVolumeChanged, _seedingWidget, &SeedingWidget::onVolumeChanged);
+    connect(_seedingWidget, &SeedingWidget::sendStatusMessageAvailable, this, &CWindow::onShowStatusMessage);
     
-    // Set the chunk cache for the distance transform widget
-    _distanceTransformWidget->setCache(chunk_cache);
+    // Set the chunk cache for the seeding widget
+    _seedingWidget->setCache(chunk_cache);
     
-    // Connect distance transform widget to all existing viewers
+    // Connect seeding widget to all existing viewers
     for (auto& viewer : _viewers) {
         // Connect signals for displaying points and paths
-        connect(_distanceTransformWidget, &CDistanceTransformWidget::sendPointsChanged, 
+        connect(_seedingWidget, &SeedingWidget::sendPointsChanged, 
                 viewer, &CVolumeViewer::onPointsChanged);
-        connect(_distanceTransformWidget, &CDistanceTransformWidget::sendPathsChanged,
+        connect(_seedingWidget, &SeedingWidget::sendPathsChanged,
                 viewer, &CVolumeViewer::onPathsChanged);
         
         // Connect mouse events for drawing functionality
@@ -243,15 +243,15 @@ void CWindow::CreateWidgets(void)
         
         // Then connect from viewer to widget with transformed volume coordinates
         connect(viewer, &CVolumeViewer::sendMousePressVolume,
-                _distanceTransformWidget, &CDistanceTransformWidget::onMousePress);
+                _seedingWidget, &SeedingWidget::onMousePress);
         connect(viewer, &CVolumeViewer::sendMouseMoveVolume,
-                _distanceTransformWidget, &CDistanceTransformWidget::onMouseMove);
+                _seedingWidget, &SeedingWidget::onMouseMove);
         connect(viewer, &CVolumeViewer::sendMouseReleaseVolume,
-                _distanceTransformWidget, &CDistanceTransformWidget::onMouseRelease);
+                _seedingWidget, &SeedingWidget::onMouseRelease);
         
         // Connect Z-slice changes
         connect(viewer, &CVolumeViewer::sendZSliceChanged,
-                _distanceTransformWidget, &CDistanceTransformWidget::updateCurrentZSlice);
+                _seedingWidget, &SeedingWidget::updateCurrentZSlice);
     }
     
     // Tab the Distance Transform dock with the Segmentation dock
@@ -636,9 +636,9 @@ void CWindow::OpenVolume(const QString& path)
     LoadSurfaces();
     UpdateRecentVolpkgList(aVpkgPath);
     
-    // Set volume package in Distance Transform widget
-    if (_distanceTransformWidget) {
-        _distanceTransformWidget->setVolumePkg(fVpkg);
+    // Set volume package in Seeding widget
+    if (_seedingWidget) {
+        _seedingWidget->setVolumePkg(fVpkg);
     }
 }
 
@@ -872,9 +872,9 @@ void CWindow::onLocChanged(void)
 
 void CWindow::onVolumeClicked(cv::Vec3f vol_loc, cv::Vec3f normal, Surface *surf, Qt::MouseButton buttons, Qt::KeyboardModifiers modifiers)
 {
-    // Forward to Distance Transform widget if it exists
-    if (_distanceTransformWidget) {
-        _distanceTransformWidget->onPointSelected(vol_loc, normal);
+    // Forward to Seeding widget if it exists
+    if (_seedingWidget) {
+        _seedingWidget->onPointSelected(vol_loc, normal);
     }
     
     if (modifiers & Qt::ShiftModifier) {
@@ -885,9 +885,9 @@ void CWindow::onVolumeClicked(cv::Vec3f vol_loc, cv::Vec3f normal, Surface *surf
         sendPointsChanged(_red_points, _blue_points);
         _lblPointsInfo->setText(QString("Red: %1 Blue: %2").arg(_red_points.size()).arg(_blue_points.size()));
 
-        // Also forward to Distance Transform widget for user-placed points
-        if (_distanceTransformWidget) {
-            _distanceTransformWidget->onUserPointAdded(vol_loc);
+        // Also forward to Seeding widget for user-placed points
+        if (_seedingWidget) {
+            _seedingWidget->onUserPointAdded(vol_loc);
         }
 
         // Force an update of the filter

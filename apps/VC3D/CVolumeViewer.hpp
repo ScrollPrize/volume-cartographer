@@ -25,7 +25,7 @@ class CVolumeViewerView;
 class CSurfaceCollection;
 class POI;
 class Intersection;
-class CDistanceTransformWidget;
+class SeedingWidget;
 
 class CVolumeViewer : public QWidget
 {

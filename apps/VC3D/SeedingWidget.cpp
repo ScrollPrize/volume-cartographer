@@ -1,4 +1,4 @@
-#include "CDistanceTransformWidget.hpp"
+#include "SeedingWidget.hpp"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QGroupBox>
@@ -28,7 +28,7 @@ namespace vc = volcart;
 
 namespace ChaoVis {
 
-CDistanceTransformWidget::CDistanceTransformWidget(QWidget* parent)
+SeedingWidget::SeedingWidget(QWidget* parent)
     : QWidget(parent)
     , fVpkg(nullptr)
     , currentVolume(nullptr)
@@ -51,9 +51,9 @@ CDistanceTransformWidget::CDistanceTransformWidget(QWidget* parent)
     }
 }
 
-CDistanceTransformWidget::~CDistanceTransformWidget() = default;
+SeedingWidget::~SeedingWidget() = default;
 
-void CDistanceTransformWidget::setupUI()
+void SeedingWidget::setupUI()
 {
     // Main layout
     auto mainLayout = new QVBoxLayout(this);
@@ -158,27 +158,27 @@ void CDistanceTransformWidget::setupUI()
         updateModeUI();
         displayPaths();
     });
-    connect(setSeedButton, &QPushButton::clicked, this, &CDistanceTransformWidget::onSetSeedClicked);
-    connect(castRaysButton, &QPushButton::clicked, this, &CDistanceTransformWidget::onCastRaysClicked);
-    connect(runSegmentationButton, &QPushButton::clicked, this, &CDistanceTransformWidget::onRunSegmentationClicked);
-    connect(resetPointsButton, &QPushButton::clicked, this, &CDistanceTransformWidget::onResetPointsClicked);
+    connect(setSeedButton, &QPushButton::clicked, this, &SeedingWidget::onSetSeedClicked);
+    connect(castRaysButton, &QPushButton::clicked, this, &SeedingWidget::onCastRaysClicked);
+    connect(runSegmentationButton, &QPushButton::clicked, this, &SeedingWidget::onRunSegmentationClicked);
+    connect(resetPointsButton, &QPushButton::clicked, this, &SeedingWidget::onResetPointsClicked);
     
     // Connect parameter changes to preview update
     connect(maxRadiusSpinBox, QOverload<int>::of(&QSpinBox::valueChanged), 
-            this, &CDistanceTransformWidget::updateParameterPreview);
+            this, &SeedingWidget::updateParameterPreview);
     connect(angleStepSpinBox, QOverload<double>::of(&QDoubleSpinBox::valueChanged), 
-            this, &CDistanceTransformWidget::updateParameterPreview);
+            this, &SeedingWidget::updateParameterPreview);
     
     // Set size policy
     setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);
 }
 
-void CDistanceTransformWidget::setVolumePkg(std::shared_ptr<volcart::VolumePkg> vpkg)
+void SeedingWidget::setVolumePkg(std::shared_ptr<volcart::VolumePkg> vpkg)
 {
     fVpkg = vpkg;
 }
 
-void CDistanceTransformWidget::setCurrentVolume(std::shared_ptr<volcart::Volume> volume)
+void SeedingWidget::setCurrentVolume(std::shared_ptr<volcart::Volume> volume)
 {
     currentVolume = volume;
     if (currentVolume) {
@@ -189,17 +189,17 @@ void CDistanceTransformWidget::setCurrentVolume(std::shared_ptr<volcart::Volume>
     }
 }
 
-void CDistanceTransformWidget::setCache(ChunkCache* cache)
+void SeedingWidget::setCache(ChunkCache* cache)
 {
     chunkCache = cache;
 }
 
-void CDistanceTransformWidget::onVolumeChanged(std::shared_ptr<volcart::Volume> vol)
+void SeedingWidget::onVolumeChanged(std::shared_ptr<volcart::Volume> vol)
 {
     setCurrentVolume(vol);
 }
 
-void CDistanceTransformWidget::onUserPointAdded(cv::Vec3f point)
+void SeedingWidget::onUserPointAdded(cv::Vec3f point)
 {
     userPlacedPoints.push_back(point);
     
@@ -213,7 +213,7 @@ void CDistanceTransformWidget::onUserPointAdded(cv::Vec3f point)
         3000);
 }
 
-void CDistanceTransformWidget::updateCurrentZSlice(int z)
+void SeedingWidget::updateCurrentZSlice(int z)
 {
     currentZSlice = z;
     // If we have a selected point, update its Z coordinate
@@ -226,7 +226,7 @@ void CDistanceTransformWidget::updateCurrentZSlice(int z)
     }
 }
 
-void CDistanceTransformWidget::onPointSelected(cv::Vec3f point, cv::Vec3f normal)
+void SeedingWidget::onPointSelected(cv::Vec3f point, cv::Vec3f normal)
 {
     // Only accept points when waiting for seed selection
     if (!waitingForSeedPoint) {
@@ -254,7 +254,7 @@ void CDistanceTransformWidget::onPointSelected(cv::Vec3f point, cv::Vec3f normal
     updateParameterPreview();
 }
 
-void CDistanceTransformWidget::onCastRaysClicked()
+void SeedingWidget::onCastRaysClicked()
 {
     if (currentMode == Mode::PointMode) {
         if (!currentVolume || !hasSelectedPoint) {
@@ -288,7 +288,7 @@ void CDistanceTransformWidget::onCastRaysClicked()
     }
 }
 
-void CDistanceTransformWidget::computeDistanceTransform()
+void SeedingWidget::computeDistanceTransform()
 {
     if (!currentVolume) {
         return;
@@ -324,7 +324,7 @@ void CDistanceTransformWidget::computeDistanceTransform()
     distNormalized.convertTo(distNormalized, CV_8UC1);
 }
 
-void CDistanceTransformWidget::castRays()
+void SeedingWidget::castRays()
 {
     if (!currentVolume) {
         return;
@@ -354,7 +354,7 @@ void CDistanceTransformWidget::castRays()
     progressBar->setVisible(false);
 }
 
-void CDistanceTransformWidget::findPeaksAlongRay(
+void SeedingWidget::findPeaksAlongRay(
     const cv::Vec2f& rayDir, 
     const cv::Vec3f& startPoint)
 {
@@ -458,7 +458,7 @@ void CDistanceTransformWidget::findPeaksAlongRay(
     }
 }
 
-void CDistanceTransformWidget::onRunSegmentationClicked()
+void SeedingWidget::onRunSegmentationClicked()
 {
     // Combine analysis points and user-placed points for segmentation
     std::vector<cv::Vec3f> allPoints = peakPoints;
@@ -749,7 +749,7 @@ void CDistanceTransformWidget::onRunSegmentationClicked()
         5000);
 }
 
-void CDistanceTransformWidget::onSetSeedClicked()
+void SeedingWidget::onSetSeedClicked()
 {
     if (currentMode == Mode::PointMode) {
         waitingForSeedPoint = true;
@@ -767,7 +767,7 @@ void CDistanceTransformWidget::onSetSeedClicked()
     }
 }
 
-void CDistanceTransformWidget::onResetPointsClicked()
+void SeedingWidget::onResetPointsClicked()
 {
     if (currentMode == Mode::PointMode) {
         // Point mode - reset seed point, peaks, and user points
@@ -801,7 +801,7 @@ void CDistanceTransformWidget::onResetPointsClicked()
     }
 }
 
-QString CDistanceTransformWidget::findExecutablePath()
+QString SeedingWidget::findExecutablePath()
 {
     // vc_grow_seg_from_seed should be in the same directory as the VC3D application
     QString execPath = QCoreApplication::applicationDirPath() + "/vc_grow_seg_from_seed";
@@ -815,7 +815,7 @@ QString CDistanceTransformWidget::findExecutablePath()
     return QString();
 }
 
-void CDistanceTransformWidget::updateParameterPreview()
+void SeedingWidget::updateParameterPreview()
 {
     if (!hasSelectedPoint || !currentVolume) {
         return;
@@ -873,13 +873,13 @@ void CDistanceTransformWidget::updateParameterPreview()
                            .arg(maxRadius));
 }
 
-void CDistanceTransformWidget::onDrawModeToggled()
+void SeedingWidget::onDrawModeToggled()
 {
     // This will be called when setSeedButton is clicked in draw mode
     // Already handled in onSetSeedClicked
 }
 
-void CDistanceTransformWidget::updateModeUI()
+void SeedingWidget::updateModeUI()
 {
     if (currentMode == Mode::PointMode) {
         setSeedButton->setVisible(true);
@@ -915,7 +915,7 @@ void CDistanceTransformWidget::updateModeUI()
     }
 }
 
-void CDistanceTransformWidget::analyzePaths()
+void SeedingWidget::analyzePaths()
 {
     if (!currentVolume || paths.empty()) {
         return;
@@ -961,7 +961,7 @@ void CDistanceTransformWidget::analyzePaths()
         5000);
 }
 
-void CDistanceTransformWidget::findPeaksAlongPath(const PathData& path)
+void SeedingWidget::findPeaksAlongPath(const PathData& path)
 {
     if (!currentVolume || path.points.empty()) {
         return;
@@ -1058,7 +1058,7 @@ void CDistanceTransformWidget::findPeaksAlongPath(const PathData& path)
     }
 }
 
-void CDistanceTransformWidget::startDrawing(cv::Vec3f startPoint)
+void SeedingWidget::startDrawing(cv::Vec3f startPoint)
 {
     isDrawing = true;
     currentPath.points.clear();
@@ -1069,7 +1069,7 @@ void CDistanceTransformWidget::startDrawing(cv::Vec3f startPoint)
     displayPaths();
 }
 
-void CDistanceTransformWidget::addPointToPath(cv::Vec3f point)
+void SeedingWidget::addPointToPath(cv::Vec3f point)
 {
     if (!isDrawing) {
         return;
@@ -1094,7 +1094,7 @@ void CDistanceTransformWidget::addPointToPath(cv::Vec3f point)
     }
 }
 
-void CDistanceTransformWidget::finalizePath()
+void SeedingWidget::finalizePath()
 {
     if (!isDrawing || currentPath.points.size() < 2) {
         isDrawing = false;
@@ -1117,7 +1117,7 @@ void CDistanceTransformWidget::finalizePath()
     infoLabel->setText(QString("Draw Mode: %1 path(s)").arg(paths.size()));
 }
 
-QColor CDistanceTransformWidget::generatePathColor()
+QColor SeedingWidget::generatePathColor()
 {
     // Generate distinct colors for paths
     static const QColor colors[] = {
@@ -1137,7 +1137,7 @@ QColor CDistanceTransformWidget::generatePathColor()
     return colors[colorIndex];
 }
 
-void CDistanceTransformWidget::displayPaths()
+void SeedingWidget::displayPaths()
 {
     // Prepare the list of paths to send
     QList<PathData> allPaths = paths;
@@ -1154,13 +1154,13 @@ void CDistanceTransformWidget::displayPaths()
     emit sendPointsChanged(peakPoints, userPlacedPoints);
 }
 
-void CDistanceTransformWidget::updatePointsDisplay()
+void SeedingWidget::updatePointsDisplay()
 {
     // Send both analysis results (red) and user points (blue) for display
     emit sendPointsChanged(peakPoints, userPlacedPoints);
 }
 
-void CDistanceTransformWidget::updateInfoLabel()
+void SeedingWidget::updateInfoLabel()
 {
     QString infoText;
     
@@ -1187,7 +1187,7 @@ void CDistanceTransformWidget::updateInfoLabel()
     infoLabel->setText(infoText);
 }
 
-void CDistanceTransformWidget::updateButtonStates()
+void SeedingWidget::updateButtonStates()
 {
     // Enable segmentation if we have any points (analysis results OR user points)
     bool hasAnyPoints = !peakPoints.empty() || !userPlacedPoints.empty();
@@ -1204,7 +1204,7 @@ void CDistanceTransformWidget::updateButtonStates()
     }
 }
 
-void CDistanceTransformWidget::onMousePress(cv::Vec3f vol_point, Qt::MouseButton button, Qt::KeyboardModifiers modifiers)
+void SeedingWidget::onMousePress(cv::Vec3f vol_point, Qt::MouseButton button, Qt::KeyboardModifiers modifiers)
 {
     if (currentMode != Mode::DrawMode || button != Qt::LeftButton) {
         return;
@@ -1213,7 +1213,7 @@ void CDistanceTransformWidget::onMousePress(cv::Vec3f vol_point, Qt::MouseButton
     startDrawing(vol_point);
 }
 
-void CDistanceTransformWidget::onMouseMove(cv::Vec3f vol_point, Qt::MouseButtons buttons, Qt::KeyboardModifiers modifiers)
+void SeedingWidget::onMouseMove(cv::Vec3f vol_point, Qt::MouseButtons buttons, Qt::KeyboardModifiers modifiers)
 {
     if (currentMode != Mode::DrawMode || !isDrawing || !(buttons & Qt::LeftButton)) {
         return;
@@ -1222,7 +1222,7 @@ void CDistanceTransformWidget::onMouseMove(cv::Vec3f vol_point, Qt::MouseButtons
     addPointToPath(vol_point);
 }
 
-void CDistanceTransformWidget::onMouseRelease(cv::Vec3f vol_point, Qt::MouseButton button, Qt::KeyboardModifiers modifiers)
+void SeedingWidget::onMouseRelease(cv::Vec3f vol_point, Qt::MouseButton button, Qt::KeyboardModifiers modifiers)
 {
     if (currentMode != Mode::DrawMode || button != Qt::LeftButton || !isDrawing) {
         return;

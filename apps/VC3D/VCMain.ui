@@ -132,7 +132,7 @@
     <set>Qt::DockWidgetArea::LeftDockWidgetArea|Qt::DockWidgetArea::RightDockWidgetArea</set>
    </property>
    <property name="windowTitle">
-    <string>Distance Transform</string>
+    <string>Seeding</string>
    </property>
    <attribute name="dockWidgetArea">
     <number>2</number>

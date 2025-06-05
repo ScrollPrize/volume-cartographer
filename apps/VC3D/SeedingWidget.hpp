@@ -24,12 +24,12 @@ class ChunkCache;
 
 namespace ChaoVis {
 
-class CDistanceTransformWidget : public QWidget {
+class SeedingWidget : public QWidget {
     Q_OBJECT
     
 public:
-    explicit CDistanceTransformWidget(QWidget* parent = nullptr);
-    ~CDistanceTransformWidget();
+    explicit SeedingWidget(QWidget* parent = nullptr);
+    ~SeedingWidget();
     
     void setVolumePkg(std::shared_ptr<volcart::VolumePkg> vpkg);
     void setCurrentVolume(std::shared_ptr<volcart::Volume> volume);
