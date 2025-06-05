@@ -673,6 +673,11 @@ void SeedingWidget::onRunSegmentationClicked()
         // Connect process finished signal
         connect(process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
             [process, i, &processes, &activeIndices, &completedJobs, updateProgress, this](int exitCode, QProcess::ExitStatus exitStatus) {
+                // Check if we're still running jobs (might have been cancelled)
+                if (!jobsRunning) {
+                    return;
+                }
+                
                 // Log completion
                 if (exitCode != 0) {
                     std::cerr << "Process " << i << " failed with exit code: " << exitCode << std::endl;
@@ -683,6 +688,7 @@ void SeedingWidget::onRunSegmentationClicked()
                 // Remove from active list
                 activeIndices.removeOne(i);
                 processes.removeOne(process);
+                runningProcesses.removeOne(process);
                 process->deleteLater();
                 
                 // Update progress
@@ -721,6 +727,11 @@ void SeedingWidget::onRunSegmentationClicked()
             
             connect(process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
                 [process, currentIndex, &processes, &activeIndices, &completedJobs, updateProgress, &startNextProcess, this](int exitCode, QProcess::ExitStatus exitStatus) {
+                    // Check if we're still running jobs (might have been cancelled)
+                    if (!jobsRunning) {
+                        return;
+                    }
+                    
                     // Log completion
                     if (exitCode != 0) {
                         std::cerr << "Process " << currentIndex << " failed with exit code: " << exitCode << std::endl;
@@ -730,6 +741,7 @@ void SeedingWidget::onRunSegmentationClicked()
                     
                     activeIndices.removeOne(currentIndex);
                     processes.removeOne(process);
+                    runningProcesses.removeOne(process);
                     process->deleteLater();
                     
                     completedJobs++;
@@ -754,13 +766,26 @@ void SeedingWidget::onRunSegmentationClicked()
     };
     
     // Main event loop to handle process completion
-    while (!processes.isEmpty() || completedJobs < totalPoints) {
+    while ((!processes.isEmpty() || completedJobs < totalPoints) && jobsRunning) {
         QApplication::processEvents(QEventLoop::AllEvents, 100);
         
         // Start new processes as slots become available
-        while (processes.size() < numProcesses && nextIndex < totalPoints) {
+        while (processes.size() < numProcesses && nextIndex < totalPoints && jobsRunning) {
             startNextProcess();
         }
+    }
+    
+    // Clean up any remaining processes if cancelled
+    if (!jobsRunning) {
+        for (QProcess* p : processes) {
+            if (p && p->state() != QProcess::NotRunning) {
+                disconnect(p, nullptr, nullptr, nullptr);
+                p->kill();
+                p->waitForFinished(1000);
+                p->deleteLater();
+            }
+        }
+        processes.clear();
     }
     
     // Final progress update
@@ -1362,6 +1387,11 @@ void SeedingWidget::onExpandSeedsClicked()
         // Connect process finished signal
         connect(process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
             [process, i, &processes, &activeIndices, &completedJobs, updateProgress, this](int exitCode, QProcess::ExitStatus exitStatus) {
+                // Check if we're still running jobs (might have been cancelled)
+                if (!jobsRunning) {
+                    return;
+                }
+                
                 // Log completion
                 if (exitCode != 0) {
                     std::cerr << "Expansion process " << i << " failed with exit code: " << exitCode << std::endl;
@@ -1372,6 +1402,7 @@ void SeedingWidget::onExpandSeedsClicked()
                 // Remove from active list
                 activeIndices.removeOne(i);
                 processes.removeOne(process);
+                runningProcesses.removeOne(process);
                 process->deleteLater();
                 
                 // Update progress
@@ -1406,6 +1437,11 @@ void SeedingWidget::onExpandSeedsClicked()
             
             connect(process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
                 [process, currentIndex, &processes, &activeIndices, &completedJobs, updateProgress, &startNextProcess, this](int exitCode, QProcess::ExitStatus exitStatus) {
+                    // Check if we're still running jobs (might have been cancelled)
+                    if (!jobsRunning) {
+                        return;
+                    }
+                    
                     // Log completion
                     if (exitCode != 0) {
                         std::cerr << "Expansion process " << currentIndex << " failed with exit code: " << exitCode << std::endl;
@@ -1415,6 +1451,7 @@ void SeedingWidget::onExpandSeedsClicked()
                     
                     activeIndices.removeOne(currentIndex);
                     processes.removeOne(process);
+                    runningProcesses.removeOne(process);
                     process->deleteLater();
                     
                     completedJobs++;
@@ -1436,13 +1473,26 @@ void SeedingWidget::onExpandSeedsClicked()
     };
     
     // Main event loop to handle process completion
-    while (!processes.isEmpty() || completedJobs < expansionIterations) {
+    while ((!processes.isEmpty() || completedJobs < expansionIterations) && jobsRunning) {
         QApplication::processEvents(QEventLoop::AllEvents, 100);
         
         // Start new processes as slots become available
-        while (processes.size() < numProcesses && nextIndex < expansionIterations) {
+        while (processes.size() < numProcesses && nextIndex < expansionIterations && jobsRunning) {
             startNextProcess();
         }
+    }
+    
+    // Clean up any remaining processes if cancelled
+    if (!jobsRunning) {
+        for (QProcess* p : processes) {
+            if (p && p->state() != QProcess::NotRunning) {
+                disconnect(p, nullptr, nullptr, nullptr);
+                p->kill();
+                p->waitForFinished(1000);
+                p->deleteLater();
+            }
+        }
+        processes.clear();
     }
     
     // Final progress update
@@ -1469,20 +1519,34 @@ void SeedingWidget::onCancelClicked()
         return;
     }
     
-    // Kill all running processes
-    for (QProcess* process : runningProcesses) {
-        if (process && process->state() != QProcess::NotRunning) {
-            process->kill();
-            process->waitForFinished(3000); // Wait up to 3 seconds for graceful termination
-        }
-        process->deleteLater();
-    }
+    // defensive copy of the process list to avoid race conditions
+    QList<QProcess*> processesToCancel = runningProcesses;
     
-    // Clear the process list
+    // Clear the original list immediately to prevent concurrent modifications
     runningProcesses.clear();
-    
-    // Update state
     jobsRunning = false;
+    
+    for (QProcess* process : processesToCancel) {
+        if (process) {
+            // Disconnect all signals to prevent lambda functions from firing after cancellation
+            disconnect(process, nullptr, nullptr, nullptr);
+            
+            // Check if process is still valid and running
+            if (process->state() != QProcess::NotRunning) {
+                process->kill();
+                process->waitForFinished(1000); // Wait up to 1 second
+                
+                // Force terminate if still running
+                if (process->state() != QProcess::NotRunning) {
+                    process->terminate();
+                    process->waitForFinished(1000);
+                }
+            }
+            
+            // Schedule deletion
+            process->deleteLater();
+        }
+    }
     
     // Update UI
     cancelButton->setVisible(false);
