@@ -24,10 +24,14 @@ signals:
     void sendPanRelease(Qt::MouseButton, Qt::KeyboardModifiers);
     void sendPanStart(Qt::MouseButton, Qt::KeyboardModifiers);
     void sendCursorMove(QPointF);
+    void sendMousePress(QPointF, Qt::MouseButton, Qt::KeyboardModifiers);
+    void sendMouseMove(QPointF, Qt::MouseButtons, Qt::KeyboardModifiers);
+    void sendMouseRelease(QPointF, Qt::MouseButton, Qt::KeyboardModifiers);
     
 protected:
     bool _regular_pan = false;
     QPoint _last_pan_position;
+    bool _left_button_pressed = false;
 };
 
 }

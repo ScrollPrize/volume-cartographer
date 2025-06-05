@@ -355,12 +355,15 @@ void CVolumeViewer::onSurfaceChanged(std::string name, Surface *surf)
             _intersect_items.clear();
             slice_vis_items.clear();
             _points_items.clear();
+            _path_items.clear();
+            _paths.clear();
             _cursor = nullptr;
             _center_marker = nullptr;
             fBaseImageItem = nullptr;
         }
-        else
+        else {
             invalidateVis();
+        }
     }
 
     //FIXME do not re-render surf if only segmentation changed?
@@ -512,6 +515,7 @@ void CVolumeViewer::renderVisible(bool force)
         return;
     
     renderPoints();
+    renderPaths();
     
     curr_img_area = {bbox.left()-128,bbox.top()-128, bbox.width()+256, bbox.height()+256};
     
@@ -799,6 +803,67 @@ void CVolumeViewer::onScrolled()
         // renderVisible();
 }
 
+void CVolumeViewer::renderPaths()
+{
+    // Clear existing path items
+    for(auto &item : _path_items) {
+        if (item && item->scene() == fScene) {
+            fScene->removeItem(item);
+        }
+        delete item;
+    }
+    _path_items.clear();
+    
+    if (!_surf) {
+        return;
+    }
+    
+    // Draw each path
+    for (const auto& path : _paths) {
+        if (path.points.size() < 2) {
+            continue;
+        }
+        
+        QPainterPath painterPath;
+        bool firstPoint = true;
+        
+        PlaneSurface *plane = dynamic_cast<PlaneSurface*>(_surf);
+        QuadSurface *quad = dynamic_cast<QuadSurface*>(_surf);
+        
+        for (const auto& wp : path.points) {
+            cv::Vec3f p;
+            
+            if (plane) {
+                if (plane->pointDist(wp) >= 4.0)
+                    continue;
+                p = plane->project(wp, 1.0, _scale);
+            }
+            else if (quad) {
+                SurfacePointer *ptr = quad->pointer();
+                float res = _surf->pointTo(ptr, wp, 4.0, 100);
+                p = _surf->loc(ptr)*_scale;
+                if (res >= 4.0)
+                    continue;
+            }
+            else
+                continue;
+            
+            if (firstPoint) {
+                painterPath.moveTo(p[0], p[1]);
+                firstPoint = false;
+            } else {
+                painterPath.lineTo(p[0], p[1]);
+            }
+        }
+        
+        // Create the path item with the specified color
+        QPen pen(path.color, path.lineWidth, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin);
+        auto item = fScene->addPath(painterPath, pen);
+        item->setZValue(25); // Higher than intersections but lower than points
+        _path_items.push_back(item);
+    }
+}
+
 void CVolumeViewer::renderPoints()
 {
     for(auto &item : _points_items) {
@@ -853,4 +918,46 @@ void CVolumeViewer::onPointsChanged(const std::vector<cv::Vec3f> red, const std:
     _blue_points = blue;
     
     renderPoints();
+}
+
+void CVolumeViewer::onPathsChanged(const QList<PathData>& paths)
+{
+    _paths = paths;
+    renderPaths();
+}
+
+void CVolumeViewer::onMousePress(QPointF scene_loc, Qt::MouseButton button, Qt::KeyboardModifiers modifiers)
+{
+    if (!_surf) {
+        return;
+    }
+    
+    cv::Vec3f p, n;
+    scene2vol(p, n, _surf, _surf_name, _surf_col, scene_loc, _vis_center, _scale);
+    
+    emit sendMousePressVolume(p, button, modifiers);
+}
+
+void CVolumeViewer::onMouseMove(QPointF scene_loc, Qt::MouseButtons buttons, Qt::KeyboardModifiers modifiers)
+{
+    if (!_surf) {
+        return;
+    }
+    
+    cv::Vec3f p, n;
+    scene2vol(p, n, _surf, _surf_name, _surf_col, scene_loc, _vis_center, _scale);
+    
+    emit sendMouseMoveVolume(p, buttons, modifiers);
+}
+
+void CVolumeViewer::onMouseRelease(QPointF scene_loc, Qt::MouseButton button, Qt::KeyboardModifiers modifiers)
+{
+    if (!_surf) {
+        return;
+    }
+    
+    cv::Vec3f p, n;
+    scene2vol(p, n, _surf, _surf_name, _surf_col, scene_loc, _vis_center, _scale);
+    
+    emit sendMouseReleaseVolume(p, button, modifiers);
 }

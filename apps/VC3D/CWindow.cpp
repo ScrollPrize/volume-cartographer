@@ -15,6 +15,7 @@
 #include <opencv2/highgui.hpp>
 
 #include "CVolumeViewer.hpp"
+#include "CVolumeViewerView.hpp"
 #include "UDataManipulateUtils.hpp"
 #include "SettingsDialog.hpp"
 #include "CSurfaceCollection.hpp"
@@ -225,8 +226,32 @@ void CWindow::CreateWidgets(void)
     
     // Connect distance transform widget to all existing viewers
     for (auto& viewer : _viewers) {
+        // Connect signals for displaying points and paths
         connect(_distanceTransformWidget, &CDistanceTransformWidget::sendPointsChanged, 
                 viewer, &CVolumeViewer::onPointsChanged);
+        connect(_distanceTransformWidget, &CDistanceTransformWidget::sendPathsChanged,
+                viewer, &CVolumeViewer::onPathsChanged);
+        
+        // Connect mouse events for drawing functionality
+        // First connect from view to viewer for coordinate transformation
+        connect(viewer->fGraphicsView, &CVolumeViewerView::sendMousePress,
+                viewer, &CVolumeViewer::onMousePress);
+        connect(viewer->fGraphicsView, &CVolumeViewerView::sendMouseMove,
+                viewer, &CVolumeViewer::onMouseMove);
+        connect(viewer->fGraphicsView, &CVolumeViewerView::sendMouseRelease,
+                viewer, &CVolumeViewer::onMouseRelease);
+        
+        // Then connect from viewer to widget with transformed volume coordinates
+        connect(viewer, &CVolumeViewer::sendMousePressVolume,
+                _distanceTransformWidget, &CDistanceTransformWidget::onMousePress);
+        connect(viewer, &CVolumeViewer::sendMouseMoveVolume,
+                _distanceTransformWidget, &CDistanceTransformWidget::onMouseMove);
+        connect(viewer, &CVolumeViewer::sendMouseReleaseVolume,
+                _distanceTransformWidget, &CDistanceTransformWidget::onMouseRelease);
+        
+        // Connect Z-slice changes
+        connect(viewer, &CVolumeViewer::sendZSliceChanged,
+                _distanceTransformWidget, &CDistanceTransformWidget::updateCurrentZSlice);
     }
     
     // Tab the Distance Transform dock with the Segmentation dock

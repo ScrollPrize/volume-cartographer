@@ -6,6 +6,7 @@
 #include <opencv2/core/core.hpp>
 
 #include <set>
+#include "PathData.hpp"
 
 class ChunkCache;
 class Surface;
@@ -24,6 +25,7 @@ class CVolumeViewerView;
 class CSurfaceCollection;
 class POI;
 class Intersection;
+class CDistanceTransformWidget;
 
 class CVolumeViewer : public QWidget
 {
@@ -46,6 +48,12 @@ public:
     std::string surfName() { return _surf_name; };
     void recalcScales();
     void renderPoints();
+    void renderPaths();
+    
+    // Get current scale for coordinate transformation
+    float getCurrentScale() const { return _scale; }
+    // Transform scene coordinates to volume coordinates
+    cv::Vec3f sceneToVolume(const QPointF& scenePoint) const;
     
     CVolumeViewerView* fGraphicsView;
 
@@ -61,6 +69,12 @@ public slots:
     void onZoom(int steps, QPointF scene_point, Qt::KeyboardModifiers modifiers);
     void onCursorMove(QPointF);
     void onPointsChanged(const std::vector<cv::Vec3f> red, const std::vector<cv::Vec3f> blue);
+    void onPathsChanged(const QList<PathData>& paths);
+    
+    // Mouse event handlers for drawing (transform coordinates)
+    void onMousePress(QPointF scene_loc, Qt::MouseButton button, Qt::KeyboardModifiers modifiers);
+    void onMouseMove(QPointF scene_loc, Qt::MouseButtons buttons, Qt::KeyboardModifiers modifiers);
+    void onMouseRelease(QPointF scene_loc, Qt::MouseButton button, Qt::KeyboardModifiers modifiers);
 
 signals:
     void SendSignalSliceShift(int shift, int axis);
@@ -68,6 +82,11 @@ signals:
     void sendVolumeClicked(cv::Vec3f vol_loc, cv::Vec3f normal, Surface *surf, Qt::MouseButton buttons, Qt::KeyboardModifiers modifiers);
     void sendShiftNormal(cv::Vec3f step);
     void sendZSliceChanged(int z_value);
+    
+    // Mouse event signals with transformed volume coordinates
+    void sendMousePressVolume(cv::Vec3f vol_loc, Qt::MouseButton button, Qt::KeyboardModifiers modifiers);
+    void sendMouseMoveVolume(cv::Vec3f vol_loc, Qt::MouseButtons buttons, Qt::KeyboardModifiers modifiers);
+    void sendMouseReleaseVolume(cv::Vec3f vol_loc, Qt::MouseButton button, Qt::KeyboardModifiers modifiers);
 
 protected:
     void ScaleImage(double nFactor);
@@ -118,7 +137,10 @@ protected:
     
     std::vector<cv::Vec3f> _red_points;
     std::vector<cv::Vec3f> _blue_points;
-    std::vector<QGraphicsItem*> _points_items; 
+    std::vector<QGraphicsItem*> _points_items;
+    
+    QList<PathData> _paths;
+    std::vector<QGraphicsItem*> _path_items;
 };  // class CVolumeViewer
 
 }  // namespace ChaoVis

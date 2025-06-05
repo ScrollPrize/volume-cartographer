@@ -36,6 +36,9 @@ CDistanceTransformWidget::CDistanceTransformWidget(QWidget* parent)
     , currentZSlice(0)
     , hasSelectedPoint(false)
     , waitingForSeedPoint(false)
+    , currentMode(Mode::PointMode)
+    , isDrawing(false)
+    , colorIndex(0)
 {
     setupUI();
     
@@ -59,14 +62,20 @@ void CDistanceTransformWidget::setupUI()
     infoLabel = new QLabel("Click 'Set Seed' to begin", this);
     mainLayout->addWidget(infoLabel);
     
+    // Mode toggle button
+    auto modeButton = new QPushButton("Switch to Draw Mode", this);
+    modeButton->setToolTip("Toggle between point mode and draw mode");
+    mainLayout->addWidget(modeButton);
+    
     // Set seed button
     setSeedButton = new QPushButton("Set Seed", this);
     setSeedButton->setToolTip("Click to enable point selection mode");
     mainLayout->addWidget(setSeedButton);
     
     // Max radius control
-    auto maxRadiusLayout = new QHBoxLayout();
-    maxRadiusLayout->addWidget(new QLabel("Max Radius (pixels):", this));
+    maxRadiusLayout = new QHBoxLayout();
+    maxRadiusLabel = new QLabel("Max Radius (pixels):", this);
+    maxRadiusLayout->addWidget(maxRadiusLabel);
     maxRadiusSpinBox = new QSpinBox(this);
     maxRadiusSpinBox->setRange(50, 20000);
     maxRadiusSpinBox->setValue(1500);
@@ -76,8 +85,9 @@ void CDistanceTransformWidget::setupUI()
     mainLayout->addLayout(maxRadiusLayout);
     
     // Angle step control
-    auto angleStepLayout = new QHBoxLayout();
-    angleStepLayout->addWidget(new QLabel("Angle Step (degrees):", this));
+    angleStepLayout = new QHBoxLayout();
+    angleStepLabel = new QLabel("Angle Step (degrees):", this);
+    angleStepLayout->addWidget(angleStepLabel);
     angleStepSpinBox = new QDoubleSpinBox(this);
     angleStepSpinBox->setRange(1.0, 90.0);
     angleStepSpinBox->setValue(15.0);
@@ -99,7 +109,7 @@ void CDistanceTransformWidget::setupUI()
     thresholdLayout->addWidget(new QLabel("Intensity Threshold:", this));
     thresholdSpinBox = new QSpinBox(this);
     thresholdSpinBox->setRange(1, 255);
-    thresholdSpinBox->setValue(30);  // Default was hardcoded to 30
+    thresholdSpinBox->setValue(30); 
     thresholdSpinBox->setToolTip("Minimum intensity value for peak detection");
     thresholdLayout->addWidget(thresholdSpinBox);
     mainLayout->addLayout(thresholdLayout);
@@ -119,7 +129,7 @@ void CDistanceTransformWidget::setupUI()
     castRaysButton->setEnabled(false);
     mainLayout->addWidget(castRaysButton);
     
-    runSegmentationButton = new QPushButton("Run Segmentation", this);
+    runSegmentationButton = new QPushButton("Run Seeding", this);
     runSegmentationButton->setEnabled(false);
     mainLayout->addWidget(runSegmentationButton);
     
@@ -135,6 +145,19 @@ void CDistanceTransformWidget::setupUI()
     mainLayout->addWidget(progressBar);
     
     // Connect signals
+    connect(modeButton, &QPushButton::clicked, [this, modeButton]() {
+        if (currentMode == Mode::PointMode) {
+            currentMode = Mode::DrawMode;
+            modeButton->setText("Switch to Point Mode");
+            infoLabel->setText("Draw Mode: Click and drag to draw paths");
+        } else {
+            currentMode = Mode::PointMode;
+            modeButton->setText("Switch to Draw Mode");
+            infoLabel->setText("Point Mode: Click 'Set Seed' to begin");
+        }
+        updateModeUI();
+        displayPaths();
+    });
     connect(setSeedButton, &QPushButton::clicked, this, &CDistanceTransformWidget::onSetSeedClicked);
     connect(castRaysButton, &QPushButton::clicked, this, &CDistanceTransformWidget::onCastRaysClicked);
     connect(runSegmentationButton, &QPushButton::clicked, this, &CDistanceTransformWidget::onRunSegmentationClicked);
@@ -219,31 +242,36 @@ void CDistanceTransformWidget::onPointSelected(cv::Vec3f point, cv::Vec3f normal
 
 void CDistanceTransformWidget::onCastRaysClicked()
 {
-    if (!currentVolume || !hasSelectedPoint) {
-        return;
+    if (currentMode == Mode::PointMode) {
+        if (!currentVolume || !hasSelectedPoint) {
+            return;
+        }
+        
+        // Reset previous peaks
+        peakPoints.clear();
+        emit sendPointsChanged({}, {});
+        
+        // Compute distance transform for the current slice
+        computeDistanceTransform();
+        
+        // Cast rays and find peaks
+        castRays();
+        
+        // Enable segmentation button if we found peaks
+        runSegmentationButton->setEnabled(!peakPoints.empty());
+        
+        // Send points to display
+        emit sendPointsChanged(peakPoints, {});
+        
+        // Update UI with clearer instructions about the displayed points
+        infoLabel->setText(QString("Found %1 peaks (shown in red). Review points then click 'Run Segmentation'.").arg(peakPoints.size()));
+        emit sendStatusMessageAvailable(
+            QString("Cast %1 rays and found %2 intensity peaks. Points are displayed for review.").arg(360.0 / angleStepSpinBox->value()).arg(peakPoints.size()), 
+            5000);
+    } else {
+        // Draw mode - analyze paths
+        analyzePaths();
     }
-    
-    // Reset previous peaks
-    peakPoints.clear();
-    emit sendPointsChanged({}, {});
-    
-    // Compute distance transform for the current slice
-    computeDistanceTransform();
-    
-    // Cast rays and find peaks
-    castRays();
-    
-    // Enable segmentation button if we found peaks
-    runSegmentationButton->setEnabled(!peakPoints.empty());
-    
-    // Send points to display
-    emit sendPointsChanged(peakPoints, {});
-    
-    // Update UI with clearer instructions about the displayed points
-    infoLabel->setText(QString("Found %1 peaks (shown in red). Review points then click 'Run Segmentation'.").arg(peakPoints.size()));
-    emit sendStatusMessageAvailable(
-        QString("Cast %1 rays and found %2 intensity peaks. Points are displayed for review.").arg(360.0 / angleStepSpinBox->value()).arg(peakPoints.size()), 
-        5000);
 }
 
 void CDistanceTransformWidget::computeDistanceTransform()
@@ -284,24 +312,9 @@ void CDistanceTransformWidget::computeDistanceTransform()
 
 void CDistanceTransformWidget::castRays()
 {
-    if (distanceTransform.empty() || !currentVolume) {
+    if (!currentVolume) {
         return;
     }
-    
-    // Get current slice data for intensity analysis
-    const int width = currentVolume->sliceWidth();
-    const int height = currentVolume->sliceHeight();
-    
-    cv::Mat_<uint8_t> sliceData(height, width);
-    cv::Mat_<cv::Vec3f> coords(height, width);
-    for (int y = 0; y < height; y++) {
-        for (int x = 0; x < width; x++) {
-            coords(y, x) = cv::Vec3f(x, y, currentZSlice);
-        }
-    }
-    
-    // Read the slice data using the volume's dataset
-    readInterpolated3D(sliceData, currentVolume->zarrDataset(0), coords, chunkCache);
     
     // Setup progress tracking
     progressBar->setVisible(true);
@@ -310,15 +323,14 @@ void CDistanceTransformWidget::castRays()
     // Cast rays at regular angle steps
     const double angleStep = angleStepSpinBox->value();
     const int numSteps = static_cast<int>(360.0 / angleStep);
-    const cv::Point startPoint(selectedPoint[0], selectedPoint[1]);
     
     for (int i = 0; i < numSteps; i++) {
-        // Calculate ray direction
+        // Calculate ray direction in 2D (will be used for XY plane)
         const double angle = i * angleStep * M_PI / 180.0;
         const cv::Vec2f rayDir(cos(angle), sin(angle));
         
-        // Find peaks along this ray
-        findPeaksAlongRay(rayDir, startPoint, distanceTransform, sliceData);
+        // Find peaks along this ray in 3D
+        findPeaksAlongRay(rayDir, selectedPoint);
         
         // Update progress
         progressBar->setValue((i + 1) * 100 / numSteps);
@@ -330,41 +342,47 @@ void CDistanceTransformWidget::castRays()
 
 void CDistanceTransformWidget::findPeaksAlongRay(
     const cv::Vec2f& rayDir, 
-    const cv::Point& startPoint, 
-    const cv::Mat& distMap, 
-    const cv::Mat& sliceData)
+    const cv::Vec3f& startPoint)
 {
+    if (!currentVolume) {
+        return;
+    }
+    
     const int maxRadius = maxRadiusSpinBox->value();
-    const int width = sliceData.cols;
-    const int height = sliceData.rows;
+    const int width = currentVolume->sliceWidth();
+    const int height = currentVolume->sliceHeight();
+    const int depth = currentVolume->numSlices();
     
     std::vector<float> intensities;
-    std::vector<cv::Point> positions;
-    std::vector<float> distValues; // To store distance transform values
+    std::vector<cv::Vec3f> positions;
     
     // Get the window size from the spinbox
     const int window = windowSizeSpinBox->value();
     
-    // Trace ray up to max radius
+    // Trace ray up to max radius (assuming ray is in XY plane for now)
     for (int dist = 1; dist < maxRadius; dist++) {
-        int x = startPoint.x + dist * rayDir[0];
-        int y = startPoint.y + dist * rayDir[1];
+        cv::Vec3f point;
+        point[0] = startPoint[0] + dist * rayDir[0];
+        point[1] = startPoint[1] + dist * rayDir[1];
+        point[2] = startPoint[2]; // Keep Z constant for now (ray in XY plane)
         
         // Check bounds
-        if (x < 0 || x >= width || y < 0 || y >= height) {
+        if (point[0] < 0 || point[0] >= width || 
+            point[1] < 0 || point[1] >= height ||
+            point[2] < 0 || point[2] >= depth) {
             break;
         }
         
-        // Store intensity and position
-        intensities.push_back(sliceData.at<uchar>(y, x));
-        positions.push_back(cv::Point(x, y));
+        // Read intensity at this 3D point
+        cv::Mat_<cv::Vec3f> coord(1, 1);
+        coord(0, 0) = point;
         
-        // Store distance transform value if available
-        if (!distMap.empty() && y < distMap.rows && x < distMap.cols) {
-            distValues.push_back(distMap.at<float>(y, x));
-        } else {
-            distValues.push_back(0);
-        }
+        cv::Mat_<uint8_t> intensity(1, 1);
+        readInterpolated3D(intensity, currentVolume->zarrDataset(0), coord, chunkCache);
+        
+        // Store intensity and position
+        intensities.push_back(intensity(0, 0));
+        positions.push_back(point);
     }
     
     if (intensities.empty()) {
@@ -379,8 +397,7 @@ void CDistanceTransformWidget::findPeaksAlongRay(
         for (int j = -window; j <= window; j++) {
             if (j == 0) continue; // Skip comparing with self
             
-            if (i + j >= 0 && i + j < intensities.size() && 
-                intensities[i] <= intensities[i + j]) {
+            if (intensities[i] <= intensities[i + j]) {
                 isLocalMax = false;
                 break;
             }
@@ -389,8 +406,7 @@ void CDistanceTransformWidget::findPeaksAlongRay(
         if (isLocalMax) {
             // Apply threshold
             if (intensities[i] > thresholdSpinBox->value()) {
-                const cv::Point& pos = positions[i];
-                peakPoints.push_back(cv::Vec3f(pos.x, pos.y, currentZSlice));
+                peakPoints.push_back(positions[i]);
             }
         }
     }
@@ -400,8 +416,8 @@ void CDistanceTransformWidget::findPeaksAlongRay(
         // Skip if we're too close to already detected peaks
         bool tooClose = false;
         for (const auto& existingPoint : peakPoints) {
-            if (std::abs(existingPoint[0] - positions[i].x) < window*2 && 
-                std::abs(existingPoint[1] - positions[i].y) < window*2) {
+            float dist = cv::norm(existingPoint - positions[i]);
+            if (dist < window) {
                 tooClose = true;
                 break;
             }
@@ -423,9 +439,7 @@ void CDistanceTransformWidget::findPeaksAlongRay(
         if (gradientDiff > thresholdSpinBox->value() * 0.5 && 
             intensities[i] > thresholdSpinBox->value()) {
             
-            // Check if it's already in the list of peaks (avoid duplicates)
-            const cv::Point& pos = positions[i];
-            peakPoints.push_back(cv::Vec3f(pos.x, pos.y, currentZSlice));
+            peakPoints.push_back(positions[i]);
         }
     }
 }
@@ -720,28 +734,52 @@ void CDistanceTransformWidget::onRunSegmentationClicked()
 
 void CDistanceTransformWidget::onSetSeedClicked()
 {
-    waitingForSeedPoint = true;
-    setSeedButton->setText("Click on volume to place seed...");
-    setSeedButton->setEnabled(false);
-    infoLabel->setText("Click on the volume viewer to select a seed point");
-    emit sendStatusMessageAvailable("Click on the volume to place a seed point", 5000);
+    if (currentMode == Mode::PointMode) {
+        waitingForSeedPoint = true;
+        setSeedButton->setText("Click on volume to place seed...");
+        setSeedButton->setEnabled(false);
+        infoLabel->setText("Click on the volume viewer to select a seed point");
+        emit sendStatusMessageAvailable("Click on the volume to place a seed point", 5000);
+    } else {
+        // Switch to point mode
+        currentMode = Mode::PointMode;
+        isDrawing = false;
+        updateModeUI();
+        displayPaths();
+        infoLabel->setText("Switched to Point Mode");
+    }
 }
 
 void CDistanceTransformWidget::onResetPointsClicked()
 {
-    peakPoints.clear();
-    hasSelectedPoint = false;
-    waitingForSeedPoint = false;
-    
-    setSeedButton->setText("Set Seed");
-    setSeedButton->setEnabled(true);
-    infoLabel->setText("Click 'Set Seed' to begin");
-    
-    castRaysButton->setEnabled(false);
-    runSegmentationButton->setEnabled(false);
-    resetPointsButton->setEnabled(false);
-    
-    emit sendPointsChanged({}, {});
+    if (currentMode == Mode::PointMode) {
+        // Point mode - reset seed point and peaks
+        peakPoints.clear();
+        hasSelectedPoint = false;
+        waitingForSeedPoint = false;
+        
+        setSeedButton->setText("Set Seed");
+        setSeedButton->setEnabled(true);
+        infoLabel->setText("Click 'Set Seed' to begin");
+        
+        castRaysButton->setEnabled(false);
+        runSegmentationButton->setEnabled(false);
+        resetPointsButton->setEnabled(false);
+        
+        emit sendPointsChanged({}, {});
+    } else {
+        // Draw mode - clear all paths
+        paths.clear();
+        peakPoints.clear();
+        
+        // Update UI
+        updateModeUI();
+        infoLabel->setText("All paths cleared");
+        
+        // Clear visualization - send empty paths and points
+        emit sendPathsChanged({});
+        emit sendPointsChanged({}, {});
+    }
 }
 
 QString CDistanceTransformWidget::findExecutablePath()
@@ -814,6 +852,314 @@ void CDistanceTransformWidget::updateParameterPreview()
                            .arg(selectedPoint[2])
                            .arg(numRays)
                            .arg(maxRadius));
+}
+
+void CDistanceTransformWidget::onDrawModeToggled()
+{
+    // This will be called when setSeedButton is clicked in draw mode
+    // Already handled in onSetSeedClicked
+}
+
+void CDistanceTransformWidget::updateModeUI()
+{
+    if (currentMode == Mode::PointMode) {
+        setSeedButton->setVisible(true);
+        setSeedButton->setText("Set Seed");
+        castRaysButton->setText("Cast Rays");
+        resetPointsButton->setText("Reset Points");
+        
+        // Show radius and angle controls in point mode
+        maxRadiusLabel->setVisible(true);
+        maxRadiusSpinBox->setVisible(true);
+        angleStepLabel->setVisible(true);
+        angleStepSpinBox->setVisible(true);
+        
+        // Enable/disable based on state
+        castRaysButton->setEnabled(hasSelectedPoint && currentVolume != nullptr);
+        resetPointsButton->setEnabled(hasSelectedPoint);
+    } else { // DrawMode
+        // Hide the setSeedButton in draw mode
+        setSeedButton->setVisible(false);
+        castRaysButton->setText("Analyze Paths");
+        resetPointsButton->setText("Clear All Paths");
+        
+        // Hide radius and angle controls in draw mode
+        maxRadiusLabel->setVisible(false);
+        maxRadiusSpinBox->setVisible(false);
+        angleStepLabel->setVisible(false);
+        angleStepSpinBox->setVisible(false);
+        
+        // Enable/disable based on paths
+        bool hasPaths = !paths.empty();
+        castRaysButton->setEnabled(hasPaths && currentVolume != nullptr);
+        resetPointsButton->setEnabled(hasPaths);
+    }
+}
+
+void CDistanceTransformWidget::analyzePaths()
+{
+    if (!currentVolume || paths.empty()) {
+        return;
+    }
+    
+    // Reset previous peaks
+    peakPoints.clear();
+    
+    // Compute distance transform once
+    computeDistanceTransform();
+    
+    // Setup progress tracking
+    progressBar->setVisible(true);
+    progressBar->setValue(0);
+    
+    int totalPaths = paths.size();
+    int pathIndex = 0;
+    
+    // For each path
+    for (const auto& path : paths) {
+        // Analyze along this path
+        findPeaksAlongPath(path);
+        
+        // Update progress
+        pathIndex++;
+        progressBar->setValue(pathIndex * 100 / totalPaths);
+        QApplication::processEvents();
+    }
+    
+    progressBar->setVisible(false);
+    
+    // Enable segmentation button if we found peaks
+    runSegmentationButton->setEnabled(!peakPoints.empty());
+    
+    // Update visualization
+    displayPaths();
+    emit sendPointsChanged(peakPoints, {});
+    
+    // Update UI
+    infoLabel->setText(QString("Found %1 peaks along %2 paths").arg(peakPoints.size()).arg(paths.size()));
+    emit sendStatusMessageAvailable(
+        QString("Analyzed %1 paths and found %2 intensity peaks").arg(paths.size()).arg(peakPoints.size()), 
+        5000);
+}
+
+void CDistanceTransformWidget::findPeaksAlongPath(const PathData& path)
+{
+    if (!currentVolume || path.points.empty()) {
+        return;
+    }
+    
+    // Get volume dimensions for bounds checking
+    const int width = currentVolume->sliceWidth();
+    const int height = currentVolume->sliceHeight();
+    const int depth = currentVolume->numSlices();
+    
+ 
+    std::vector<float> intensities;
+    std::vector<cv::Vec3f> positions;
+    
+    // Read intensity values at each 3D point
+    for (const auto& pt : path.points) {
+        // Check bounds
+        if (pt[0] >= 0 && pt[0] < width && 
+            pt[1] >= 0 && pt[1] < height && 
+            pt[2] >= 0 && pt[2] < depth) {
+            
+            // Create a single-point coordinate matrix for reading
+            cv::Mat_<cv::Vec3f> coord(1, 1);
+            coord(0, 0) = pt;
+            
+            // Read the intensity value at this 3D point
+            cv::Mat_<uint8_t> intensity(1, 1);
+            readInterpolated3D(intensity, currentVolume->zarrDataset(0), coord, chunkCache);
+            
+            intensities.push_back(intensity(0, 0));
+            positions.push_back(pt);
+        }
+    }
+    
+    if (intensities.empty()) {
+        return;
+    }
+    
+    // Get the window size from the spinbox
+    const int window = windowSizeSpinBox->value();
+    
+    // Find peaks along the path
+    for (size_t i = window; i < intensities.size() - window; i++) {
+        bool isLocalMax = true;
+        
+        // Check if this point is a local maximum within the window
+        for (int j = -window; j <= window; j++) {
+            if (j == 0) continue; // Skip comparing with self
+            
+            if (intensities[i] <= intensities[i + j]) {
+                isLocalMax = false;
+                break;
+            }
+        }
+        
+        if (isLocalMax) {
+            // Apply threshold
+            if (intensities[i] > thresholdSpinBox->value()) {
+                peakPoints.push_back(positions[i]);
+            }
+        }
+    }
+    
+    // Also check for sharp gradient changes (edge detection)
+    for (size_t i = window; i < intensities.size() - window; i++) {
+        // Skip if we're too close to already detected peaks
+        bool tooClose = false;
+        for (const auto& existingPoint : peakPoints) {
+            float dist = cv::norm(existingPoint - positions[i]);
+            if (dist < window) {
+                tooClose = true;
+                break;
+            }
+        }
+        
+        if (tooClose) continue;
+        
+        // Check for significant gradient changes
+        float leftAvg = 0, rightAvg = 0;
+        for (int j = 1; j <= window; j++) {
+            if (i - j >= 0) leftAvg += intensities[i - j];
+            if (i + j < intensities.size()) rightAvg += intensities[i + j];
+        }
+        leftAvg /= window;
+        rightAvg /= window;
+        
+        // If there's a significant gradient difference and the point is over threshold
+        float gradientDiff = std::abs(leftAvg - rightAvg);
+        if (gradientDiff > thresholdSpinBox->value() * 0.5 && 
+            intensities[i] > thresholdSpinBox->value()) {
+            
+            peakPoints.push_back(positions[i]);
+        }
+    }
+}
+
+void CDistanceTransformWidget::startDrawing(cv::Vec3f startPoint)
+{
+    isDrawing = true;
+    currentPath.points.clear();
+    currentPath.points.push_back(startPoint);
+    currentPath.color = generatePathColor();
+    
+    // Show temporary path
+    displayPaths();
+}
+
+void CDistanceTransformWidget::addPointToPath(cv::Vec3f point)
+{
+    if (!isDrawing) {
+        return;
+    }
+    
+    if (currentPath.points.empty()) {
+        currentPath.points.push_back(point);
+    } else {
+        // Only add if there's some distance from the last point
+        cv::Vec3f lastPoint = currentPath.points.back();
+        float distance = cv::norm(point - lastPoint);
+        
+        // Add point if it's far enough (reduces density but keeps path smooth)
+        if (distance > 1.0f) {
+            currentPath.points.push_back(point);
+            
+            // Only update display every few points
+            if (currentPath.points.size() % 5 == 0) {
+                displayPaths();
+            }
+        }
+    }
+}
+
+void CDistanceTransformWidget::finalizePath()
+{
+    if (!isDrawing || currentPath.points.size() < 2) {
+        isDrawing = false;
+        return;
+    }
+    
+    // Add the path to the collection
+    paths.push_back(currentPath);
+    
+    isDrawing = false;
+    currentPath.points.clear();
+    
+    // Update UI
+    updateModeUI();
+    
+    // Always display paths when finalizing to ensure the complete path is shown
+    displayPaths();
+    
+    // Update info
+    infoLabel->setText(QString("Draw Mode: %1 path(s)").arg(paths.size()));
+}
+
+QColor CDistanceTransformWidget::generatePathColor()
+{
+    // Generate distinct colors for paths
+    static const QColor colors[] = {
+        QColor(255, 100, 100),  // Red
+        QColor(100, 255, 100),  // Green
+        QColor(100, 100, 255),  // Blue
+        QColor(255, 255, 100),  // Yellow
+        QColor(255, 100, 255),  // Magenta
+        QColor(100, 255, 255),  // Cyan
+        QColor(255, 165, 0),    // Orange
+        QColor(128, 0, 128),    // Purple
+        QColor(0, 128, 128),    // Teal
+        QColor(255, 192, 203)   // Pink
+    };
+    
+    colorIndex = (colorIndex + 1) % 10;
+    return colors[colorIndex];
+}
+
+void CDistanceTransformWidget::displayPaths()
+{
+    // Prepare the list of paths to send
+    QList<PathData> allPaths = paths;
+    
+    // Add the current drawing path if we're actively drawing
+    if (isDrawing && !currentPath.points.empty()) {
+        allPaths.append(currentPath);
+    }
+    
+    // Send the paths for line rendering
+    emit sendPathsChanged(allPaths);
+    
+    // Send peaks as red points (they should still be displayed as individual points)
+    emit sendPointsChanged(peakPoints, {});
+}
+
+void CDistanceTransformWidget::onMousePress(cv::Vec3f vol_point, Qt::MouseButton button, Qt::KeyboardModifiers modifiers)
+{
+    if (currentMode != Mode::DrawMode || button != Qt::LeftButton) {
+        return;
+    }
+    
+    startDrawing(vol_point);
+}
+
+void CDistanceTransformWidget::onMouseMove(cv::Vec3f vol_point, Qt::MouseButtons buttons, Qt::KeyboardModifiers modifiers)
+{
+    if (currentMode != Mode::DrawMode || !isDrawing || !(buttons & Qt::LeftButton)) {
+        return;
+    }
+    
+    addPointToPath(vol_point);
+}
+
+void CDistanceTransformWidget::onMouseRelease(cv::Vec3f vol_point, Qt::MouseButton button, Qt::KeyboardModifiers modifiers)
+{
+    if (currentMode != Mode::DrawMode || button != Qt::LeftButton || !isDrawing) {
+        return;
+    }
+    
+    finalizePath();
 }
 
 } // namespace ChaoVis

@@ -47,13 +47,17 @@ void CVolumeViewerView::mouseReleaseEvent(QMouseEvent *event)
         }
         return;
     }
-    else
+    else if (event->button() == Qt::LeftButton)
     {
         QPointF global_loc = viewport()->mapFromGlobal(event->globalPosition());
         QPointF scene_loc = mapToScene({int(global_loc.x()),int(global_loc.y())});
         
+        // Emit both signals - the clicked signal for compatibility and the release signal
+        // to allow for drawing
         sendVolumeClicked(scene_loc, event->button(), event->modifiers());
+        sendMouseRelease(scene_loc, event->button(), event->modifiers());
         
+        _left_button_pressed = false;
         event->accept();
         return;
     }
@@ -68,6 +72,16 @@ void CVolumeViewerView::mousePressEvent(QMouseEvent *event)
         _last_pan_position = QPoint(event->position().x(), event->position().y());
         sendPanStart(event->button(), event->modifiers());
         setCursor(Qt::ClosedHandCursor);
+        event->accept();
+        return;
+    }
+    else if (event->button() == Qt::LeftButton)
+    {
+        QPointF global_loc = viewport()->mapFromGlobal(event->globalPosition());
+        QPointF scene_loc = mapToScene({int(global_loc.x()),int(global_loc.y())});
+        
+        _left_button_pressed = true;
+        sendMousePress(scene_loc, event->button(), event->modifiers());
         event->accept();
         return;
     }
@@ -94,6 +108,11 @@ void CVolumeViewerView::mouseMoveEvent(QMouseEvent *event)
         QPointF scene_loc = mapToScene({int(global_loc.x()),int(global_loc.y())});
         
         sendCursorMove(scene_loc);
+        
+        // Also send mouse move event for drawing if left button is pressed
+        if (_left_button_pressed) {
+            sendMouseMove(scene_loc, event->buttons(), event->modifiers());
+        }
     }
     event->ignore();
 }
