@@ -782,6 +782,9 @@
    </widget>
   </widget>
   <widget class="QDockWidget" name="dockWidgetOpList">
+   <property name="visible">
+    <bool>false</bool>
+   </property>
    <property name="windowTitle">
     <string>Layers</string>
    </property>
@@ -793,6 +796,9 @@
    </widget>
   </widget>
   <widget class="QDockWidget" name="dockWidgetOpSettings">
+   <property name="visible">
+    <bool>false</bool>
+   </property>
    <property name="minimumSize">
     <size>
      <width>103</width>
@@ -834,12 +840,6 @@
       <horstretch>0</horstretch>
       <verstretch>0</verstretch>
      </sizepolicy>
-    </property>
-    <property name="maximumSize">
-     <size>
-      <width>280</width>
-      <height>82</height>
-     </size>
     </property>
     <layout class="QGridLayout" name="gridLayout">
      <item row="1" column="1">

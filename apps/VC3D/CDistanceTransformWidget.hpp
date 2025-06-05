@@ -44,6 +44,7 @@ public slots:
     void onPointSelected(cv::Vec3f point, cv::Vec3f normal);
     void onVolumeChanged(std::shared_ptr<volcart::Volume> vol);
     void updateCurrentZSlice(int z);
+    void onUserPointAdded(cv::Vec3f point);
     void onMousePress(cv::Vec3f vol_point, Qt::MouseButton button, Qt::KeyboardModifiers modifiers);
     void onMouseMove(cv::Vec3f vol_point, Qt::MouseButtons buttons, Qt::KeyboardModifiers modifiers);
     void onMouseRelease(cv::Vec3f vol_point, Qt::MouseButton button, Qt::KeyboardModifiers modifiers);
@@ -107,6 +108,7 @@ private:
     cv::Vec3f selectedPoint;
     int currentZSlice;
     std::vector<cv::Vec3f> peakPoints;
+    std::vector<cv::Vec3f> userPlacedPoints; // Points placed via shift+click
     cv::Mat distanceTransform;
     bool hasSelectedPoint;
     bool waitingForSeedPoint;

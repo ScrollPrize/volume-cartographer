@@ -885,6 +885,11 @@ void CWindow::onVolumeClicked(cv::Vec3f vol_loc, cv::Vec3f normal, Surface *surf
         sendPointsChanged(_red_points, _blue_points);
         _lblPointsInfo->setText(QString("Red: %1 Blue: %2").arg(_red_points.size()).arg(_blue_points.size()));
 
+        // Also forward to Distance Transform widget for user-placed points
+        if (_distanceTransformWidget) {
+            _distanceTransformWidget->onUserPointAdded(vol_loc);
+        }
+
         // Force an update of the filter
         onSegFilterChanged(cmbFilterSegs->currentIndex());
     }

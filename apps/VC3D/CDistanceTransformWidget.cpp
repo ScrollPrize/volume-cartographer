@@ -199,6 +199,20 @@ void CDistanceTransformWidget::onVolumeChanged(std::shared_ptr<volcart::Volume> 
     setCurrentVolume(vol);
 }
 
+void CDistanceTransformWidget::onUserPointAdded(cv::Vec3f point)
+{
+    userPlacedPoints.push_back(point);
+    
+    updatePointsDisplay();
+    updateInfoLabel();
+    updateButtonStates();
+    
+    emit sendStatusMessageAvailable(
+        QString("Added user point at (%1, %2, %3). Total user points: %4")
+            .arg(point[0]).arg(point[1]).arg(point[2]).arg(userPlacedPoints.size()), 
+        3000);
+}
+
 void CDistanceTransformWidget::updateCurrentZSlice(int z)
 {
     currentZSlice = z;
@@ -446,7 +460,11 @@ void CDistanceTransformWidget::findPeaksAlongRay(
 
 void CDistanceTransformWidget::onRunSegmentationClicked()
 {
-    if (peakPoints.empty() || !fVpkg) {
+    // Combine analysis points and user-placed points for segmentation
+    std::vector<cv::Vec3f> allPoints = peakPoints;
+    allPoints.insert(allPoints.end(), userPlacedPoints.begin(), userPlacedPoints.end());
+    
+    if (allPoints.empty() || !fVpkg) {
         QMessageBox::warning(this, "Error", "No points available for segmentation or volume package not loaded.");
         return;
     }
@@ -458,7 +476,7 @@ void CDistanceTransformWidget::onRunSegmentationClicked()
     runSegmentationButton->setEnabled(false);
     
     const int numProcesses = processesSpinBox->value();
-    const int totalPoints = static_cast<int>(peakPoints.size());
+    const int totalPoints = static_cast<int>(allPoints.size());
     const int pointsPerBatch = std::max(1, totalPoints / numProcesses);
     
     // Use the existing segmentation directory structure
@@ -616,8 +634,7 @@ void CDistanceTransformWidget::onRunSegmentationClicked()
         process->setProcessChannelMode(QProcess::MergedChannels);
         process->setWorkingDirectory(QString::fromStdString(pathsDir.parent_path().string()));
         
-        // Prepare command
-        const auto& point = peakPoints[i];
+        const auto& point = allPoints[i];
         QString cmd = QString("%1 \"%2\" \"%3\" \"%4\" %5 %6 %7")
                          .arg(executablePath)
                          .arg(QString::fromStdString(volumePath.string()))
@@ -672,7 +689,7 @@ void CDistanceTransformWidget::onRunSegmentationClicked()
             process->setProcessChannelMode(QProcess::MergedChannels);
             process->setWorkingDirectory(QString::fromStdString(pathsDir.parent_path().string()));
             
-            const auto& point = peakPoints[nextIndex];
+            const auto& point = allPoints[nextIndex];
             const int currentIndex = nextIndex;
             
             connect(process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
@@ -753,8 +770,9 @@ void CDistanceTransformWidget::onSetSeedClicked()
 void CDistanceTransformWidget::onResetPointsClicked()
 {
     if (currentMode == Mode::PointMode) {
-        // Point mode - reset seed point and peaks
+        // Point mode - reset seed point, peaks, and user points
         peakPoints.clear();
+        userPlacedPoints.clear();
         hasSelectedPoint = false;
         waitingForSeedPoint = false;
         
@@ -768,9 +786,10 @@ void CDistanceTransformWidget::onResetPointsClicked()
         
         emit sendPointsChanged({}, {});
     } else {
-        // Draw mode - clear all paths
+        // Draw mode - clear all paths, peaks, and user points
         paths.clear();
         peakPoints.clear();
+        userPlacedPoints.clear();
         
         // Update UI
         updateModeUI();
@@ -1132,7 +1151,57 @@ void CDistanceTransformWidget::displayPaths()
     emit sendPathsChanged(allPaths);
     
     // Send peaks as red points (they should still be displayed as individual points)
-    emit sendPointsChanged(peakPoints, {});
+    emit sendPointsChanged(peakPoints, userPlacedPoints);
+}
+
+void CDistanceTransformWidget::updatePointsDisplay()
+{
+    // Send both analysis results (red) and user points (blue) for display
+    emit sendPointsChanged(peakPoints, userPlacedPoints);
+}
+
+void CDistanceTransformWidget::updateInfoLabel()
+{
+    QString infoText;
+    
+    if (currentMode == Mode::PointMode) {
+        if (hasSelectedPoint) {
+            infoText = QString("Seed: (%1, %2, %3) | Analysis: %4 pts | User: %5 pts")
+                           .arg(selectedPoint[0])
+                           .arg(selectedPoint[1])
+                           .arg(selectedPoint[2])
+                           .arg(peakPoints.size())
+                           .arg(userPlacedPoints.size());
+        } else {
+            infoText = QString("Point Mode | Analysis: %1 pts | User: %2 pts")
+                           .arg(peakPoints.size())
+                           .arg(userPlacedPoints.size());
+        }
+    } else {
+        infoText = QString("Draw Mode: %1 path(s) | Analysis: %2 pts | User: %3 pts")
+                       .arg(paths.size())
+                       .arg(peakPoints.size())
+                       .arg(userPlacedPoints.size());
+    }
+    
+    infoLabel->setText(infoText);
+}
+
+void CDistanceTransformWidget::updateButtonStates()
+{
+    // Enable segmentation if we have any points (analysis results OR user points)
+    bool hasAnyPoints = !peakPoints.empty() || !userPlacedPoints.empty();
+    runSegmentationButton->setEnabled(hasAnyPoints && currentVolume != nullptr);
+    
+    // Enable reset if we have any points or paths
+    bool hasAnyData = hasAnyPoints || !paths.empty() || hasSelectedPoint;
+    resetPointsButton->setEnabled(hasAnyData);
+    
+    if (currentMode == Mode::PointMode) {
+        castRaysButton->setEnabled(hasSelectedPoint && currentVolume != nullptr);
+    } else {
+        castRaysButton->setEnabled(!paths.empty() && currentVolume != nullptr);
+    }
 }
 
 void CDistanceTransformWidget::onMousePress(cv::Vec3f vol_point, Qt::MouseButton button, Qt::KeyboardModifiers modifiers)
