@@ -143,6 +143,7 @@ CVolumeViewer *CWindow::newConnectedCVolumeViewer(std::string surfaceName, QStri
     connect(_surf_col, &CSurfaceCollection::sendPOIChanged, volView, &CVolumeViewer::onPOIChanged);
     connect(_surf_col, &CSurfaceCollection::sendIntersectionChanged, volView, &CVolumeViewer::onIntersectionChanged);
     connect(volView, &CVolumeViewer::sendVolumeClicked, this, &CWindow::onVolumeClicked);
+    connect(this, &CWindow::sendVolumeClosing, volView, &CVolumeViewer::onVolumeClosing);
     
     volView->setSurface(surfaceName);
     
@@ -703,6 +704,9 @@ void CWindow::OpenVolume(const QString& path)
 
 void CWindow::CloseVolume(void)
 {
+    // Notify viewers to clear their surface pointers before we delete them
+    emit sendVolumeClosing();
+    
     fVpkg = nullptr;
     currentVolume = nullptr;
     UpdateView();

@@ -57,7 +57,8 @@ signals:
     void sendSliceChanged(std::string,Surface*);
     void sendOpChainSelected(OpChain*);
     void sendPointsChanged(const std::vector<cv::Vec3f> red, const std::vector<cv::Vec3f> blue);
-    void sendSurfacesLoaded(); 
+    void sendSurfacesLoaded();
+    void sendVolumeClosing(); // Signal to notify viewers before closing volume
 
 public slots:
     void onShowStatusMessage(QString text, int timeout);

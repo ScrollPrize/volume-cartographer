@@ -81,6 +81,7 @@ public slots:
     void onMousePress(QPointF scene_loc, Qt::MouseButton button, Qt::KeyboardModifiers modifiers);
     void onMouseMove(QPointF scene_loc, Qt::MouseButtons buttons, Qt::KeyboardModifiers modifiers);
     void onMouseRelease(QPointF scene_loc, Qt::MouseButton button, Qt::KeyboardModifiers modifiers);
+    void onVolumeClosing(); // Clear surface pointers when volume is closing
 
 signals:
     void SendSignalSliceShift(int shift, int axis);

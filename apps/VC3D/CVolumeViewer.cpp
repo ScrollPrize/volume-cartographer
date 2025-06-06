@@ -1073,3 +1073,32 @@ void CVolumeViewer::setCompositeMethod(const std::string& method)
         }
     }
 }
+
+void CVolumeViewer::onVolumeClosing()
+{
+    // Only clear segmentation-related surfaces, not persistent plane surfaces
+    if (_surf_name == "segmentation") {
+        onSurfaceChanged(_surf_name, nullptr);
+    }
+    // For plane surfaces (xy plane, xz plane, yz plane), just clear the scene
+    // but keep the surface reference so it can render with the new volume
+    else if (_surf_name == "xy plane" || _surf_name == "xz plane" || _surf_name == "yz plane") {
+        if (fScene) {
+            fScene->clear();
+        }
+        // Clear all item collections
+        _intersect_items.clear();
+        slice_vis_items.clear();
+        _points_items.clear();
+        _path_items.clear();
+        _paths.clear();
+        _cursor = nullptr;
+        _center_marker = nullptr;
+        fBaseImageItem = nullptr;
+        // Note: We don't set _surf = nullptr here, so the surface remains available
+    }
+    else {
+        // For other surface types (seg xz, seg yz), clear them
+        onSurfaceChanged(_surf_name, nullptr);
+    }
+}
