@@ -53,10 +53,11 @@ public:
 
 signals:
     void sendLocChanged(int x, int y, int z);
-    void sendVolumeChanged(std::shared_ptr<volcart::Volume> vol);
+    void sendVolumeChanged(std::shared_ptr<volcart::Volume> vol, const std::string& volumeId);
     void sendSliceChanged(std::string,Surface*);
     void sendOpChainSelected(OpChain*);
     void sendPointsChanged(const std::vector<cv::Vec3f> red, const std::vector<cv::Vec3f> blue);
+    void sendSurfacesLoaded(); 
 
 public slots:
     void onShowStatusMessage(QString text, int timeout);
@@ -139,6 +140,7 @@ private:
     std::string fVpkgName;
 
     std::shared_ptr<volcart::Volume> currentVolume;
+    std::string currentVolumeId;
     int loc[3] = {0,0,0};
 
     static const int AMPLITUDE = 28000;

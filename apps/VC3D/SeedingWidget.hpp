@@ -10,6 +10,7 @@
 #include <QLineEdit>
 #include <QHBoxLayout>
 #include <QProcess>
+#include <QPointer>
 #include <opencv2/core.hpp>
 #include <vector>
 #include <memory>
@@ -42,8 +43,12 @@ signals:
     void sendStatusMessageAvailable(QString text, int timeout);
     
 public slots:
+    void onSurfacesLoaded();  // Called when surfaces have been loaded/reloaded
+    
+public slots:
     void onPointSelected(cv::Vec3f point, cv::Vec3f normal);
     void onVolumeChanged(std::shared_ptr<volcart::Volume> vol);
+    void onVolumeChanged(std::shared_ptr<volcart::Volume> vol, const std::string& volumeId);
     void updateCurrentZSlice(int z);
     void onUserPointAdded(cv::Vec3f point);
     void onMousePress(cv::Vec3f vol_point, Qt::MouseButton button, Qt::KeyboardModifiers modifiers);
@@ -85,6 +90,8 @@ private:
     void updateInfoLabel();
     void updateButtonStates();
     
+private:
+    
     // UI elements
     QLabel* infoLabel;
     QPushButton* setSeedButton;
@@ -113,6 +120,7 @@ private:
     // Data
     std::shared_ptr<volcart::VolumePkg> fVpkg;
     std::shared_ptr<volcart::Volume> currentVolume;
+    std::string currentVolumeId;
     ChunkCache* chunkCache;
     cv::Vec3f selectedPoint;
     int currentZSlice;
@@ -130,7 +138,7 @@ private:
     int colorIndex;
     
     // Process management
-    QList<QProcess*> runningProcesses;
+    QList<QPointer<QProcess>> runningProcesses;
     bool jobsRunning;
 };
 

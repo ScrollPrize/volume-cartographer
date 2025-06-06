@@ -219,6 +219,13 @@ void SeedingWidget::onVolumeChanged(std::shared_ptr<volcart::Volume> vol)
     setCurrentVolume(vol);
 }
 
+void SeedingWidget::onVolumeChanged(std::shared_ptr<volcart::Volume> vol, const std::string& volumeId)
+{
+    currentVolume = vol;
+    currentVolumeId = volumeId;
+    updateButtonStates();
+}
+
 void SeedingWidget::onUserPointAdded(cv::Vec3f point)
 {
     userPlacedPoints.push_back(point);
@@ -503,21 +510,17 @@ void SeedingWidget::onRunSegmentationClicked()
     
     const int numProcesses = processesSpinBox->value();
     const int totalPoints = static_cast<int>(allPoints.size());
-    const int pointsPerBatch = std::max(1, totalPoints / numProcesses);
     
-    // Use the existing segmentation directory structure
-    // Check if there are existing segmentations first
+    // Get paths
     fs::path pathsDir;
     fs::path seedJsonPath;
     
     if (fVpkg->hasSegmentations()) {
-        // If we have segmentations, get the path from one of them
         auto segID = fVpkg->segmentationIDs()[0];
         auto seg = fVpkg->segmentation(segID);
-        pathsDir = seg->path().parent_path(); // This should be the "paths" directory
+        pathsDir = seg->path().parent_path();
         seedJsonPath = pathsDir.parent_path() / "seed.json";
     } else {
-        // Fallback: derive the path from the volume
         if (!fVpkg->hasVolumes()) {
             QMessageBox::warning(this, "Error", "No volumes in volume package.");
             progressBar->setVisible(false);
@@ -526,12 +529,10 @@ void SeedingWidget::onRunSegmentationClicked()
         }
         
         auto vol = fVpkg->volume();
-        // Volume is in "volumes/UUID", so we need to go up two levels to get to the volpkg root
         fs::path vpkgPath = vol->path().parent_path().parent_path();
         pathsDir = vpkgPath / "paths";
         seedJsonPath = vpkgPath / "seed.json";
         
-        // Check if the paths directory exists
         if (!fs::exists(pathsDir)) {
             QMessageBox::warning(this, "Error", "Segmentation paths directory not found in volume package.");
             progressBar->setVisible(false);
@@ -540,7 +541,6 @@ void SeedingWidget::onRunSegmentationClicked()
         }
     }
     
-    // Check if seed.json exists
     if (!fs::exists(seedJsonPath)) {
         QMessageBox::warning(this, "Error", "seed.json not found in volume package.");
         progressBar->setVisible(false);
@@ -548,25 +548,6 @@ void SeedingWidget::onRunSegmentationClicked()
         return;
     }
     
-    // Get current volume ID
-    QString volumeId;
-    if (currentVolume) {
-        for (const auto& id : fVpkg->volumeIDs()) {
-            if (fVpkg->volume(id) == currentVolume) {
-                volumeId = QString::fromStdString(id);
-                break;
-            }
-        }
-    }
-    
-    if (volumeId.isEmpty()) {
-        QMessageBox::warning(this, "Error", "Could not determine current volume ID.");
-        progressBar->setVisible(false);
-        runSegmentationButton->setEnabled(true);
-        return;
-    }
-    
-    // Get the volume path from the current volume
     if (!currentVolume) {
         QMessageBox::warning(this, "Error", "No current volume selected.");
         progressBar->setVisible(false);
@@ -574,93 +555,67 @@ void SeedingWidget::onRunSegmentationClicked()
         return;
     }
     
-    // Use the current volume's path
     fs::path volumePath = currentVolume->path();
+    QString workingDir = QString::fromStdString(pathsDir.parent_path().string());
     
-    auto segmentationTask = [this, volumeId, pathsDir, seedJsonPath, volumePath](const cv::Vec3f& point, int index) {
-        // Create a unique name for this segmentation point (for logging only)
-        QString segName = QString("dt_seg_%1_%2_%3_%4")
-                             .arg(point[0])
-                             .arg(point[1])
-                             .arg(point[2])
-                             .arg(index);
-        
-        // Use the current volume's path
-        fs::path zarr_path = volumePath;
-        
-        // From source: vc_grow_seg_from_seed <ome-zarr-volume> <tgt-dir> <json-params> <seed-x> <seed-y> <seed-z>
-        QString cmd = QString("%1 \"%2\" \"%3\" \"%4\" %5 %6 %7")
-                         .arg(executablePath)
-                         .arg(QString::fromStdString(zarr_path.string()))
-                         .arg(QString::fromStdString(pathsDir.string()))
-                         .arg(QString::fromStdString(seedJsonPath.string()))
-                         .arg(point[0])
-                         .arg(point[1])
-                         .arg(point[2]);
-        
-        // Debug output to console to verify command
-        std::cout << "Running seed segmentation: " << cmd.toStdString() << std::endl;
-        
-        // Execute the command from the volpkg root directory
-        QProcess process;
-        process.setProcessChannelMode(QProcess::MergedChannels); // Merge stdout and stderr
-        process.setWorkingDirectory(QString::fromStdString(pathsDir.parent_path().string()));
-        
-        // Set explicit environment variables
-        QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
-        process.setProcessEnvironment(env);
-        
-        // Try executing the command differently - using execute() instead of start()
-        std::cout << "Executing command: " << cmd.toStdString() << std::endl;
-        
-        // Method 1: Use execute (synchronous, block until finished)
-        int exitCode = QProcess::execute(cmd, QStringList());
-        if (exitCode != 0) {
-            std::cerr << "Execute method failed with exit code: " << exitCode << std::endl;
-            
-            // Method 2: Try again with system()
-            std::cout << "Trying with system() call..." << std::endl;
-            int sysResult = std::system(cmd.toStdString().c_str());
-            if (sysResult != 0) {
-                std::cerr << "System call also failed with code: " << sysResult << std::endl;
-                
-                // Method 3: Try with QProcess start()
-                std::cout << "Trying with QProcess start()..." << std::endl;
-                process.start(cmd);
-                if (!process.waitForStarted(3000)) {
-                    std::cerr << "Failed to start process: " << process.errorString().toStdString() << std::endl;
-                } else {
-                    process.waitForFinished(-1);
-                    std::cout << "Process output: " << process.readAllStandardOutput().toStdString() << std::endl;
-                    std::cerr << "Exit code: " << process.exitCode() << std::endl;
-                }
-            } else {
-                std::cout << "System call succeeded!" << std::endl;
-            }
-        } else {
-            std::cout << "Completed segmentation for point " << segName.toStdString() << std::endl;
-        }
-    };
-    
-    // Execute segmentation jobs in parallel, limited by the number of processes
-    QList<QProcess*> processes;
-    QList<int> activeIndices;
+    // Track completion
     int completedJobs = 0;
+    int nextPointIndex = 0;
     
-    // Process status update function
-    auto updateProgress = [&]() {
-        progressBar->setValue(completedJobs * 100 / totalPoints);
-        QApplication::processEvents();
-    };
-    
-    // Start as many initial processes as configured in the spinbox
-    for (int i = 0; i < std::min(numProcesses, totalPoints); i++) {
-        // Create process for this point
+    // Lambda to start a process for a point
+    std::function<void(int)> startProcessForPoint = [&](int pointIndex) {
+        if (pointIndex >= totalPoints || !jobsRunning) {
+            return;
+        }
+        
+        const auto& point = allPoints[pointIndex];
         QProcess* process = new QProcess(this);
         process->setProcessChannelMode(QProcess::MergedChannels);
-        process->setWorkingDirectory(QString::fromStdString(pathsDir.parent_path().string()));
+        process->setWorkingDirectory(workingDir);
         
-        const auto& point = allPoints[i];
+        // Connect finished signal
+        connect(process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+            [this, process, pointIndex, &completedJobs, &nextPointIndex, &startProcessForPoint, totalPoints]
+            (int exitCode, QProcess::ExitStatus exitStatus) {
+                if (!jobsRunning) {
+                    return;
+                }
+                
+                // Log result
+                if (exitCode != 0) {
+                    std::cerr << "Process for point " << pointIndex << " failed with exit code: " << exitCode << std::endl;
+                } else {
+                    std::cout << "Completed segmentation for point " << pointIndex << std::endl;
+                }
+                
+                // Update progress
+                completedJobs++;
+                progressBar->setValue(completedJobs * 100 / totalPoints);
+                
+                // Remove from running list (QPointer will handle null checking)
+                runningProcesses.removeOne(process);
+                process->deleteLater();
+                
+                // Start next process if available
+                if (nextPointIndex < totalPoints && jobsRunning) {
+                    startProcessForPoint(nextPointIndex++);
+                }
+                
+                // Check if all done
+                if (completedJobs >= totalPoints) {
+                    progressBar->setVisible(false);
+                    cancelButton->setVisible(false);
+                    jobsRunning = false;
+                    runningProcesses.clear();
+                    infoLabel->setText(QString("Segmentation complete for %1 points.").arg(totalPoints));
+                    runSegmentationButton->setEnabled(true);
+                    expandSeedsButton->setEnabled(true);
+                    updateButtonStates();
+                    emit sendStatusMessageAvailable(QString("Completed segmentation for %1 points").arg(totalPoints), 5000);
+                }
+            });
+        
+        // Start the process
         QString cmd = QString("%1 \"%2\" \"%3\" \"%4\" %5 %6 %7")
                          .arg(executablePath)
                          .arg(QString::fromStdString(volumePath.string()))
@@ -670,34 +625,8 @@ void SeedingWidget::onRunSegmentationClicked()
                          .arg(point[1])
                          .arg(point[2]);
         
-        // Connect process finished signal
-        connect(process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
-            [process, i, &processes, &activeIndices, &completedJobs, updateProgress, this](int exitCode, QProcess::ExitStatus exitStatus) {
-                // Check if we're still running jobs (might have been cancelled)
-                if (!jobsRunning) {
-                    return;
-                }
-                
-                // Log completion
-                if (exitCode != 0) {
-                    std::cerr << "Process " << i << " failed with exit code: " << exitCode << std::endl;
-                } else {
-                    std::cout << "Completed segmentation for point " << i << std::endl;
-                }
-                
-                // Remove from active list
-                activeIndices.removeOne(i);
-                processes.removeOne(process);
-                runningProcesses.removeOne(process);
-                process->deleteLater();
-                
-                // Update progress
-                completedJobs++;
-                updateProgress();
-            });
+        std::cout << "Starting job " << pointIndex << ": " << cmd.toStdString() << std::endl;
         
-        // Start the process with nice and ionice for better system behavior
-        std::cout << "Starting job " << i << ": " << cmd.toStdString() << std::endl;
         process->start("nice", QStringList() << "-n" << "19" << "ionice" << "-c" << "3" << executablePath <<
                       QString::fromStdString(volumePath.string()) <<
                       QString::fromStdString(pathsDir.string()) <<
@@ -706,117 +635,18 @@ void SeedingWidget::onRunSegmentationClicked()
                       QString::number(point[1]) <<
                       QString::number(point[2]));
         
-        processes.append(process);
-        activeIndices.append(i);
-        runningProcesses.append(process);
-    }
-    
-    // Keep track of next point to process
-    int nextIndex = numProcesses;
-    
-    // Lambda to start next process
-    std::function<void()> startNextProcess = [&]() {
-        if (processes.size() < numProcesses && nextIndex < totalPoints) {
-            // Create process for next point
-            QProcess* process = new QProcess(this);
-            process->setProcessChannelMode(QProcess::MergedChannels);
-            process->setWorkingDirectory(QString::fromStdString(pathsDir.parent_path().string()));
-            
-            const auto& point = allPoints[nextIndex];
-            const int currentIndex = nextIndex;
-            
-            connect(process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
-                [process, currentIndex, &processes, &activeIndices, &completedJobs, updateProgress, &startNextProcess, this](int exitCode, QProcess::ExitStatus exitStatus) {
-                    // Check if we're still running jobs (might have been cancelled)
-                    if (!jobsRunning) {
-                        return;
-                    }
-                    
-                    // Log completion
-                    if (exitCode != 0) {
-                        std::cerr << "Process " << currentIndex << " failed with exit code: " << exitCode << std::endl;
-                    } else {
-                        std::cout << "Completed segmentation for point " << currentIndex << std::endl;
-                    }
-                    
-                    activeIndices.removeOne(currentIndex);
-                    processes.removeOne(process);
-                    runningProcesses.removeOne(process);
-                    process->deleteLater();
-                    
-                    completedJobs++;
-                    updateProgress();
-                    
-                    startNextProcess();
-                });
-            
-            std::cout << "Starting job " << currentIndex << std::endl;
-            process->start("nice", QStringList() << "-n" << "19" << "ionice" << "-c" << "3" << executablePath <<
-                          QString::fromStdString(volumePath.string()) <<
-                          QString::fromStdString(pathsDir.string()) <<
-                          QString::fromStdString(seedJsonPath.string()) <<
-                          QString::number(point[0]) <<
-                          QString::number(point[1]) <<
-                          QString::number(point[2]));
-            
-            processes.append(process);
-            activeIndices.append(currentIndex);
-            runningProcesses.append(process);
-            nextIndex++;
-        }
+        runningProcesses.append(QPointer<QProcess>(process));
     };
     
-    // Main event loop to handle process completion
-    while ((!processes.isEmpty() || completedJobs < totalPoints) && jobsRunning) {
+    // Start initial batch of processes
+    for (int i = 0; i < std::min(numProcesses, totalPoints); i++) {
+        startProcessForPoint(nextPointIndex++);
+    }
+    
+    // Process events until all jobs complete or cancelled
+    while (jobsRunning && completedJobs < totalPoints) {
         QApplication::processEvents(QEventLoop::AllEvents, 100);
-        
-        // Start new processes as slots become available
-        while (processes.size() < numProcesses && nextIndex < totalPoints && jobsRunning) {
-            startNextProcess();
-        }
     }
-    
-    // Clean up any remaining processes if cancelled
-    if (!jobsRunning) {
-        // Make a copy to avoid issues with concurrent modifications
-        QList<QProcess*> processesToClean = processes;
-        processes.clear();
-        
-        for (QProcess* p : processesToClean) {
-            if (p) {
-                disconnect(p, nullptr, nullptr, nullptr);
-                
-                // Only check state if we're sure the process is still valid
-                try {
-                    if (p->state() != QProcess::NotRunning) {
-                        p->kill();
-                        p->waitForFinished(1000);
-                    }
-                } catch (...) {
-                    // Process might have been deleted, ignore
-                }
-                
-                p->deleteLater();
-            }
-        }
-    }
-    
-    // Final progress update
-    progressBar->setValue(100);
-    
-    // Update UI
-    progressBar->setVisible(false);
-    cancelButton->setVisible(false);
-    jobsRunning = false;
-    runningProcesses.clear();
-    infoLabel->setText(QString("Segmentation complete for %1 points.").arg(peakPoints.size()));
-    runSegmentationButton->setEnabled(true);
-    expandSeedsButton->setEnabled(true);
-    updateButtonStates();
-    
-    emit sendStatusMessageAvailable(
-        QString("Completed segmentation for %1 points").arg(peakPoints.size()), 
-        5000);
 }
 
 void SeedingWidget::onSetSeedClicked()
@@ -1327,18 +1157,16 @@ void SeedingWidget::onExpandSeedsClicked()
     const int numProcesses = processesSpinBox->value();
     const int expansionIterations = expansionIterationsSpinBox->value();
     
-    // Use the existing segmentation directory structure
+    // Get paths
     fs::path pathsDir;
     fs::path expandJsonPath;
     
     if (fVpkg->hasSegmentations()) {
-        // If we have segmentations, get the path from one of them
         auto segID = fVpkg->segmentationIDs()[0];
         auto seg = fVpkg->segmentation(segID);
-        pathsDir = seg->path().parent_path(); // This should be the "paths" directory
+        pathsDir = seg->path().parent_path();
         expandJsonPath = pathsDir.parent_path() / "expand.json";
     } else {
-        // Fallback: derive the path from the volume
         if (!fVpkg->hasVolumes()) {
             QMessageBox::warning(this, "Error", "No volumes in volume package.");
             progressBar->setVisible(false);
@@ -1347,12 +1175,10 @@ void SeedingWidget::onExpandSeedsClicked()
         }
         
         auto vol = fVpkg->volume();
-        // Volume is in "volumes/UUID", so we need to go up two levels to get to the volpkg root
         fs::path vpkgPath = vol->path().parent_path().parent_path();
         pathsDir = vpkgPath / "paths";
         expandJsonPath = vpkgPath / "expand.json";
         
-        // Check if the paths directory exists
         if (!fs::exists(pathsDir)) {
             QMessageBox::warning(this, "Error", "Segmentation paths directory not found in volume package.");
             progressBar->setVisible(false);
@@ -1361,7 +1187,6 @@ void SeedingWidget::onExpandSeedsClicked()
         }
     }
     
-    // Check if expand.json exists
     if (!fs::exists(expandJsonPath)) {
         QMessageBox::warning(this, "Error", "expand.json not found in volume package.");
         progressBar->setVisible(false);
@@ -1369,174 +1194,91 @@ void SeedingWidget::onExpandSeedsClicked()
         return;
     }
     
-    // Use the current volume's path
     fs::path volumePath = currentVolume->path();
+    QString workingDir = QString::fromStdString(pathsDir.parent_path().string());
     
-    // Execute expansion jobs in parallel, limited by the number of processes
-    QList<QProcess*> processes;
-    QList<int> activeIndices;
+    // Track completion
     int completedJobs = 0;
+    int nextIterationIndex = 0;
     
-    // Process status update function
-    auto updateProgress = [&]() {
-        progressBar->setValue(completedJobs * 100 / expansionIterations);
-        QApplication::processEvents();
-    };
-    
-    // Start as many initial processes as configured in the spinbox
-    for (int i = 0; i < std::min(numProcesses, expansionIterations); i++) {
-        // Create process for this iteration
+    // Lambda to start an expansion process
+    std::function<void(int)> startExpansionProcess = [&](int iterationIndex) {
+        if (iterationIndex >= expansionIterations || !jobsRunning) {
+            return;
+        }
+        
         QProcess* process = new QProcess(this);
         process->setProcessChannelMode(QProcess::MergedChannels);
-        process->setWorkingDirectory(QString::fromStdString(pathsDir.parent_path().string()));
+        process->setWorkingDirectory(workingDir);
         
-        // Command without seed coordinates: vc_grow_seg_from_seed <ome-zarr-volume> <tgt-dir> <json-params>
+        // Connect finished signal
+        connect(process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+            [this, process, iterationIndex, &completedJobs, &nextIterationIndex, &startExpansionProcess, expansionIterations]
+            (int exitCode, QProcess::ExitStatus exitStatus) {
+                if (!jobsRunning) {
+                    return;
+                }
+                
+                // Log result
+                if (exitCode != 0) {
+                    std::cerr << "Expansion iteration " << iterationIndex << " failed with exit code: " << exitCode << std::endl;
+                } else {
+                    std::cout << "Completed expansion iteration " << iterationIndex << std::endl;
+                }
+                
+                // Update progress
+                completedJobs++;
+                progressBar->setValue(completedJobs * 100 / expansionIterations);
+                
+                // Remove from running list (QPointer will handle null checking)
+                runningProcesses.removeOne(process);
+                process->deleteLater();
+                
+                // Start next process if available
+                if (nextIterationIndex < expansionIterations && jobsRunning) {
+                    startExpansionProcess(nextIterationIndex++);
+                }
+                
+                // Check if all done
+                if (completedJobs >= expansionIterations) {
+                    progressBar->setVisible(false);
+                    cancelButton->setVisible(false);
+                    jobsRunning = false;
+                    runningProcesses.clear();
+                    infoLabel->setText(QString("Expansion complete after %1 iterations.").arg(expansionIterations));
+                    expandSeedsButton->setEnabled(true);
+                    runSegmentationButton->setEnabled(true);
+                    updateButtonStates();
+                    emit sendStatusMessageAvailable(QString("Completed %1 expansion iterations").arg(expansionIterations), 5000);
+                }
+            });
+        
+        // Start the process
         QString cmd = QString("%1 \"%2\" \"%3\" \"%4\"")
                          .arg(executablePath)
                          .arg(QString::fromStdString(volumePath.string()))
                          .arg(QString::fromStdString(pathsDir.string()))
                          .arg(QString::fromStdString(expandJsonPath.string()));
         
-        // Connect process finished signal
-        connect(process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
-            [process, i, &processes, &activeIndices, &completedJobs, updateProgress, this](int exitCode, QProcess::ExitStatus exitStatus) {
-                // Check if we're still running jobs (might have been cancelled)
-                if (!jobsRunning) {
-                    return;
-                }
-                
-                // Log completion
-                if (exitCode != 0) {
-                    std::cerr << "Expansion process " << i << " failed with exit code: " << exitCode << std::endl;
-                } else {
-                    std::cout << "Completed expansion iteration " << i << std::endl;
-                }
-                
-                // Remove from active list
-                activeIndices.removeOne(i);
-                processes.removeOne(process);
-                runningProcesses.removeOne(process);
-                process->deleteLater();
-                
-                // Update progress
-                completedJobs++;
-                updateProgress();
-            });
+        std::cout << "Starting expansion job " << iterationIndex << ": " << cmd.toStdString() << std::endl;
         
-        // Start the process with nice and ionice for better system behavior
-        std::cout << "Starting expansion job " << i << ": " << cmd.toStdString() << std::endl;
         process->start("nice", QStringList() << "-n" << "19" << "ionice" << "-c" << "3" << executablePath <<
                       QString::fromStdString(volumePath.string()) <<
                       QString::fromStdString(pathsDir.string()) <<
                       QString::fromStdString(expandJsonPath.string()));
         
-        processes.append(process);
-        activeIndices.append(i);
-        runningProcesses.append(process);
-    }
-    
-    // Keep track of next iteration to process
-    int nextIndex = numProcesses;
-    
-    // Lambda to start next process
-    std::function<void()> startNextProcess = [&]() {
-        if (processes.size() < numProcesses && nextIndex < expansionIterations) {
-            // Create process for next iteration
-            QProcess* process = new QProcess(this);
-            process->setProcessChannelMode(QProcess::MergedChannels);
-            process->setWorkingDirectory(QString::fromStdString(pathsDir.parent_path().string()));
-            
-            const int currentIndex = nextIndex;
-            
-            connect(process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
-                [process, currentIndex, &processes, &activeIndices, &completedJobs, updateProgress, &startNextProcess, this](int exitCode, QProcess::ExitStatus exitStatus) {
-                    // Check if we're still running jobs (might have been cancelled)
-                    if (!jobsRunning) {
-                        return;
-                    }
-                    
-                    // Log completion
-                    if (exitCode != 0) {
-                        std::cerr << "Expansion process " << currentIndex << " failed with exit code: " << exitCode << std::endl;
-                    } else {
-                        std::cout << "Completed expansion iteration " << currentIndex << std::endl;
-                    }
-                    
-                    activeIndices.removeOne(currentIndex);
-                    processes.removeOne(process);
-                    runningProcesses.removeOne(process);
-                    process->deleteLater();
-                    
-                    completedJobs++;
-                    updateProgress();
-                    
-                    startNextProcess();
-                });
-            
-            std::cout << "Starting expansion job " << currentIndex << std::endl;
-            process->start("nice", QStringList() << "-n" << "19" << "ionice" << "-c" << "3" << executablePath <<
-                          QString::fromStdString(volumePath.string()) <<
-                          QString::fromStdString(pathsDir.string()) <<
-                          QString::fromStdString(expandJsonPath.string()));
-            
-            processes.append(process);
-            activeIndices.append(currentIndex);
-            runningProcesses.append(process);
-            nextIndex++;
-        }
+        runningProcesses.append(QPointer<QProcess>(process));
     };
     
-    // Main event loop to handle process completion
-    while ((!processes.isEmpty() || completedJobs < expansionIterations) && jobsRunning) {
+    // Start initial batch of processes
+    for (int i = 0; i < std::min(numProcesses, expansionIterations); i++) {
+        startExpansionProcess(nextIterationIndex++);
+    }
+    
+    // Process events until all jobs complete or cancelled
+    while (jobsRunning && completedJobs < expansionIterations) {
         QApplication::processEvents(QEventLoop::AllEvents, 100);
-        
-        // Start new processes as slots become available
-        while (processes.size() < numProcesses && nextIndex < expansionIterations && jobsRunning) {
-            startNextProcess();
-        }
     }
-    
-    // Clean up any remaining processes if cancelled
-    if (!jobsRunning) {
-        // Make a copy to avoid issues with concurrent modifications
-        QList<QProcess*> processesToClean = processes;
-        processes.clear();
-        
-        for (QProcess* p : processesToClean) {
-            if (p) {
-                disconnect(p, nullptr, nullptr, nullptr);
-                
-                // Only check state if we're sure the process is still valid
-                try {
-                    if (p->state() != QProcess::NotRunning) {
-                        p->kill();
-                        p->waitForFinished(1000);
-                    }
-                } catch (...) {
-                    // Process might have been deleted, ignore
-                }
-                
-                p->deleteLater();
-            }
-        }
-    }
-    
-    // Final progress update
-    progressBar->setValue(100);
-    
-    // Update UI
-    progressBar->setVisible(false);
-    cancelButton->setVisible(false);
-    jobsRunning = false;
-    runningProcesses.clear();
-    infoLabel->setText(QString("Expansion complete after %1 iterations.").arg(expansionIterations));
-    expandSeedsButton->setEnabled(true);
-    runSegmentationButton->setEnabled(true);
-    updateButtonStates();
-    
-    emit sendStatusMessageAvailable(
-        QString("Completed %1 expansion iterations").arg(expansionIterations), 
-        5000);
 }
 
 void SeedingWidget::onCancelClicked()
@@ -1545,26 +1287,24 @@ void SeedingWidget::onCancelClicked()
         return;
     }
     
-    // defensive copy of the process list to avoid race conditions
-    QList<QProcess*> processesToCancel = runningProcesses;
-    
-    // Clear the original list immediately to prevent concurrent modifications
-    runningProcesses.clear();
+    // Set flag to stop any new processes from starting
     jobsRunning = false;
     
-    for (QProcess* process : processesToCancel) {
-        if (process) {
-            // Disconnect all signals to prevent lambda functions from firing after cancellation
-            disconnect(process, nullptr, nullptr, nullptr);
+    // using qpointer here to avoid dangling pointers
+    for (const QPointer<QProcess>& processPtr : runningProcesses) {
+        if (processPtr) {
+            QProcess* process = processPtr.data();
             
-            // Check if process is still valid and running
+            // Disconnect all signals to prevent callbacks after cancellation
+            process->disconnect();
+            
+            // Terminate the process if it's still running
             if (process->state() != QProcess::NotRunning) {
-                process->kill();
-                process->waitForFinished(1000); // Wait up to 1 second
-                
-                // Force terminate if still running
-                if (process->state() != QProcess::NotRunning) {
-                    process->terminate();
+                process->terminate();
+                // Give it a chance to terminate gracefully
+                if (!process->waitForFinished(1000)) {
+                    // Force kill if it didn't terminate
+                    process->kill();
                     process->waitForFinished(1000);
                 }
             }
@@ -1573,6 +1313,9 @@ void SeedingWidget::onCancelClicked()
             process->deleteLater();
         }
     }
+    
+    // Clear the list
+    runningProcesses.clear();
     
     // Update UI
     cancelButton->setVisible(false);
@@ -1586,6 +1329,12 @@ void SeedingWidget::onCancelClicked()
     updateButtonStates();
     
     emit sendStatusMessageAvailable("Jobs cancelled by user", 3000);
+}
+
+void SeedingWidget::onSurfacesLoaded()
+{
+    // Update button states when surfaces are loaded/reloaded
+    updateButtonStates();
 }
 
 } // namespace ChaoVis

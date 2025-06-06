@@ -154,8 +154,19 @@ CVolumeViewer *CWindow::newConnectedCVolumeViewer(std::string surfaceName, QStri
 void CWindow::setVolume(std::shared_ptr<volcart::Volume> newvol)
 {
     currentVolume = newvol;
+    
+    // Find the volume ID for the current volume
+    currentVolumeId.clear();
+    if (fVpkg && currentVolume) {
+        for (const auto& id : fVpkg->volumeIDs()) {
+            if (fVpkg->volume(id) == currentVolume) {
+                currentVolumeId = id;
+                break;
+            }
+        }
+    }
 
-    sendVolumeChanged(currentVolume);
+    sendVolumeChanged(currentVolume, currentVolumeId);
 
     if (currentVolume->numScales() >= 2)
         wOpsList->setDataset(currentVolume->zarrDataset(1), chunk_cache, 0.5);
@@ -218,8 +229,10 @@ void CWindow::CreateWidgets(void)
     ui.dockWidgetDistanceTransform->setWidget(_seedingWidget);
     
     // Connect Seeding widget signals/slots
-    connect(this, &CWindow::sendVolumeChanged, _seedingWidget, &SeedingWidget::onVolumeChanged);
+    connect(this, &CWindow::sendVolumeChanged, _seedingWidget, 
+            static_cast<void (SeedingWidget::*)(std::shared_ptr<volcart::Volume>, const std::string&)>(&SeedingWidget::onVolumeChanged));
     connect(_seedingWidget, &SeedingWidget::sendStatusMessageAvailable, this, &CWindow::onShowStatusMessage);
+    connect(this, &CWindow::sendSurfacesLoaded, _seedingWidget, &SeedingWidget::onSurfacesLoaded);
     
     // Set the chunk cache for the seeding widget
     _seedingWidget->setCache(chunk_cache);
@@ -814,6 +827,9 @@ void CWindow::LoadSurfaces(bool reload)
             treeWidgetSurfaces->setCurrentItem(item);
         }
     }
+    
+    // Emit signal to notify that surfaces have been loaded
+    emit sendSurfacesLoaded();
 
     std::cout << "Loading of surfaces completed." << std::endl;
 }
