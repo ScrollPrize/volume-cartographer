@@ -322,6 +322,16 @@
                  <string>Filter by Point Sets</string>
                 </property>
                </item>
+               <item>
+                <property name="text">
+                 <string>Filter by Unreviewed</string>
+                </property>
+               </item>
+               <item>
+                <property name="text">
+                 <string>Filter by Revisit</string>
+                </property>
+               </item> 
               </widget>
              </item>
              <item>
@@ -373,6 +383,20 @@
               <widget class="QCheckBox" name="chkDefective">
                <property name="text">
                 <string>Defective</string>
+               </property>
+              </widget>
+             </item>
+             <item row="1" column="2">
+              <widget class="QCheckBox" name="chkReviewed">
+               <property name="text">
+                <string>Reviewed</string>
+               </property>
+              </widget>
+             </item>
+             <item row="1" column="3">
+              <widget class="QCheckBox" name="chkRevisit">
+               <property name="text">
+                <string>Revisit</string>
                </property>
               </widget>
              </item>

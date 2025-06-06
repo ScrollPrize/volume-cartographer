@@ -166,6 +166,8 @@ private:
     
     QCheckBox* _chkApproved;
     QCheckBox* _chkDefective;
+    QCheckBox* _chkReviewed;
+    QCheckBox* _chkRevisit;
     QLabel* _lblPointsInfo;
     QPushButton* _btnResetPoints;
     QuadSurface *_surf;

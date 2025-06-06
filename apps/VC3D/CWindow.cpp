@@ -306,6 +306,8 @@ void CWindow::CreateWidgets(void)
     
     _chkApproved = ui.chkApproved;
     _chkDefective = ui.chkDefective;
+    _chkReviewed = ui.chkReviewed;
+    _chkRevisit = ui.chkRevisit;
     
     for(int i=0;i<3;i++)
         spNorm[i]->setRange(-10,10);
@@ -317,9 +319,13 @@ void CWindow::CreateWidgets(void)
 #if (QT_VERSION < QT_VERSION_CHECK(6, 8, 0))
     connect(_chkApproved, &QCheckBox::stateChanged, this, &CWindow::onTagChanged);
     connect(_chkDefective, &QCheckBox::stateChanged, this, &CWindow::onTagChanged);
+    connect(_chkReviewed, &QCheckBox::stateChanged, this, &CWindow::onTagChanged);
+    connect(_chkRevisit, &QCheckBox::stateChanged, this, &CWindow::onTagChanged);
 #else
     connect(_chkApproved, &QCheckBox::checkStateChanged, this, &CWindow::onTagChanged);
     connect(_chkDefective, &QCheckBox::checkStateChanged, this, &CWindow::onTagChanged);
+    connect(_chkReviewed, &QCheckBox::checkStateChanged, this, &CWindow::onTagChanged);
+    connect(_chkRevisit, &QCheckBox::checkStateChanged, this, &CWindow::onTagChanged);
 #endif
 
     _lblPointsInfo = ui.lblPointsInfo;
@@ -1023,14 +1029,20 @@ void CWindow::onTagChanged(void)
     if (_surf->meta->contains("tags")) {
         sync_tag(_surf->meta->at("tags"), _chkApproved->checkState(), "approved");
         sync_tag(_surf->meta->at("tags"), _chkDefective->checkState(), "defective");
+        sync_tag(_surf->meta->at("tags"), _chkReviewed->checkState(), "reviewed");
+        sync_tag(_surf->meta->at("tags"), _chkRevisit->checkState(), "revisit");
         _surf->save_meta();
     }
-    else if (_chkApproved->checkState() || _chkDefective->checkState()) {
+    else if (_chkApproved->checkState() || _chkDefective->checkState() || _chkReviewed->checkState() || _chkRevisit->checkState()) {
         _surf->meta->push_back({"tags", nlohmann::json::object()});
         if (_chkApproved->checkState())
             _surf->meta->at("tags").push_back({"approved", nullptr});
         if (_chkDefective->checkState())
             _surf->meta->at("tags").push_back({"defective", nullptr});
+        if (_chkReviewed->checkState())
+            _surf->meta->at("tags").push_back({"reviewed", nullptr});
+        if (_chkRevisit->checkState())
+            _surf->meta->at("tags").push_back({"revisit", nullptr});
         _surf->save_meta();
     }
 
@@ -1089,23 +1101,35 @@ void CWindow::onSurfaceSelected()
         {
             const QSignalBlocker b1{_chkApproved};
             const QSignalBlocker b2{_chkDefective};
+            const QSignalBlocker b3{_chkReviewed};
+            const QSignalBlocker b4{_chkRevisit};
             
             std::cout << "surf " << _surf->path << _surfID <<  _surf->meta << std::endl;
             
             _chkApproved->setEnabled(true);
             _chkDefective->setEnabled(true);
+            _chkReviewed->setEnabled(true);
+            _chkRevisit->setEnabled(true);
             
             _chkApproved->setCheckState(Qt::Unchecked);
             _chkDefective->setCheckState(Qt::Unchecked);
+            _chkReviewed->setCheckState(Qt::Unchecked);
+            _chkRevisit->setCheckState(Qt::Unchecked);
             if (_surf->meta) {
                 if (_surf->meta->value("tags", nlohmann::json::object_t()).count("approved"))
                     _chkApproved->setCheckState(Qt::Checked);
                 if (_surf->meta->value("tags", nlohmann::json::object_t()).count("defective"))
                     _chkDefective->setCheckState(Qt::Checked);
+                if (_surf->meta->value("tags", nlohmann::json::object_t()).count("reviewed"))
+                    _chkReviewed->setCheckState(Qt::Checked);
+                if (_surf->meta->value("tags", nlohmann::json::object_t()).count("revisit"))
+                    _chkRevisit->setCheckState(Qt::Checked);
             }
             else {
                 _chkApproved->setEnabled(false);
                 _chkDefective->setEnabled(false);
+                _chkReviewed->setEnabled(true);
+                _chkRevisit->setEnabled(true);
             }
         }
     }
@@ -1178,6 +1202,26 @@ void CWindow::onSegFilterChanged(int index)
                 index == 2 && contains(*_vol_qsurfs[id], _red_points) &&
                 contains(*_vol_qsurfs[id], _blue_points)) {
                 show = true;
+            } else if (index == 3) {
+                // Filter by Unreviewed - show only surfaces that do NOT have the "reviewed" tag
+                auto* surface = _vol_qsurfs[id]->surface();
+                if (surface && surface->meta) {
+                    auto tags = surface->meta->value("tags", nlohmann::json::object_t());
+                    show = !tags.count("reviewed");
+                } else {
+                    // If no metadata, consider it unreviewed
+                    show = true;
+                }
+            } else if (index == 4) {
+                // Filter by Revisit - show only surfaces that DO have the "revisit" tag
+                auto* surface = _vol_qsurfs[id]->surface();
+                if (surface && surface->meta) {
+                    auto tags = surface->meta->value("tags", nlohmann::json::object_t());
+                    show = tags.count("revisit") > 0;
+                } else {
+                    // If no metadata, don't show for revisit filter
+                    show = false;
+                }
             }
         }
 
@@ -1418,6 +1462,8 @@ void CWindow::onSegmentationDirChanged(int index)
             _chkDefective->setCheckState(Qt::Unchecked);
             _chkApproved->setEnabled(false);
             _chkDefective->setEnabled(false);
+            _chkReviewed->setEnabled(false);
+            _chkRevisit->setEnabled(false);
         }
         
         // Set the new directory in the VolumePkg
