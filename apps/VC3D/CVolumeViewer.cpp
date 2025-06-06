@@ -179,13 +179,20 @@ void CVolumeViewer::onZoom(int steps, QPointF scene_loc, Qt::KeyboardModifiers m
     
     if (modifiers & Qt::ShiftModifier) {
         // Z slice navigation with shift+scroll
-        _z_off += steps;
+        int adjustedSteps = steps;
+        
+        // Use single z step for segmentation surface 
+        if (_surf_name == "segmentation") {
+            adjustedSteps = (steps > 0) ? 1 : -1;  // Always step by 1 slice regardless of wheel delta
+        }
+        
+        _z_off += adjustedSteps;
 
         // Update the focus POI Z position
         POI *poi = _surf_col->poi("focus");
         if (poi && volume) {
             // Calculate the new Z value
-            int newZ = static_cast<int>(poi->p[2] + steps);
+            int newZ = static_cast<int>(poi->p[2] + adjustedSteps);
             // Make sure it's within bounds
             newZ = std::max(0, std::min(newZ, static_cast<int>(volume->numSlices() - 1)));
 
@@ -355,12 +362,15 @@ void CVolumeViewer::onSurfaceChanged(std::string name, Surface *surf)
             _intersect_items.clear();
             slice_vis_items.clear();
             _points_items.clear();
+            _path_items.clear();
+            _paths.clear();
             _cursor = nullptr;
             _center_marker = nullptr;
             fBaseImageItem = nullptr;
         }
-        else
+        else {
             invalidateVis();
+        }
     }
 
     //FIXME do not re-render surf if only segmentation changed?
@@ -466,22 +476,76 @@ cv::Mat CVolumeViewer::render_area(const cv::Rect &roi)
     cv::Mat_<cv::Vec3f> coords;
     cv::Mat_<uint8_t> img;
 
-    //PlaneSurface use absolute positioning to simplify intersection logic
-    if (dynamic_cast<PlaneSurface*>(_surf)) {
-        _surf->gen(&coords, nullptr, roi.size(), nullptr, _scale, {roi.x, roi.y, _z_off});
+    // Check if we should use composite rendering
+    if (_surf_name == "segmentation" && _composite_enabled && _composite_layers > 1) {
+        // Composite rendering for segmentation view
+        cv::Mat_<float> accumulator;
+        int count = 0;
+        
+        int half_range = (_composite_layers - 1) / 2;
+        
+        for (int z = -half_range; z <= half_range; z++) {
+            cv::Mat_<cv::Vec3f> slice_coords;
+            cv::Mat_<uint8_t> slice_img;
+            
+            cv::Vec2f roi_c = {roi.x+roi.width/2, roi.y + roi.height/2};
+            _ptr = _surf->pointer();
+            cv::Vec3f diff = {roi_c[0],roi_c[1],0};
+            _surf->move(_ptr, diff/_scale);
+            _vis_center = roi_c;
+            _surf->gen(&slice_coords, nullptr, roi.size(), _ptr, _scale, {-roi.width/2, -roi.height/2, _z_off + z});
+            
+            readInterpolated3D(slice_img, volume->zarrDataset(_ds_sd_idx), slice_coords*_ds_scale, cache);
+            
+            // Convert to float for accumulation
+            cv::Mat_<float> slice_float;
+            slice_img.convertTo(slice_float, CV_32F);
+            
+            if (accumulator.empty()) {
+                accumulator = slice_float;
+                if (_composite_method == "min") {
+                    accumulator.setTo(255.0); // Initialize to max value for min operation
+                    accumulator = cv::min(accumulator, slice_float);
+                }
+            } else {
+                if (_composite_method == "max") {
+                    accumulator = cv::max(accumulator, slice_float);
+                } else if (_composite_method == "mean") {
+                    accumulator += slice_float;
+                    count++;
+                } else if (_composite_method == "min") {
+                    accumulator = cv::min(accumulator, slice_float);
+                }
+            }
+        }
+        
+        // Convert back to uint8
+        if (_composite_method == "mean" && count > 0) {
+            accumulator /= count;
+        }
+        accumulator.convertTo(img, CV_8U);
+        
+        return img;
     }
     else {
-        cv::Vec2f roi_c = {roi.x+roi.width/2, roi.y + roi.height/2};
+        // Standard single-slice rendering
+        //PlaneSurface use absolute positioning to simplify intersection logic
+        if (dynamic_cast<PlaneSurface*>(_surf)) {
+            _surf->gen(&coords, nullptr, roi.size(), nullptr, _scale, {roi.x, roi.y, _z_off});
+        }
+        else {
+            cv::Vec2f roi_c = {roi.x+roi.width/2, roi.y + roi.height/2};
 
-        _ptr = _surf->pointer();
-        cv::Vec3f diff = {roi_c[0],roi_c[1],0};
-        _surf->move(_ptr, diff/_scale);
-        _vis_center = roi_c;
-        _surf->gen(&coords, nullptr, roi.size(), _ptr, _scale, {-roi.width/2, -roi.height/2, _z_off});
+            _ptr = _surf->pointer();
+            cv::Vec3f diff = {roi_c[0],roi_c[1],0};
+            _surf->move(_ptr, diff/_scale);
+            _vis_center = roi_c;
+            _surf->gen(&coords, nullptr, roi.size(), _ptr, _scale, {-roi.width/2, -roi.height/2, _z_off});
+        }
+
+        readInterpolated3D(img, volume->zarrDataset(_ds_sd_idx), coords*_ds_scale, cache);
+        return img;
     }
-
-    readInterpolated3D(img, volume->zarrDataset(_ds_sd_idx), coords*_ds_scale, cache);
-    return img;
 }
 
 class LifeTime
@@ -512,6 +576,7 @@ void CVolumeViewer::renderVisible(bool force)
         return;
     
     renderPoints();
+    renderPaths();
     
     curr_img_area = {bbox.left()-128,bbox.top()-128, bbox.width()+256, bbox.height()+256};
     
@@ -799,6 +864,67 @@ void CVolumeViewer::onScrolled()
         // renderVisible();
 }
 
+void CVolumeViewer::renderPaths()
+{
+    // Clear existing path items
+    for(auto &item : _path_items) {
+        if (item && item->scene() == fScene) {
+            fScene->removeItem(item);
+        }
+        delete item;
+    }
+    _path_items.clear();
+    
+    if (!_surf) {
+        return;
+    }
+    
+    // Draw each path
+    for (const auto& path : _paths) {
+        if (path.points.size() < 2) {
+            continue;
+        }
+        
+        QPainterPath painterPath;
+        bool firstPoint = true;
+        
+        PlaneSurface *plane = dynamic_cast<PlaneSurface*>(_surf);
+        QuadSurface *quad = dynamic_cast<QuadSurface*>(_surf);
+        
+        for (const auto& wp : path.points) {
+            cv::Vec3f p;
+            
+            if (plane) {
+                if (plane->pointDist(wp) >= 4.0)
+                    continue;
+                p = plane->project(wp, 1.0, _scale);
+            }
+            else if (quad) {
+                SurfacePointer *ptr = quad->pointer();
+                float res = _surf->pointTo(ptr, wp, 4.0, 100);
+                p = _surf->loc(ptr)*_scale;
+                if (res >= 4.0)
+                    continue;
+            }
+            else
+                continue;
+            
+            if (firstPoint) {
+                painterPath.moveTo(p[0], p[1]);
+                firstPoint = false;
+            } else {
+                painterPath.lineTo(p[0], p[1]);
+            }
+        }
+        
+        // Create the path item with the specified color
+        QPen pen(path.color, path.lineWidth, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin);
+        auto item = fScene->addPath(painterPath, pen);
+        item->setZValue(25); // Higher than intersections but lower than points
+        _path_items.push_back(item);
+    }
+}
+
 void CVolumeViewer::renderPoints()
 {
     for(auto &item : _points_items) {
@@ -853,4 +979,126 @@ void CVolumeViewer::onPointsChanged(const std::vector<cv::Vec3f> red, const std:
     _blue_points = blue;
     
     renderPoints();
+}
+
+void CVolumeViewer::onPathsChanged(const QList<PathData>& paths)
+{
+    _paths = paths;
+    renderPaths();
+}
+
+void CVolumeViewer::onMousePress(QPointF scene_loc, Qt::MouseButton button, Qt::KeyboardModifiers modifiers)
+{
+    if (!_surf) {
+        return;
+    }
+    
+    cv::Vec3f p, n;
+    scene2vol(p, n, _surf, _surf_name, _surf_col, scene_loc, _vis_center, _scale);
+    
+    emit sendMousePressVolume(p, button, modifiers);
+}
+
+void CVolumeViewer::onMouseMove(QPointF scene_loc, Qt::MouseButtons buttons, Qt::KeyboardModifiers modifiers)
+{
+    if (!_surf) {
+        return;
+    }
+    
+    cv::Vec3f p, n;
+    scene2vol(p, n, _surf, _surf_name, _surf_col, scene_loc, _vis_center, _scale);
+    
+    emit sendMouseMoveVolume(p, buttons, modifiers);
+}
+
+void CVolumeViewer::onMouseRelease(QPointF scene_loc, Qt::MouseButton button, Qt::KeyboardModifiers modifiers)
+{
+    if (!_surf) {
+        return;
+    }
+    
+    cv::Vec3f p, n;
+    scene2vol(p, n, _surf, _surf_name, _surf_col, scene_loc, _vis_center, _scale);
+    
+    emit sendMouseReleaseVolume(p, button, modifiers);
+}
+
+void CVolumeViewer::setCompositeEnabled(bool enabled)
+{
+    if (_composite_enabled != enabled) {
+        _composite_enabled = enabled;
+        renderVisible(true);
+        
+        // Update status label
+        QString status = QString("%1x %2").arg(_scale).arg(_z_off);
+        if (_composite_enabled) {
+            QString method = QString::fromStdString(_composite_method);
+            method[0] = method[0].toUpper();
+            status += QString(" | Composite: %1(%2)").arg(method).arg(_composite_layers);
+        }
+        _lbl->setText(status);
+    }
+}
+
+void CVolumeViewer::setCompositeLayers(int layers)
+{
+    if (layers >= 1 && layers <= 21 && layers != _composite_layers) {
+        _composite_layers = layers;
+        if (_composite_enabled) {
+            renderVisible(true);
+            
+            // Update status label
+            QString status = QString("%1x %2").arg(_scale).arg(_z_off);
+            QString method = QString::fromStdString(_composite_method);
+            method[0] = method[0].toUpper();
+            status += QString(" | Composite: %1(%2)").arg(method).arg(_composite_layers);
+            _lbl->setText(status);
+        }
+    }
+}
+
+void CVolumeViewer::setCompositeMethod(const std::string& method)
+{
+    if (method != _composite_method && (method == "max" || method == "mean" || method == "min")) {
+        _composite_method = method;
+        if (_composite_enabled) {
+            renderVisible(true);
+            
+            // Update status label
+            QString status = QString("%1x %2").arg(_scale).arg(_z_off);
+            QString methodDisplay = QString::fromStdString(_composite_method);
+            methodDisplay[0] = methodDisplay[0].toUpper();
+            status += QString(" | Composite: %1(%2)").arg(methodDisplay).arg(_composite_layers);
+            _lbl->setText(status);
+        }
+    }
+}
+
+void CVolumeViewer::onVolumeClosing()
+{
+    // Only clear segmentation-related surfaces, not persistent plane surfaces
+    if (_surf_name == "segmentation") {
+        onSurfaceChanged(_surf_name, nullptr);
+    }
+    // For plane surfaces (xy plane, xz plane, yz plane), just clear the scene
+    // but keep the surface reference so it can render with the new volume
+    else if (_surf_name == "xy plane" || _surf_name == "xz plane" || _surf_name == "yz plane") {
+        if (fScene) {
+            fScene->clear();
+        }
+        // Clear all item collections
+        _intersect_items.clear();
+        slice_vis_items.clear();
+        _points_items.clear();
+        _path_items.clear();
+        _paths.clear();
+        _cursor = nullptr;
+        _center_marker = nullptr;
+        fBaseImageItem = nullptr;
+        // Note: We don't set _surf = nullptr here, so the surface remains available
+    }
+    else {
+        // For other surface types (seg xz, seg yz), clear them
+        onSurfaceChanged(_surf_name, nullptr);
+    }
 }

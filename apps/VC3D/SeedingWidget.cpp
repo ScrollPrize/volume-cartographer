@@ -1,0 +1,1342 @@
+#include "SeedingWidget.hpp"
+#include <QVBoxLayout>
+#include <QHBoxLayout>
+#include <QGroupBox>
+#include <QMessageBox>
+#include <QThread>
+#include <QProcess>
+#include <QApplication>
+#include <QCoreApplication>
+#include <QFileInfo>
+#include <QProcessEnvironment>
+
+#include <opencv2/imgproc.hpp>
+
+#include "vc/core/types/Volume.hpp"
+#include "vc/core/types/VolumePkg.hpp"
+#include "vc/core/util/Slicing.hpp"
+#include "vc/core/util/Logging.hpp"
+
+#include <cmath>
+#include <filesystem>
+#include <fstream>
+#include <algorithm>
+#include <functional>
+
+namespace fs = std::filesystem;
+namespace vc = volcart;
+
+namespace ChaoVis {
+
+SeedingWidget::SeedingWidget(QWidget* parent)
+    : QWidget(parent)
+    , fVpkg(nullptr)
+    , currentVolume(nullptr)
+    , chunkCache(nullptr)
+    , currentZSlice(0)
+    , hasSelectedPoint(false)
+    , waitingForSeedPoint(false)
+    , currentMode(Mode::PointMode)
+    , isDrawing(false)
+    , colorIndex(0)
+    , jobsRunning(false)
+{
+    setupUI();
+    
+    // Automatically find the executable path
+    executablePath = findExecutablePath();
+    if (executablePath.isEmpty()) {
+        QMessageBox::warning(this, "Warning", 
+            "Could not find vc_grow_seg_from_seed executable. "
+            "Please ensure it is built and in your PATH or in the build directory.");
+    }
+}
+
+SeedingWidget::~SeedingWidget() = default;
+
+void SeedingWidget::setupUI()
+{
+    // Main layout
+    auto mainLayout = new QVBoxLayout(this);
+    
+    // Info label
+    infoLabel = new QLabel("Click 'Set Seed' to begin", this);
+    mainLayout->addWidget(infoLabel);
+    
+    // Mode toggle button
+    auto modeButton = new QPushButton("Switch to Draw Mode", this);
+    modeButton->setToolTip("Toggle between point mode and draw mode");
+    mainLayout->addWidget(modeButton);
+    
+    // Set seed button
+    setSeedButton = new QPushButton("Set Seed", this);
+    setSeedButton->setToolTip("Click to enable point selection mode");
+    mainLayout->addWidget(setSeedButton);
+    
+    // Max radius control
+    maxRadiusLayout = new QHBoxLayout();
+    maxRadiusLabel = new QLabel("Max Radius (pixels):", this);
+    maxRadiusLayout->addWidget(maxRadiusLabel);
+    maxRadiusSpinBox = new QSpinBox(this);
+    maxRadiusSpinBox->setRange(50, 20000);
+    maxRadiusSpinBox->setValue(1500);
+    maxRadiusSpinBox->setSingleStep(250);
+    maxRadiusSpinBox->setToolTip("Maximum distance from center point for ray casting");
+    maxRadiusLayout->addWidget(maxRadiusSpinBox);
+    mainLayout->addLayout(maxRadiusLayout);
+    
+    // Angle step control
+    angleStepLayout = new QHBoxLayout();
+    angleStepLabel = new QLabel("Angle Step (degrees):", this);
+    angleStepLayout->addWidget(angleStepLabel);
+    angleStepSpinBox = new QDoubleSpinBox(this);
+    angleStepSpinBox->setRange(1.0, 180.0);
+    angleStepSpinBox->setValue(15.0);
+    angleStepSpinBox->setSingleStep(1.0);
+    angleStepLayout->addWidget(angleStepSpinBox);
+    mainLayout->addLayout(angleStepLayout);
+    
+    // Processes control
+    auto processesLayout = new QHBoxLayout();
+    processesLayout->addWidget(new QLabel("Parallel Processes:", this));
+    processesSpinBox = new QSpinBox(this);
+    processesSpinBox->setRange(1, 256);
+    processesSpinBox->setValue(16);
+    processesLayout->addWidget(processesSpinBox);
+    mainLayout->addLayout(processesLayout);
+    
+    // Intensity threshold control
+    auto thresholdLayout = new QHBoxLayout();
+    thresholdLayout->addWidget(new QLabel("Intensity Threshold:", this));
+    thresholdSpinBox = new QSpinBox(this);
+    thresholdSpinBox->setRange(1, 255);
+    thresholdSpinBox->setValue(20); 
+    thresholdSpinBox->setToolTip("Minimum intensity value for peak detection");
+    thresholdLayout->addWidget(thresholdSpinBox);
+    mainLayout->addLayout(thresholdLayout);
+    
+    // Window size control for peak detection
+    auto windowSizeLayout = new QHBoxLayout();
+    windowSizeLayout->addWidget(new QLabel("Peak Detection Window:", this));
+    windowSizeSpinBox = new QSpinBox(this);
+    windowSizeSpinBox->setRange(1, 10);
+    windowSizeSpinBox->setValue(7);  // Default window size
+    windowSizeSpinBox->setToolTip("Size of window for local maxima detection (larger values detect broader peaks)");
+    windowSizeLayout->addWidget(windowSizeSpinBox);
+    mainLayout->addLayout(windowSizeLayout);
+    
+    // Expansion iterations control
+    auto expansionLayout = new QHBoxLayout();
+    expansionLayout->addWidget(new QLabel("Expansion Iterations:", this));
+    expansionIterationsSpinBox = new QSpinBox(this);
+    expansionIterationsSpinBox->setRange(1, 5000000);
+    expansionIterationsSpinBox->setValue(1000000);
+    expansionIterationsSpinBox->setToolTip("Number of expansion iterations to run");
+    expansionLayout->addWidget(expansionIterationsSpinBox);
+    mainLayout->addLayout(expansionLayout);
+    
+    // Buttons
+    castRaysButton = new QPushButton("Cast Rays", this);
+    castRaysButton->setEnabled(false);
+    mainLayout->addWidget(castRaysButton);
+    
+    runSegmentationButton = new QPushButton("Run Seeding", this);
+    runSegmentationButton->setEnabled(false);
+    mainLayout->addWidget(runSegmentationButton);
+    
+    expandSeedsButton = new QPushButton("Expand Seeds", this);
+    expandSeedsButton->setEnabled(false);
+    expandSeedsButton->setToolTip("Run seed expansion using expand.json");
+    mainLayout->addWidget(expandSeedsButton);
+    
+    resetPointsButton = new QPushButton("Reset Points", this);
+    resetPointsButton->setEnabled(false);
+    mainLayout->addWidget(resetPointsButton);
+    
+    // Cancel button (only visible when jobs are running)
+    cancelButton = new QPushButton("Cancel", this);
+    cancelButton->setVisible(false);
+    cancelButton->setToolTip("Cancel running jobs");
+    mainLayout->addWidget(cancelButton);
+    
+    // Progress bar
+    progressBar = new QProgressBar(this);
+    progressBar->setRange(0, 100);
+    progressBar->setValue(0);
+    progressBar->setVisible(false);
+    mainLayout->addWidget(progressBar);
+    
+    // Connect signals
+    connect(modeButton, &QPushButton::clicked, [this, modeButton]() {
+        if (currentMode == Mode::PointMode) {
+            currentMode = Mode::DrawMode;
+            modeButton->setText("Switch to Point Mode");
+            infoLabel->setText("Draw Mode: Click and drag to draw paths");
+        } else {
+            currentMode = Mode::PointMode;
+            modeButton->setText("Switch to Draw Mode");
+            infoLabel->setText("Point Mode: Click 'Set Seed' to begin");
+        }
+        updateModeUI();
+        displayPaths();
+    });
+    connect(setSeedButton, &QPushButton::clicked, this, &SeedingWidget::onSetSeedClicked);
+    connect(castRaysButton, &QPushButton::clicked, this, &SeedingWidget::onCastRaysClicked);
+    connect(runSegmentationButton, &QPushButton::clicked, this, &SeedingWidget::onRunSegmentationClicked);
+    connect(expandSeedsButton, &QPushButton::clicked, this, &SeedingWidget::onExpandSeedsClicked);
+    connect(resetPointsButton, &QPushButton::clicked, this, &SeedingWidget::onResetPointsClicked);
+    connect(cancelButton, &QPushButton::clicked, this, &SeedingWidget::onCancelClicked);
+    
+    // Connect parameter changes to preview update
+    connect(maxRadiusSpinBox, QOverload<int>::of(&QSpinBox::valueChanged), 
+            this, &SeedingWidget::updateParameterPreview);
+    connect(angleStepSpinBox, QOverload<double>::of(&QDoubleSpinBox::valueChanged), 
+            this, &SeedingWidget::updateParameterPreview);
+    
+    // Set size policy
+    setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);
+}
+
+void SeedingWidget::setVolumePkg(std::shared_ptr<volcart::VolumePkg> vpkg)
+{
+    fVpkg = vpkg;
+    updateButtonStates();
+}
+
+void SeedingWidget::setCurrentVolume(std::shared_ptr<volcart::Volume> volume)
+{
+    currentVolume = volume;
+    updateButtonStates();
+}
+
+void SeedingWidget::setCache(ChunkCache* cache)
+{
+    chunkCache = cache;
+}
+
+void SeedingWidget::onVolumeChanged(std::shared_ptr<volcart::Volume> vol)
+{
+    setCurrentVolume(vol);
+}
+
+void SeedingWidget::onVolumeChanged(std::shared_ptr<volcart::Volume> vol, const std::string& volumeId)
+{
+    currentVolume = vol;
+    currentVolumeId = volumeId;
+    updateButtonStates();
+}
+
+void SeedingWidget::onUserPointAdded(cv::Vec3f point)
+{
+    userPlacedPoints.push_back(point);
+    
+    updatePointsDisplay();
+    updateInfoLabel();
+    updateButtonStates();
+    
+    emit sendStatusMessageAvailable(
+        QString("Added user point at (%1, %2, %3). Total user points: %4")
+            .arg(point[0]).arg(point[1]).arg(point[2]).arg(userPlacedPoints.size()), 
+        3000);
+}
+
+void SeedingWidget::updateCurrentZSlice(int z)
+{
+    currentZSlice = z;
+    // If we have a selected point, update its Z coordinate
+    if (hasSelectedPoint) {
+        selectedPoint[2] = z;
+        infoLabel->setText(QString("Selected point: (%1, %2, %3)")
+                               .arg(selectedPoint[0])
+                               .arg(selectedPoint[1])
+                               .arg(selectedPoint[2]));
+    }
+}
+
+void SeedingWidget::onPointSelected(cv::Vec3f point, cv::Vec3f normal)
+{
+    // Only accept points when waiting for seed selection
+    if (!waitingForSeedPoint) {
+        return;
+    }
+    
+    selectedPoint = point;
+    currentZSlice = static_cast<int>(point[2]);
+    hasSelectedPoint = true;
+    waitingForSeedPoint = false;
+    
+    // Reset button text
+    setSeedButton->setText("Set Seed");
+    setSeedButton->setEnabled(true);
+    
+    infoLabel->setText(QString("Selected point: (%1, %2, %3)")
+                           .arg(selectedPoint[0])
+                           .arg(selectedPoint[1])
+                           .arg(selectedPoint[2]));
+    
+    castRaysButton->setEnabled(currentVolume != nullptr);
+    resetPointsButton->setEnabled(true);
+    
+    // Immediately show the parameter preview
+    updateParameterPreview();
+}
+
+void SeedingWidget::onCastRaysClicked()
+{
+    if (currentMode == Mode::PointMode) {
+        if (!currentVolume || !hasSelectedPoint) {
+            return;
+        }
+        
+        // Reset previous peaks
+        peakPoints.clear();
+        emit sendPointsChanged({}, {});
+        
+        // Compute distance transform for the current slice
+        computeDistanceTransform();
+        
+        // Cast rays and find peaks
+        castRays();
+        
+        // Enable segmentation button if we found peaks
+        runSegmentationButton->setEnabled(!peakPoints.empty());
+        
+        // Send points to display
+        emit sendPointsChanged(peakPoints, {});
+        
+        // Update UI with clearer instructions about the displayed points
+        infoLabel->setText(QString("Found %1 peaks (shown in red). Review points then click 'Run Segmentation'.").arg(peakPoints.size()));
+        emit sendStatusMessageAvailable(
+            QString("Cast %1 rays and found %2 intensity peaks. Points are displayed for review.").arg(360.0 / angleStepSpinBox->value()).arg(peakPoints.size()), 
+            5000);
+    } else {
+        // Draw mode - analyze paths
+        analyzePaths();
+    }
+}
+
+void SeedingWidget::computeDistanceTransform()
+{
+    if (!currentVolume) {
+        return;
+    }
+    
+    // Get the current slice data
+    const int width = currentVolume->sliceWidth();
+    const int height = currentVolume->sliceHeight();
+    
+    cv::Mat_<uint8_t> sliceData(height, width);
+    
+    // Extract the slice data from the volume
+    cv::Mat_<cv::Vec3f> coords(height, width);
+    for (int y = 0; y < height; y++) {
+        for (int x = 0; x < width; x++) {
+            coords(y, x) = cv::Vec3f(x, y, currentZSlice);
+        }
+    }
+    
+    // Read the slice data using the volume's dataset
+    readInterpolated3D(sliceData, currentVolume->zarrDataset(0), coords, chunkCache);
+    
+    // Threshold the slice to create a binary image for distance transform
+    cv::Mat binaryImage;
+    cv::threshold(sliceData, binaryImage, 0, 255, cv::THRESH_BINARY | cv::THRESH_OTSU);
+    
+    // Compute the distance transform
+    cv::distanceTransform(binaryImage, distanceTransform, cv::DIST_L2, cv::DIST_MASK_PRECISE);
+    
+    // Normalize the distance transform for visualization if needed
+    cv::Mat distNormalized;
+    cv::normalize(distanceTransform, distNormalized, 0, 255, cv::NORM_MINMAX);
+    distNormalized.convertTo(distNormalized, CV_8UC1);
+}
+
+void SeedingWidget::castRays()
+{
+    if (!currentVolume) {
+        return;
+    }
+    
+    // Setup progress tracking
+    progressBar->setVisible(true);
+    progressBar->setValue(0);
+    
+    // Cast rays at regular angle steps
+    const double angleStep = angleStepSpinBox->value();
+    const int numSteps = static_cast<int>(360.0 / angleStep);
+    
+    for (int i = 0; i < numSteps; i++) {
+        // Calculate ray direction in 2D (will be used for XY plane)
+        const double angle = i * angleStep * M_PI / 180.0;
+        const cv::Vec2f rayDir(cos(angle), sin(angle));
+        
+        // Find peaks along this ray in 3D
+        findPeaksAlongRay(rayDir, selectedPoint);
+        
+        // Update progress
+        progressBar->setValue((i + 1) * 100 / numSteps);
+        QApplication::processEvents();
+    }
+    
+    progressBar->setVisible(false);
+}
+
+void SeedingWidget::findPeaksAlongRay(
+    const cv::Vec2f& rayDir, 
+    const cv::Vec3f& startPoint)
+{
+    if (!currentVolume) {
+        return;
+    }
+    
+    const int maxRadius = maxRadiusSpinBox->value();
+    const int width = currentVolume->sliceWidth();
+    const int height = currentVolume->sliceHeight();
+    const int depth = currentVolume->numSlices();
+    
+    std::vector<float> intensities;
+    std::vector<cv::Vec3f> positions;
+    
+    // Get the window size from the spinbox
+    const int window = windowSizeSpinBox->value();
+    
+    // Trace ray up to max radius (assuming ray is in XY plane for now)
+    for (int dist = 1; dist < maxRadius; dist++) {
+        cv::Vec3f point;
+        point[0] = startPoint[0] + dist * rayDir[0];
+        point[1] = startPoint[1] + dist * rayDir[1];
+        point[2] = startPoint[2]; // Keep Z constant for now (ray in XY plane)
+        
+        // Check bounds
+        if (point[0] < 0 || point[0] >= width || 
+            point[1] < 0 || point[1] >= height ||
+            point[2] < 0 || point[2] >= depth) {
+            break;
+        }
+        
+        // Read intensity at this 3D point
+        cv::Mat_<cv::Vec3f> coord(1, 1);
+        coord(0, 0) = point;
+        
+        cv::Mat_<uint8_t> intensity(1, 1);
+        readInterpolated3D(intensity, currentVolume->zarrDataset(0), coord, chunkCache);
+        
+        // Store intensity and position
+        intensities.push_back(intensity(0, 0));
+        positions.push_back(point);
+    }
+    
+    if (intensities.empty()) {
+        return;
+    }
+    
+    // Enhanced local maxima detection with configurable window
+    for (size_t i = window; i < intensities.size() - window; i++) {
+        bool isLocalMax = true;
+        
+        // Check if this point is a local maximum within the window
+        for (int j = -window; j <= window; j++) {
+            if (j == 0) continue; // Skip comparing with self
+            
+            if (intensities[i] <= intensities[i + j]) {
+                isLocalMax = false;
+                break;
+            }
+        }
+        
+        if (isLocalMax) {
+            // Apply threshold
+            if (intensities[i] > thresholdSpinBox->value()) {
+                peakPoints.push_back(positions[i]);
+            }
+        }
+    }
+    
+    // Also check for sharp gradient changes (edge detection)
+    for (size_t i = window; i < intensities.size() - window; i++) {
+        // Skip if we're too close to already detected peaks
+        bool tooClose = false;
+        for (const auto& existingPoint : peakPoints) {
+            float dist = cv::norm(existingPoint - positions[i]);
+            if (dist < window) {
+                tooClose = true;
+                break;
+            }
+        }
+        
+        if (tooClose) continue;
+        
+        // Check for significant gradient changes
+        float leftAvg = 0, rightAvg = 0;
+        for (int j = 1; j <= window; j++) {
+            if (i - j >= 0) leftAvg += intensities[i - j];
+            if (i + j < intensities.size()) rightAvg += intensities[i + j];
+        }
+        leftAvg /= window;
+        rightAvg /= window;
+        
+        // If there's a significant gradient difference and the point is over threshold
+        float gradientDiff = std::abs(leftAvg - rightAvg);
+        if (gradientDiff > thresholdSpinBox->value() * 0.5 && 
+            intensities[i] > thresholdSpinBox->value()) {
+            
+            peakPoints.push_back(positions[i]);
+        }
+    }
+}
+
+void SeedingWidget::onRunSegmentationClicked()
+{
+    // Combine analysis points and user-placed points for segmentation
+    std::vector<cv::Vec3f> allPoints = peakPoints;
+    allPoints.insert(allPoints.end(), userPlacedPoints.begin(), userPlacedPoints.end());
+    
+    if (allPoints.empty() || !fVpkg) {
+        QMessageBox::warning(this, "Error", "No points available for segmentation or volume package not loaded.");
+        return;
+    }
+    
+    // Update UI
+    progressBar->setVisible(true);
+    progressBar->setValue(0);
+    infoLabel->setText("Running segmentation jobs...");
+    runSegmentationButton->setEnabled(false);
+    expandSeedsButton->setEnabled(false);
+    
+    // Show cancel button and set jobs running
+    jobsRunning = true;
+    cancelButton->setVisible(true);
+    runningProcesses.clear();
+    
+    const int numProcesses = processesSpinBox->value();
+    const int totalPoints = static_cast<int>(allPoints.size());
+    
+    // Get paths
+    fs::path pathsDir;
+    fs::path seedJsonPath;
+    
+    if (fVpkg->hasSegmentations()) {
+        auto segID = fVpkg->segmentationIDs()[0];
+        auto seg = fVpkg->segmentation(segID);
+        pathsDir = seg->path().parent_path();
+        seedJsonPath = pathsDir.parent_path() / "seed.json";
+    } else {
+        if (!fVpkg->hasVolumes()) {
+            QMessageBox::warning(this, "Error", "No volumes in volume package.");
+            progressBar->setVisible(false);
+            runSegmentationButton->setEnabled(true);
+            return;
+        }
+        
+        auto vol = fVpkg->volume();
+        fs::path vpkgPath = vol->path().parent_path().parent_path();
+        pathsDir = vpkgPath / "paths";
+        seedJsonPath = vpkgPath / "seed.json";
+        
+        if (!fs::exists(pathsDir)) {
+            QMessageBox::warning(this, "Error", "Segmentation paths directory not found in volume package.");
+            progressBar->setVisible(false);
+            runSegmentationButton->setEnabled(true);
+            return;
+        }
+    }
+    
+    if (!fs::exists(seedJsonPath)) {
+        QMessageBox::warning(this, "Error", "seed.json not found in volume package.");
+        progressBar->setVisible(false);
+        runSegmentationButton->setEnabled(true);
+        return;
+    }
+    
+    if (!currentVolume) {
+        QMessageBox::warning(this, "Error", "No current volume selected.");
+        progressBar->setVisible(false);
+        runSegmentationButton->setEnabled(true);
+        return;
+    }
+    
+    fs::path volumePath = currentVolume->path();
+    QString workingDir = QString::fromStdString(pathsDir.parent_path().string());
+    
+    // Track completion
+    int completedJobs = 0;
+    int nextPointIndex = 0;
+    
+    // Lambda to start a process for a point
+    std::function<void(int)> startProcessForPoint = [&](int pointIndex) {
+        if (pointIndex >= totalPoints || !jobsRunning) {
+            return;
+        }
+        
+        const auto& point = allPoints[pointIndex];
+        QProcess* process = new QProcess(this);
+        process->setProcessChannelMode(QProcess::MergedChannels);
+        process->setWorkingDirectory(workingDir);
+        
+        // Connect finished signal
+        connect(process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+            [this, process, pointIndex, &completedJobs, &nextPointIndex, &startProcessForPoint, totalPoints]
+            (int exitCode, QProcess::ExitStatus exitStatus) {
+                if (!jobsRunning) {
+                    return;
+                }
+                
+                // Log result
+                if (exitCode != 0) {
+                    std::cerr << "Process for point " << pointIndex << " failed with exit code: " << exitCode << std::endl;
+                } else {
+                    std::cout << "Completed segmentation for point " << pointIndex << std::endl;
+                }
+                
+                // Update progress
+                completedJobs++;
+                progressBar->setValue(completedJobs * 100 / totalPoints);
+                
+                // Remove from running list (QPointer will handle null checking)
+                runningProcesses.removeOne(process);
+                process->deleteLater();
+                
+                // Start next process if available
+                if (nextPointIndex < totalPoints && jobsRunning) {
+                    startProcessForPoint(nextPointIndex++);
+                }
+                
+                // Check if all done
+                if (completedJobs >= totalPoints) {
+                    progressBar->setVisible(false);
+                    cancelButton->setVisible(false);
+                    jobsRunning = false;
+                    runningProcesses.clear();
+                    infoLabel->setText(QString("Segmentation complete for %1 points.").arg(totalPoints));
+                    runSegmentationButton->setEnabled(true);
+                    expandSeedsButton->setEnabled(true);
+                    updateButtonStates();
+                    emit sendStatusMessageAvailable(QString("Completed segmentation for %1 points").arg(totalPoints), 5000);
+                }
+            });
+        
+        // Start the process
+        QString cmd = QString("%1 \"%2\" \"%3\" \"%4\" %5 %6 %7")
+                         .arg(executablePath)
+                         .arg(QString::fromStdString(volumePath.string()))
+                         .arg(QString::fromStdString(pathsDir.string()))
+                         .arg(QString::fromStdString(seedJsonPath.string()))
+                         .arg(point[0])
+                         .arg(point[1])
+                         .arg(point[2]);
+        
+        std::cout << "Starting job " << pointIndex << ": " << cmd.toStdString() << std::endl;
+        
+        process->start("nice", QStringList() << "-n" << "19" << "ionice" << "-c" << "3" << executablePath <<
+                      QString::fromStdString(volumePath.string()) <<
+                      QString::fromStdString(pathsDir.string()) <<
+                      QString::fromStdString(seedJsonPath.string()) <<
+                      QString::number(point[0]) <<
+                      QString::number(point[1]) <<
+                      QString::number(point[2]));
+        
+        runningProcesses.append(QPointer<QProcess>(process));
+    };
+    
+    // Start initial batch of processes
+    for (int i = 0; i < std::min(numProcesses, totalPoints); i++) {
+        startProcessForPoint(nextPointIndex++);
+    }
+    
+    // Process events until all jobs complete or cancelled
+    while (jobsRunning && completedJobs < totalPoints) {
+        QApplication::processEvents(QEventLoop::AllEvents, 100);
+    }
+}
+
+void SeedingWidget::onSetSeedClicked()
+{
+    if (currentMode == Mode::PointMode) {
+        waitingForSeedPoint = true;
+        setSeedButton->setText("Click on volume to place seed...");
+        setSeedButton->setEnabled(false);
+        infoLabel->setText("Click on the volume viewer to select a seed point");
+        emit sendStatusMessageAvailable("Click on the volume to place a seed point", 5000);
+    } else {
+        // Switch to point mode
+        currentMode = Mode::PointMode;
+        isDrawing = false;
+        updateModeUI();
+        displayPaths();
+        infoLabel->setText("Switched to Point Mode");
+    }
+}
+
+void SeedingWidget::onResetPointsClicked()
+{
+    if (currentMode == Mode::PointMode) {
+        // Point mode - reset seed point, peaks, and user points
+        peakPoints.clear();
+        userPlacedPoints.clear();
+        hasSelectedPoint = false;
+        waitingForSeedPoint = false;
+        
+        setSeedButton->setText("Set Seed");
+        setSeedButton->setEnabled(true);
+        infoLabel->setText("Click 'Set Seed' to begin");
+        
+        castRaysButton->setEnabled(false);
+        runSegmentationButton->setEnabled(false);
+        resetPointsButton->setEnabled(false);
+        
+        emit sendPointsChanged({}, {});
+    } else {
+        // Draw mode - clear all paths, peaks, and user points
+        paths.clear();
+        peakPoints.clear();
+        userPlacedPoints.clear();
+        
+        // Update UI
+        updateModeUI();
+        infoLabel->setText("All paths cleared");
+        
+        // Clear visualization - send empty paths and points
+        emit sendPathsChanged({});
+        emit sendPointsChanged({}, {});
+    }
+}
+
+QString SeedingWidget::findExecutablePath()
+{
+    // vc_grow_seg_from_seed should be in the same directory as the VC3D application
+    QString execPath = QCoreApplication::applicationDirPath() + "/vc_grow_seg_from_seed";
+    
+    QFileInfo fileInfo(execPath);
+    if (fileInfo.exists() && fileInfo.isExecutable()) {
+        return fileInfo.absoluteFilePath();
+    }
+    
+    // If not found, return empty string
+    return QString();
+}
+
+void SeedingWidget::updateParameterPreview()
+{
+    if (!hasSelectedPoint || !currentVolume) {
+        return;
+    }
+    
+    // Clear any existing preview points
+    std::vector<cv::Vec3f> previewPoints;
+    std::vector<cv::Vec3f> seedPoints;
+    
+    // Add the seed point (will be displayed in blue)
+    seedPoints.push_back(selectedPoint);
+    
+    // Get parameter values
+    const double angleStep = angleStepSpinBox->value();
+    const int maxRadius = maxRadiusSpinBox->value();
+    const int numRays = static_cast<int>(360.0 / angleStep);
+    
+    // Generate preview points to show the radius and ray directions
+    for (int i = 0; i < numRays; i++) {
+        const double angle = i * angleStep * M_PI / 180.0;
+        const cv::Vec2f rayDir(cos(angle), sin(angle));
+        
+        // Add points along the radius circle
+        float x = selectedPoint[0] + maxRadius * rayDir[0];
+        float y = selectedPoint[1] + maxRadius * rayDir[1];
+        
+        // Check bounds
+        if (x >= 0 && x < currentVolume->sliceWidth() && 
+            y >= 0 && y < currentVolume->sliceHeight()) {
+            previewPoints.push_back(cv::Vec3f(x, y, currentZSlice));
+        }
+        
+        // Add a few intermediate points along each ray for visualization
+        for (int r = maxRadius / 4; r < maxRadius; r += maxRadius / 4) {
+            x = selectedPoint[0] + r * rayDir[0];
+            y = selectedPoint[1] + r * rayDir[1];
+            
+            if (x >= 0 && x < currentVolume->sliceWidth() && 
+                y >= 0 && y < currentVolume->sliceHeight()) {
+                previewPoints.push_back(cv::Vec3f(x, y, currentZSlice));
+            }
+        }
+    }
+    
+    // Send the preview points to the volume viewer
+    // Red points show the preview, blue point shows the seed
+    emit sendPointsChanged(previewPoints, seedPoints);
+    
+    // Update the info label
+    infoLabel->setText(QString("Seed at (%1, %2, %3) | Preview: %4 rays, radius %5px")
+                           .arg(selectedPoint[0])
+                           .arg(selectedPoint[1])
+                           .arg(selectedPoint[2])
+                           .arg(numRays)
+                           .arg(maxRadius));
+}
+
+void SeedingWidget::onDrawModeToggled()
+{
+    // This will be called when setSeedButton is clicked in draw mode
+    // Already handled in onSetSeedClicked
+}
+
+void SeedingWidget::updateModeUI()
+{
+    if (currentMode == Mode::PointMode) {
+        setSeedButton->setVisible(true);
+        setSeedButton->setText("Set Seed");
+        castRaysButton->setText("Cast Rays");
+        resetPointsButton->setText("Reset Points");
+        
+        // Show radius and angle controls in point mode
+        maxRadiusLabel->setVisible(true);
+        maxRadiusSpinBox->setVisible(true);
+        angleStepLabel->setVisible(true);
+        angleStepSpinBox->setVisible(true);
+        
+        // Enable/disable based on state
+        castRaysButton->setEnabled(hasSelectedPoint && currentVolume != nullptr);
+        resetPointsButton->setEnabled(hasSelectedPoint);
+    } else { // DrawMode
+        // Hide the setSeedButton in draw mode
+        setSeedButton->setVisible(false);
+        castRaysButton->setText("Analyze Paths");
+        resetPointsButton->setText("Clear All Paths");
+        
+        // Hide radius and angle controls in draw mode
+        maxRadiusLabel->setVisible(false);
+        maxRadiusSpinBox->setVisible(false);
+        angleStepLabel->setVisible(false);
+        angleStepSpinBox->setVisible(false);
+        
+        // Enable/disable based on paths
+        bool hasPaths = !paths.empty();
+        castRaysButton->setEnabled(hasPaths && currentVolume != nullptr);
+        resetPointsButton->setEnabled(hasPaths);
+    }
+}
+
+void SeedingWidget::analyzePaths()
+{
+    if (!currentVolume || paths.empty()) {
+        return;
+    }
+    
+    // Reset previous peaks
+    peakPoints.clear();
+    
+    // Compute distance transform once
+    computeDistanceTransform();
+    
+    // Setup progress tracking
+    progressBar->setVisible(true);
+    progressBar->setValue(0);
+    
+    int totalPaths = paths.size();
+    int pathIndex = 0;
+    
+    // For each path
+    for (const auto& path : paths) {
+        // Analyze along this path
+        findPeaksAlongPath(path);
+        
+        // Update progress
+        pathIndex++;
+        progressBar->setValue(pathIndex * 100 / totalPaths);
+        QApplication::processEvents();
+    }
+    
+    progressBar->setVisible(false);
+    
+    // Enable segmentation button if we found peaks
+    runSegmentationButton->setEnabled(!peakPoints.empty());
+    
+    // Update visualization
+    displayPaths();
+    emit sendPointsChanged(peakPoints, {});
+    
+    // Update UI
+    infoLabel->setText(QString("Found %1 peaks along %2 paths").arg(peakPoints.size()).arg(paths.size()));
+    emit sendStatusMessageAvailable(
+        QString("Analyzed %1 paths and found %2 intensity peaks").arg(paths.size()).arg(peakPoints.size()), 
+        5000);
+}
+
+void SeedingWidget::findPeaksAlongPath(const PathData& path)
+{
+    if (!currentVolume || path.points.empty()) {
+        return;
+    }
+    
+    // densify the path so we don't skip over small surfaces when drawing 
+    PathData densifiedPath = path.densify(0.5f); // Sample every 0.5 pixels
+    
+    // Get volume dimensions for bounds checking
+    const int width = currentVolume->sliceWidth();
+    const int height = currentVolume->sliceHeight();
+    const int depth = currentVolume->numSlices();
+    
+    std::vector<float> intensities;
+    std::vector<cv::Vec3f> positions;
+    
+    // Read intensity values at each point along the (denser) path
+    for (const auto& pt : densifiedPath.points) {
+        // Check bounds
+        if (pt[0] >= 0 && pt[0] < width && 
+            pt[1] >= 0 && pt[1] < height && 
+            pt[2] >= 0 && pt[2] < depth) {
+            
+            // Create a single-point coordinate matrix for reading
+            cv::Mat_<cv::Vec3f> coord(1, 1);
+            coord(0, 0) = pt;
+            
+            // Read the intensity value at this 3D point
+            cv::Mat_<uint8_t> intensity(1, 1);
+            readInterpolated3D(intensity, currentVolume->zarrDataset(0), coord, chunkCache);
+            
+            intensities.push_back(intensity(0, 0));
+            positions.push_back(pt);
+        }
+    }
+    
+    if (intensities.empty()) {
+        return;
+    }
+    
+    // Get the window size from the spinbox
+    const int window = windowSizeSpinBox->value();
+    
+    // Find peaks along the path
+    for (size_t i = window; i < intensities.size() - window; i++) {
+        bool isLocalMax = true;
+        
+        // Check if this point is a local maximum within the window
+        for (int j = -window; j <= window; j++) {
+            if (j == 0) continue; // Skip comparing with self
+            
+            if (intensities[i] <= intensities[i + j]) {
+                isLocalMax = false;
+                break;
+            }
+        }
+        
+        if (isLocalMax) {
+            // Apply threshold
+            if (intensities[i] > thresholdSpinBox->value()) {
+                peakPoints.push_back(positions[i]);
+            }
+        }
+    }
+    
+    // Also check for sharp gradient changes (edge detection)
+    for (size_t i = window; i < intensities.size() - window; i++) {
+        // Skip if we're too close to already detected peaks
+        bool tooClose = false;
+        for (const auto& existingPoint : peakPoints) {
+            float dist = cv::norm(existingPoint - positions[i]);
+            if (dist < window) {
+                tooClose = true;
+                break;
+            }
+        }
+        
+        if (tooClose) continue;
+        
+        // Check for significant gradient changes
+        float leftAvg = 0, rightAvg = 0;
+        for (int j = 1; j <= window; j++) {
+            if (i - j >= 0) leftAvg += intensities[i - j];
+            if (i + j < intensities.size()) rightAvg += intensities[i + j];
+        }
+        leftAvg /= window;
+        rightAvg /= window;
+        
+        // If there's a significant gradient difference and the point is over threshold
+        float gradientDiff = std::abs(leftAvg - rightAvg);
+        if (gradientDiff > thresholdSpinBox->value() * 0.5 && 
+            intensities[i] > thresholdSpinBox->value()) {
+            
+            peakPoints.push_back(positions[i]);
+        }
+    }
+}
+
+void SeedingWidget::startDrawing(cv::Vec3f startPoint)
+{
+    isDrawing = true;
+    currentPath.points.clear();
+    currentPath.points.push_back(startPoint);
+    currentPath.color = generatePathColor();
+    
+    // Show temporary path
+    displayPaths();
+}
+
+void SeedingWidget::addPointToPath(cv::Vec3f point)
+{
+    if (!isDrawing) {
+        return;
+    }
+    
+    if (currentPath.points.empty()) {
+        currentPath.points.push_back(point);
+    } else {
+        // Only add if there's some distance from the last point
+        cv::Vec3f lastPoint = currentPath.points.back();
+        float distance = cv::norm(point - lastPoint);
+        
+        // Add point if it's far enough (reduces density but keeps path smooth)
+        if (distance > 1.0f) {
+            currentPath.points.push_back(point);
+            
+            // Only update display every few points
+            if (currentPath.points.size() % 5 == 0) {
+                displayPaths();
+            }
+        }
+    }
+}
+
+void SeedingWidget::finalizePath()
+{
+    if (!isDrawing || currentPath.points.size() < 2) {
+        isDrawing = false;
+        return;
+    }
+    
+    // Add the path to the collection
+    paths.push_back(currentPath);
+    
+    isDrawing = false;
+    currentPath.points.clear();
+    
+    // Update UI
+    updateModeUI();
+    
+    // Always display paths when finalizing to ensure the complete path is shown
+    displayPaths();
+    
+    // Update info
+    infoLabel->setText(QString("Draw Mode: %1 path(s)").arg(paths.size()));
+}
+
+QColor SeedingWidget::generatePathColor()
+{
+    // Generate distinct colors for paths
+    static const QColor colors[] = {
+        QColor(255, 100, 100),  // Red
+        QColor(100, 255, 100),  // Green
+        QColor(100, 100, 255),  // Blue
+        QColor(255, 255, 100),  // Yellow
+        QColor(255, 100, 255),  // Magenta
+        QColor(100, 255, 255),  // Cyan
+        QColor(255, 165, 0),    // Orange
+        QColor(128, 0, 128),    // Purple
+        QColor(0, 128, 128),    // Teal
+        QColor(255, 192, 203)   // Pink
+    };
+    
+    colorIndex = (colorIndex + 1) % 10;
+    return colors[colorIndex];
+}
+
+void SeedingWidget::displayPaths()
+{
+    // Prepare the list of paths to send
+    QList<PathData> allPaths = paths;
+    
+    // Add the current drawing path if we're actively drawing
+    if (isDrawing && !currentPath.points.empty()) {
+        allPaths.append(currentPath);
+    }
+    
+    // Send the paths for line rendering
+    emit sendPathsChanged(allPaths);
+    
+    // Send peaks as red points (they should still be displayed as individual points)
+    emit sendPointsChanged(peakPoints, userPlacedPoints);
+}
+
+void SeedingWidget::updatePointsDisplay()
+{
+    // Send both analysis results (red) and user points (blue) for display
+    emit sendPointsChanged(peakPoints, userPlacedPoints);
+}
+
+void SeedingWidget::updateInfoLabel()
+{
+    QString infoText;
+    
+    if (currentMode == Mode::PointMode) {
+        if (hasSelectedPoint) {
+            infoText = QString("Seed: (%1, %2, %3) | Analysis: %4 pts | User: %5 pts")
+                           .arg(selectedPoint[0])
+                           .arg(selectedPoint[1])
+                           .arg(selectedPoint[2])
+                           .arg(peakPoints.size())
+                           .arg(userPlacedPoints.size());
+        } else {
+            infoText = QString("Point Mode | Analysis: %1 pts | User: %2 pts")
+                           .arg(peakPoints.size())
+                           .arg(userPlacedPoints.size());
+        }
+    } else {
+        infoText = QString("Draw Mode: %1 path(s) | Analysis: %2 pts | User: %3 pts")
+                       .arg(paths.size())
+                       .arg(peakPoints.size())
+                       .arg(userPlacedPoints.size());
+    }
+    
+    infoLabel->setText(infoText);
+}
+
+void SeedingWidget::updateButtonStates()
+{
+    // Enable segmentation if we have any points (analysis results OR user points)
+    bool hasAnyPoints = !peakPoints.empty() || !userPlacedPoints.empty();
+    runSegmentationButton->setEnabled(hasAnyPoints && currentVolume != nullptr);
+    
+    // Enable expansion if we have a volume AND at least one segmentation
+    bool hasSegmentations = fVpkg && fVpkg->hasSegmentations();
+    expandSeedsButton->setEnabled(currentVolume != nullptr && hasSegmentations);
+    
+    // Enable reset if we have any points or paths
+    bool hasAnyData = hasAnyPoints || !paths.empty() || hasSelectedPoint;
+    resetPointsButton->setEnabled(hasAnyData);
+    
+    if (currentMode == Mode::PointMode) {
+        castRaysButton->setEnabled(hasSelectedPoint && currentVolume != nullptr);
+    } else {
+        castRaysButton->setEnabled(!paths.empty() && currentVolume != nullptr);
+    }
+}
+
+void SeedingWidget::onMousePress(cv::Vec3f vol_point, Qt::MouseButton button, Qt::KeyboardModifiers modifiers)
+{
+    if (currentMode != Mode::DrawMode || button != Qt::LeftButton) {
+        return;
+    }
+    
+    startDrawing(vol_point);
+}
+
+void SeedingWidget::onMouseMove(cv::Vec3f vol_point, Qt::MouseButtons buttons, Qt::KeyboardModifiers modifiers)
+{
+    if (currentMode != Mode::DrawMode || !isDrawing || !(buttons & Qt::LeftButton)) {
+        return;
+    }
+    
+    addPointToPath(vol_point);
+}
+
+void SeedingWidget::onMouseRelease(cv::Vec3f vol_point, Qt::MouseButton button, Qt::KeyboardModifiers modifiers)
+{
+    if (currentMode != Mode::DrawMode || button != Qt::LeftButton || !isDrawing) {
+        return;
+    }
+    
+    finalizePath();
+}
+
+void SeedingWidget::onExpandSeedsClicked()
+{
+    if (!fVpkg || !currentVolume) {
+        QMessageBox::warning(this, "Error", "Volume package or volume not loaded.");
+        return;
+    }
+    
+    // Update UI
+    progressBar->setVisible(true);
+    progressBar->setValue(0);
+    infoLabel->setText("Running expansion jobs...");
+    expandSeedsButton->setEnabled(false);
+    runSegmentationButton->setEnabled(false);
+    
+    // Show cancel button and set jobs running
+    jobsRunning = true;
+    cancelButton->setVisible(true);
+    runningProcesses.clear();
+    
+    const int numProcesses = processesSpinBox->value();
+    const int expansionIterations = expansionIterationsSpinBox->value();
+    
+    // Get paths
+    fs::path pathsDir;
+    fs::path expandJsonPath;
+    
+    if (fVpkg->hasSegmentations()) {
+        auto segID = fVpkg->segmentationIDs()[0];
+        auto seg = fVpkg->segmentation(segID);
+        pathsDir = seg->path().parent_path();
+        expandJsonPath = pathsDir.parent_path() / "expand.json";
+    } else {
+        if (!fVpkg->hasVolumes()) {
+            QMessageBox::warning(this, "Error", "No volumes in volume package.");
+            progressBar->setVisible(false);
+            expandSeedsButton->setEnabled(true);
+            return;
+        }
+        
+        auto vol = fVpkg->volume();
+        fs::path vpkgPath = vol->path().parent_path().parent_path();
+        pathsDir = vpkgPath / "paths";
+        expandJsonPath = vpkgPath / "expand.json";
+        
+        if (!fs::exists(pathsDir)) {
+            QMessageBox::warning(this, "Error", "Segmentation paths directory not found in volume package.");
+            progressBar->setVisible(false);
+            expandSeedsButton->setEnabled(true);
+            return;
+        }
+    }
+    
+    if (!fs::exists(expandJsonPath)) {
+        QMessageBox::warning(this, "Error", "expand.json not found in volume package.");
+        progressBar->setVisible(false);
+        expandSeedsButton->setEnabled(true);
+        return;
+    }
+    
+    fs::path volumePath = currentVolume->path();
+    QString workingDir = QString::fromStdString(pathsDir.parent_path().string());
+    
+    // Track completion
+    int completedJobs = 0;
+    int nextIterationIndex = 0;
+    
+    // Lambda to start an expansion process
+    std::function<void(int)> startExpansionProcess = [&](int iterationIndex) {
+        if (iterationIndex >= expansionIterations || !jobsRunning) {
+            return;
+        }
+        
+        QProcess* process = new QProcess(this);
+        process->setProcessChannelMode(QProcess::MergedChannels);
+        process->setWorkingDirectory(workingDir);
+        
+        // Connect finished signal
+        connect(process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+            [this, process, iterationIndex, &completedJobs, &nextIterationIndex, &startExpansionProcess, expansionIterations]
+            (int exitCode, QProcess::ExitStatus exitStatus) {
+                if (!jobsRunning) {
+                    return;
+                }
+                
+                // Log result
+                if (exitCode != 0) {
+                    std::cerr << "Expansion iteration " << iterationIndex << " failed with exit code: " << exitCode << std::endl;
+                } else {
+                    std::cout << "Completed expansion iteration " << iterationIndex << std::endl;
+                }
+                
+                // Update progress
+                completedJobs++;
+                progressBar->setValue(completedJobs * 100 / expansionIterations);
+                
+                // Remove from running list (QPointer will handle null checking)
+                runningProcesses.removeOne(process);
+                process->deleteLater();
+                
+                // Start next process if available
+                if (nextIterationIndex < expansionIterations && jobsRunning) {
+                    startExpansionProcess(nextIterationIndex++);
+                }
+                
+                // Check if all done
+                if (completedJobs >= expansionIterations) {
+                    progressBar->setVisible(false);
+                    cancelButton->setVisible(false);
+                    jobsRunning = false;
+                    runningProcesses.clear();
+                    infoLabel->setText(QString("Expansion complete after %1 iterations.").arg(expansionIterations));
+                    expandSeedsButton->setEnabled(true);
+                    runSegmentationButton->setEnabled(true);
+                    updateButtonStates();
+                    emit sendStatusMessageAvailable(QString("Completed %1 expansion iterations").arg(expansionIterations), 5000);
+                }
+            });
+        
+        // Start the process
+        QString cmd = QString("%1 \"%2\" \"%3\" \"%4\"")
+                         .arg(executablePath)
+                         .arg(QString::fromStdString(volumePath.string()))
+                         .arg(QString::fromStdString(pathsDir.string()))
+                         .arg(QString::fromStdString(expandJsonPath.string()));
+        
+        std::cout << "Starting expansion job " << iterationIndex << ": " << cmd.toStdString() << std::endl;
+        
+        process->start("nice", QStringList() << "-n" << "19" << "ionice" << "-c" << "3" << executablePath <<
+                      QString::fromStdString(volumePath.string()) <<
+                      QString::fromStdString(pathsDir.string()) <<
+                      QString::fromStdString(expandJsonPath.string()));
+        
+        runningProcesses.append(QPointer<QProcess>(process));
+    };
+    
+    // Start initial batch of processes
+    for (int i = 0; i < std::min(numProcesses, expansionIterations); i++) {
+        startExpansionProcess(nextIterationIndex++);
+    }
+    
+    // Process events until all jobs complete or cancelled
+    while (jobsRunning && completedJobs < expansionIterations) {
+        QApplication::processEvents(QEventLoop::AllEvents, 100);
+    }
+}
+
+void SeedingWidget::onCancelClicked()
+{
+    if (!jobsRunning || runningProcesses.isEmpty()) {
+        return;
+    }
+    
+    // Set flag to stop any new processes from starting
+    jobsRunning = false;
+    
+    // using qpointer here to avoid dangling pointers
+    for (const QPointer<QProcess>& processPtr : runningProcesses) {
+        if (processPtr) {
+            QProcess* process = processPtr.data();
+            
+            // Disconnect all signals to prevent callbacks after cancellation
+            process->disconnect();
+            
+            // Terminate the process if it's still running
+            if (process->state() != QProcess::NotRunning) {
+                process->terminate();
+                // Give it a chance to terminate gracefully
+                if (!process->waitForFinished(1000)) {
+                    // Force kill if it didn't terminate
+                    process->kill();
+                    process->waitForFinished(1000);
+                }
+            }
+            
+            // Schedule deletion
+            process->deleteLater();
+        }
+    }
+    
+    // Clear the list
+    runningProcesses.clear();
+    
+    // Update UI
+    cancelButton->setVisible(false);
+    progressBar->setVisible(false);
+    progressBar->setValue(0);
+    infoLabel->setText("Jobs cancelled by user");
+    
+    // Re-enable buttons
+    runSegmentationButton->setEnabled(true);
+    expandSeedsButton->setEnabled(true);
+    updateButtonStates();
+    
+    emit sendStatusMessageAvailable("Jobs cancelled by user", 3000);
+}
+
+void SeedingWidget::onSurfacesLoaded()
+{
+    // Update button states when surfaces are loaded/reloaded
+    updateButtonStates();
+}
+
+} // namespace ChaoVis

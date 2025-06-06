@@ -20,8 +20,10 @@ set(srcs
     formsetsrc.cpp
     SurfaceTreeWidget.hpp
     SurfaceTreeWidget.cpp
-    CDistanceTransformWidget.cpp
-    CDistanceTransformWidget.hpp
+    SeedingWidget.cpp
+    SeedingWidget.hpp
+    PathData.cpp
+    PathData.hpp
     CSegmentationEditorWindow.cpp
     CSegmentationEditorWindow.hpp
     SegmentRenderThread.cpp

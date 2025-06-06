@@ -15,6 +15,7 @@
 #include <opencv2/highgui.hpp>
 
 #include "CVolumeViewer.hpp"
+#include "CVolumeViewerView.hpp"
 #include "UDataManipulateUtils.hpp"
 #include "SettingsDialog.hpp"
 #include "CSurfaceCollection.hpp"
@@ -23,6 +24,7 @@
 #include "OpsSettings.hpp"
 #include "SurfaceTreeWidget.hpp"
 #include "CSegmentationEditorWindow.hpp"
+#include "SeedingWidget.hpp"
 
 #include "vc/core/types/Color.hpp"
 #include "vc/core/types/Exceptions.hpp"
@@ -42,7 +44,8 @@ namespace fs = std::filesystem;
 // Constructor
 CWindow::CWindow() :
     fVpkg(nullptr),
-    _cmdRunner(nullptr)
+    _cmdRunner(nullptr),
+    _seedingWidget(nullptr)
 {
     const QSettings settings("VC.ini", QSettings::IniFormat);
     setWindowIcon(QPixmap(":/images/logo.png"));
@@ -140,6 +143,7 @@ CVolumeViewer *CWindow::newConnectedCVolumeViewer(std::string surfaceName, QStri
     connect(_surf_col, &CSurfaceCollection::sendPOIChanged, volView, &CVolumeViewer::onPOIChanged);
     connect(_surf_col, &CSurfaceCollection::sendIntersectionChanged, volView, &CVolumeViewer::onIntersectionChanged);
     connect(volView, &CVolumeViewer::sendVolumeClicked, this, &CWindow::onVolumeClicked);
+    connect(this, &CWindow::sendVolumeClosing, volView, &CVolumeViewer::onVolumeClosing);
     
     volView->setSurface(surfaceName);
     
@@ -151,8 +155,19 @@ CVolumeViewer *CWindow::newConnectedCVolumeViewer(std::string surfaceName, QStri
 void CWindow::setVolume(std::shared_ptr<volcart::Volume> newvol)
 {
     currentVolume = newvol;
+    
+    // Find the volume ID for the current volume
+    currentVolumeId.clear();
+    if (fVpkg && currentVolume) {
+        for (const auto& id : fVpkg->volumeIDs()) {
+            if (fVpkg->volume(id) == currentVolume) {
+                currentVolumeId = id;
+                break;
+            }
+        }
+    }
 
-    sendVolumeChanged(currentVolume);
+    sendVolumeChanged(currentVolume, currentVolumeId);
 
     if (currentVolume->numScales() >= 2)
         wOpsList->setDataset(currentVolume->zarrDataset(1), chunk_cache, 0.5);
@@ -200,17 +215,64 @@ void CWindow::CreateWidgets(void)
     newConnectedCVolumeViewer("segmentation", tr("Surface"), mdiArea)->setIntersects({"seg xz","seg yz"});
     mdiArea->tileSubWindows();
 
-    treeWidgetSurfaces = this->findChild<SurfaceTreeWidget*>("treeWidgetSurfaces");
+    treeWidgetSurfaces = ui.treeWidgetSurfaces;
     treeWidgetSurfaces->setContextMenuPolicy(Qt::CustomContextMenu);
     treeWidgetSurfaces->setSelectionMode(QAbstractItemView::ExtendedSelection);
     connect(treeWidgetSurfaces, &QWidget::customContextMenuRequested, this, &CWindow::onSurfaceContextMenuRequested);
-    btnReloadSurfaces = this->findChild<QPushButton*>("btnReloadSurfaces");
-    auto dockWidgetOpList = this->findChild<QDockWidget*>("dockWidgetOpList");
-    auto dockWidgetOpSettings = this->findChild<QDockWidget*>("dockWidgetOpSettings");
-    wOpsList = new OpsList(dockWidgetOpList);
-    dockWidgetOpList->setWidget(wOpsList);
-    wOpsSettings = new OpsSettings(dockWidgetOpSettings);
-    dockWidgetOpSettings->setWidget(wOpsSettings);
+    btnReloadSurfaces = ui.btnReloadSurfaces;
+    wOpsList = new OpsList(ui.dockWidgetOpList);
+    ui.dockWidgetOpList->setWidget(wOpsList);
+    wOpsSettings = new OpsSettings(ui.dockWidgetOpSettings);
+    ui.dockWidgetOpSettings->setWidget(wOpsSettings);
+    
+    // Create Seeding widget
+    _seedingWidget = new SeedingWidget(ui.dockWidgetDistanceTransform);
+    ui.dockWidgetDistanceTransform->setWidget(_seedingWidget);
+    
+    // Connect Seeding widget signals/slots
+    connect(this, &CWindow::sendVolumeChanged, _seedingWidget, 
+            static_cast<void (SeedingWidget::*)(std::shared_ptr<volcart::Volume>, const std::string&)>(&SeedingWidget::onVolumeChanged));
+    connect(_seedingWidget, &SeedingWidget::sendStatusMessageAvailable, this, &CWindow::onShowStatusMessage);
+    connect(this, &CWindow::sendSurfacesLoaded, _seedingWidget, &SeedingWidget::onSurfacesLoaded);
+    
+    // Set the chunk cache for the seeding widget
+    _seedingWidget->setCache(chunk_cache);
+    
+    // Connect seeding widget to all existing viewers
+    for (auto& viewer : _viewers) {
+        // Connect signals for displaying points and paths
+        connect(_seedingWidget, &SeedingWidget::sendPointsChanged, 
+                viewer, &CVolumeViewer::onPointsChanged);
+        connect(_seedingWidget, &SeedingWidget::sendPathsChanged,
+                viewer, &CVolumeViewer::onPathsChanged);
+        
+        // Connect mouse events for drawing functionality
+        // First connect from view to viewer for coordinate transformation
+        connect(viewer->fGraphicsView, &CVolumeViewerView::sendMousePress,
+                viewer, &CVolumeViewer::onMousePress);
+        connect(viewer->fGraphicsView, &CVolumeViewerView::sendMouseMove,
+                viewer, &CVolumeViewer::onMouseMove);
+        connect(viewer->fGraphicsView, &CVolumeViewerView::sendMouseRelease,
+                viewer, &CVolumeViewer::onMouseRelease);
+        
+        // Then connect from viewer to widget with transformed volume coordinates
+        connect(viewer, &CVolumeViewer::sendMousePressVolume,
+                _seedingWidget, &SeedingWidget::onMousePress);
+        connect(viewer, &CVolumeViewer::sendMouseMoveVolume,
+                _seedingWidget, &SeedingWidget::onMouseMove);
+        connect(viewer, &CVolumeViewer::sendMouseReleaseVolume,
+                _seedingWidget, &SeedingWidget::onMouseRelease);
+        
+        // Connect Z-slice changes
+        connect(viewer, &CVolumeViewer::sendZSliceChanged,
+                _seedingWidget, &SeedingWidget::updateCurrentZSlice);
+    }
+    
+    // Tab the Distance Transform dock with the Segmentation dock
+    tabifyDockWidget(ui.dockWidgetSegmentation, ui.dockWidgetDistanceTransform);
+    
+    // Make segmentation dock the active tab by default
+    ui.dockWidgetDistanceTransform->raise();
 
     connect(treeWidgetSurfaces, &QTreeWidget::itemSelectionChanged, this, &CWindow::onSurfaceSelected);
     connect(btnReloadSurfaces, &QPushButton::clicked, this, &CWindow::onRefreshSurfaces);
@@ -225,7 +287,7 @@ void CWindow::CreateWidgets(void)
     // connect(ui.btnRemovePath, SIGNAL(clicked()), this, SLOT(OnRemovePathClicked()));
 
     // TODO CHANGE VOLUME LOADING; FIRST CHECK FOR OTHER VOLUMES IN THE STRUCTS
-    volSelect = this->findChild<QComboBox*>("volSelect");
+    volSelect = ui.volSelect;
     connect(
         volSelect, &QComboBox::currentIndexChanged, [this](const int& index) {
             vc::Volume::Pointer newVolume;
@@ -238,26 +300,28 @@ void CWindow::CreateWidgets(void)
             setVolume(newVolume);
         });
 
-    cmbFilterSegs = this->findChild<QComboBox*>("cmbFilterSegs");
+    cmbFilterSegs = ui.cmbFilterSegs;
     connect(cmbFilterSegs, &QComboBox::currentIndexChanged, this, &CWindow::onSegFilterChanged);
 
-    cmbSegmentationDir = this->findChild<QComboBox*>("cmbSegmentationDir");
+    cmbSegmentationDir = ui.cmbSegmentationDir;
     connect(cmbSegmentationDir, &QComboBox::currentIndexChanged, this, &CWindow::onSegmentationDirChanged);
 
     // Set up the status bar
-    statusBar = this->findChild<QStatusBar*>("statusBar");
+    statusBar = ui.statusBar;
 
     // Location input elements
-    lblLoc[0] = this->findChild<QLabel*>("sliceX");
-    lblLoc[1] = this->findChild<QLabel*>("sliceY");
-    lblLoc[2] = this->findChild<QLabel*>("sliceZ");
+    lblLoc[0] = ui.sliceX;
+    lblLoc[1] = ui.sliceY;
+    lblLoc[2] = ui.sliceZ;
     
-    spNorm[0] = this->findChild<QDoubleSpinBox*>("dspNX");
-    spNorm[1] = this->findChild<QDoubleSpinBox*>("dspNY");
-    spNorm[2] = this->findChild<QDoubleSpinBox*>("dspNZ");
+    spNorm[0] = ui.dspNX;
+    spNorm[1] = ui.dspNY;
+    spNorm[2] = ui.dspNZ;
     
-    _chkApproved = this->findChild<QCheckBox*>("chkApproved");
-    _chkDefective = this->findChild<QCheckBox*>("chkDefective");
+    _chkApproved = ui.chkApproved;
+    _chkDefective = ui.chkDefective;
+    _chkReviewed = ui.chkReviewed;
+    _chkRevisit = ui.chkRevisit;
     
     for(int i=0;i<3;i++)
         spNorm[i]->setRange(-10,10);
@@ -269,15 +333,58 @@ void CWindow::CreateWidgets(void)
 #if (QT_VERSION < QT_VERSION_CHECK(6, 8, 0))
     connect(_chkApproved, &QCheckBox::stateChanged, this, &CWindow::onTagChanged);
     connect(_chkDefective, &QCheckBox::stateChanged, this, &CWindow::onTagChanged);
+    connect(_chkReviewed, &QCheckBox::stateChanged, this, &CWindow::onTagChanged);
+    connect(_chkRevisit, &QCheckBox::stateChanged, this, &CWindow::onTagChanged);
 #else
     connect(_chkApproved, &QCheckBox::checkStateChanged, this, &CWindow::onTagChanged);
     connect(_chkDefective, &QCheckBox::checkStateChanged, this, &CWindow::onTagChanged);
+    connect(_chkReviewed, &QCheckBox::checkStateChanged, this, &CWindow::onTagChanged);
+    connect(_chkRevisit, &QCheckBox::checkStateChanged, this, &CWindow::onTagChanged);
 #endif
 
-    _lblPointsInfo = this->findChild<QLabel*>("lblPointsInfo");
-    _btnResetPoints = this->findChild<QPushButton*>("btnResetPoints");
+    _lblPointsInfo = ui.lblPointsInfo;
+    _btnResetPoints = ui.btnResetPoints;
     connect(_btnResetPoints, &QPushButton::pressed, this, &CWindow::onResetPoints);
-    connect(this->findChild<QPushButton*>("btnEditMask"), &QPushButton::pressed, this, &CWindow::onEditMaskPressed);
+    connect(ui.btnEditMask, &QPushButton::pressed, this, &CWindow::onEditMaskPressed);
+    
+    // Connect composite view controls
+    connect(ui.chkCompositeEnabled, &QCheckBox::toggled, this, [this](bool checked) {
+        // Find the segmentation viewer and update its composite setting
+        for (auto& viewer : _viewers) {
+            if (viewer->surfName() == "segmentation") {
+                viewer->setCompositeEnabled(checked);
+                break;
+            }
+        }
+    });
+    
+    connect(ui.spinCompositeLayers, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int value) {
+        // Find the segmentation viewer and update its composite layers
+        for (auto& viewer : _viewers) {
+            if (viewer->surfName() == "segmentation") {
+                viewer->setCompositeLayers(value);
+                break;
+            }
+        }
+    });
+    
+    connect(ui.cmbCompositeMethod, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int index) {
+        // Find the segmentation viewer and update its composite method
+        std::string method = "max";
+        switch (index) {
+            case 0: method = "max"; break;
+            case 1: method = "mean"; break;
+            case 2: method = "min"; break;
+        }
+        
+        for (auto& viewer : _viewers) {
+            if (viewer->surfName() == "segmentation") {
+                viewer->setCompositeMethod(method);
+                break;
+            }
+        }
+    });
+    
 }
 
 // Create menus
@@ -302,11 +409,13 @@ void CWindow::CreateMenus(void)
     fEditMenu = new QMenu(tr("&Edit"), this);
 
     fViewMenu = new QMenu(tr("&View"), this);
-    fViewMenu->addAction(findChild<QDockWidget*>("dockWidgetVolumes")->toggleViewAction());
-    fViewMenu->addAction(findChild<QDockWidget*>("dockWidgetSegmentation")->toggleViewAction());
-    fViewMenu->addAction(findChild<QDockWidget*>("dockWidgetOpList")->toggleViewAction());
-    fViewMenu->addAction(findChild<QDockWidget*>("dockWidgetOpSettings")->toggleViewAction());
-    fViewMenu->addAction(findChild<QDockWidget*>("dockWidgetLocation")->toggleViewAction());
+    fViewMenu->addAction(ui.dockWidgetVolumes->toggleViewAction());
+    fViewMenu->addAction(ui.dockWidgetSegmentation->toggleViewAction());
+    fViewMenu->addAction(ui.dockWidgetDistanceTransform->toggleViewAction());
+    fViewMenu->addAction(ui.dockWidgetOpList->toggleViewAction());
+    fViewMenu->addAction(ui.dockWidgetOpSettings->toggleViewAction());
+    fViewMenu->addAction(ui.dockWidgetComposite->toggleViewAction());
+    fViewMenu->addAction(ui.dockWidgetLocation->toggleViewAction());
     fViewMenu->addSeparator();
     fViewMenu->addAction(fResetMdiView);
     fViewMenu->addSeparator();
@@ -438,9 +547,9 @@ void CWindow::closeEvent(QCloseEvent* event)
 
 void CWindow::setWidgetsEnabled(bool state)
 {
-    this->findChild<QGroupBox*>("grpVolManager")->setEnabled(state);
-    this->findChild<QGroupBox*>("grpSeg")->setEnabled(state);
-    this->findChild<QGroupBox*>("grpEditing")->setEnabled(state);
+    ui.grpVolManager->setEnabled(state);
+    ui.grpSeg->setEnabled(state);
+    ui.grpEditing->setEnabled(state);
 }
 
 auto CWindow::InitializeVolumePkg(const std::string& nVpkgPath) -> bool
@@ -468,8 +577,7 @@ void CWindow::UpdateView(void)
 {
     if (fVpkg == nullptr) {
         setWidgetsEnabled(false);  // Disable Widgets for User
-        this->findChild<QLabel*>("lblVpkgName")
-            ->setText("[ No Volume Package Loaded ]");
+        ui.lblVpkgName->setText("[ No Volume Package Loaded ]");
         return;
     }
 
@@ -486,7 +594,7 @@ void CWindow::UpdateView(void)
 void CWindow::UpdateVolpkgLabel(int filterCounter)
 {
     QString label = tr("%1 (%2 Surfaces | %3 filtered)").arg(QString::fromStdString(fVpkg->name())).arg(fVpkg->segmentationIDs().size()).arg(filterCounter);
-    this->findChild<QLabel*>("lblVpkgName")->setText(label);
+    ui.lblVpkgName->setText(label);
 }
 
 void CWindow::onShowStatusMessage(QString text, int timeout)
@@ -587,10 +695,18 @@ void CWindow::OpenVolume(const QString& path)
 
     LoadSurfaces();
     UpdateRecentVolpkgList(aVpkgPath);
+    
+    // Set volume package in Seeding widget
+    if (_seedingWidget) {
+        _seedingWidget->setVolumePkg(fVpkg);
+    }
 }
 
 void CWindow::CloseVolume(void)
 {
+    // Notify viewers to clear their surface pointers before we delete them
+    emit sendVolumeClosing();
+    
     fVpkg = nullptr;
     currentVolume = nullptr;
     UpdateView();
@@ -607,6 +723,11 @@ void CWindow::CloseVolume(void)
         delete pair.second;
     }
     _opchains.clear();
+    
+    // Clear points
+    _red_points.clear();
+    _blue_points.clear();
+    sendPointsChanged(_red_points, _blue_points);
 }
 
 // Handle open request
@@ -710,6 +831,9 @@ void CWindow::LoadSurfaces(bool reload)
             treeWidgetSurfaces->setCurrentItem(item);
         }
     }
+    
+    // Emit signal to notify that surfaces have been loaded
+    emit sendSurfacesLoaded();
 
     std::cout << "Loading of surfaces completed." << std::endl;
 }
@@ -814,6 +938,11 @@ void CWindow::onLocChanged(void)
 
 void CWindow::onVolumeClicked(cv::Vec3f vol_loc, cv::Vec3f normal, Surface *surf, Qt::MouseButton buttons, Qt::KeyboardModifiers modifiers)
 {
+    // Forward to Seeding widget if it exists
+    if (_seedingWidget) {
+        _seedingWidget->onPointSelected(vol_loc, normal);
+    }
+    
     if (modifiers & Qt::ShiftModifier) {
         if (modifiers & Qt::ControlModifier)
             _blue_points.push_back(vol_loc);
@@ -821,6 +950,11 @@ void CWindow::onVolumeClicked(cv::Vec3f vol_loc, cv::Vec3f normal, Surface *surf
             _red_points.push_back(vol_loc);
         sendPointsChanged(_red_points, _blue_points);
         _lblPointsInfo->setText(QString("Red: %1 Blue: %2").arg(_red_points.size()).arg(_blue_points.size()));
+
+        // Also forward to Seeding widget for user-placed points
+        if (_seedingWidget) {
+            _seedingWidget->onUserPointAdded(vol_loc);
+        }
 
         // Force an update of the filter
         onSegFilterChanged(cmbFilterSegs->currentIndex());
@@ -915,14 +1049,20 @@ void CWindow::onTagChanged(void)
     if (_surf->meta->contains("tags")) {
         sync_tag(_surf->meta->at("tags"), _chkApproved->checkState(), "approved");
         sync_tag(_surf->meta->at("tags"), _chkDefective->checkState(), "defective");
+        sync_tag(_surf->meta->at("tags"), _chkReviewed->checkState(), "reviewed");
+        sync_tag(_surf->meta->at("tags"), _chkRevisit->checkState(), "revisit");
         _surf->save_meta();
     }
-    else if (_chkApproved->checkState() || _chkDefective->checkState()) {
+    else if (_chkApproved->checkState() || _chkDefective->checkState() || _chkReviewed->checkState() || _chkRevisit->checkState()) {
         _surf->meta->push_back({"tags", nlohmann::json::object()});
         if (_chkApproved->checkState())
             _surf->meta->at("tags").push_back({"approved", nullptr});
         if (_chkDefective->checkState())
             _surf->meta->at("tags").push_back({"defective", nullptr});
+        if (_chkReviewed->checkState())
+            _surf->meta->at("tags").push_back({"reviewed", nullptr});
+        if (_chkRevisit->checkState())
+            _surf->meta->at("tags").push_back({"revisit", nullptr});
         _surf->save_meta();
     }
 
@@ -981,23 +1121,35 @@ void CWindow::onSurfaceSelected()
         {
             const QSignalBlocker b1{_chkApproved};
             const QSignalBlocker b2{_chkDefective};
+            const QSignalBlocker b3{_chkReviewed};
+            const QSignalBlocker b4{_chkRevisit};
             
             std::cout << "surf " << _surf->path << _surfID <<  _surf->meta << std::endl;
             
             _chkApproved->setEnabled(true);
             _chkDefective->setEnabled(true);
+            _chkReviewed->setEnabled(true);
+            _chkRevisit->setEnabled(true);
             
             _chkApproved->setCheckState(Qt::Unchecked);
             _chkDefective->setCheckState(Qt::Unchecked);
+            _chkReviewed->setCheckState(Qt::Unchecked);
+            _chkRevisit->setCheckState(Qt::Unchecked);
             if (_surf->meta) {
                 if (_surf->meta->value("tags", nlohmann::json::object_t()).count("approved"))
                     _chkApproved->setCheckState(Qt::Checked);
                 if (_surf->meta->value("tags", nlohmann::json::object_t()).count("defective"))
                     _chkDefective->setCheckState(Qt::Checked);
+                if (_surf->meta->value("tags", nlohmann::json::object_t()).count("reviewed"))
+                    _chkReviewed->setCheckState(Qt::Checked);
+                if (_surf->meta->value("tags", nlohmann::json::object_t()).count("revisit"))
+                    _chkRevisit->setCheckState(Qt::Checked);
             }
             else {
                 _chkApproved->setEnabled(false);
                 _chkDefective->setEnabled(false);
+                _chkReviewed->setEnabled(true);
+                _chkRevisit->setEnabled(true);
             }
         }
     }
@@ -1070,6 +1222,26 @@ void CWindow::onSegFilterChanged(int index)
                 index == 2 && contains(*_vol_qsurfs[id], _red_points) &&
                 contains(*_vol_qsurfs[id], _blue_points)) {
                 show = true;
+            } else if (index == 3) {
+                // Filter by Unreviewed - show only surfaces that do NOT have the "reviewed" tag
+                auto* surface = _vol_qsurfs[id]->surface();
+                if (surface && surface->meta) {
+                    auto tags = surface->meta->value("tags", nlohmann::json::object_t());
+                    show = !tags.count("reviewed");
+                } else {
+                    // If no metadata, consider it unreviewed
+                    show = true;
+                }
+            } else if (index == 4) {
+                // Filter by Revisit - show only surfaces that DO have the "revisit" tag
+                auto* surface = _vol_qsurfs[id]->surface();
+                if (surface && surface->meta) {
+                    auto tags = surface->meta->value("tags", nlohmann::json::object_t());
+                    show = tags.count("revisit") > 0;
+                } else {
+                    // If no metadata, don't show for revisit filter
+                    show = false;
+                }
             }
         }
 
@@ -1310,6 +1482,8 @@ void CWindow::onSegmentationDirChanged(int index)
             _chkDefective->setCheckState(Qt::Unchecked);
             _chkApproved->setEnabled(false);
             _chkDefective->setEnabled(false);
+            _chkReviewed->setEnabled(false);
+            _chkRevisit->setEnabled(false);
         }
         
         // Set the new directory in the VolumePkg
