@@ -22,6 +22,8 @@ set(srcs
     SurfaceTreeWidget.cpp
     SeedingWidget.cpp
     SeedingWidget.hpp
+    PathData.cpp
+    PathData.hpp
     CSegmentationEditorWindow.cpp
     CSegmentationEditorWindow.hpp
     SegmentRenderThread.cpp

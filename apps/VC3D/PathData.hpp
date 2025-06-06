@@ -3,6 +3,7 @@
 #include <vector>
 #include <QString>
 #include <QColor>
+#include <QPainterPath>
 #include <opencv2/core.hpp>
 
 namespace ChaoVis {
@@ -32,6 +33,23 @@ struct PathData {
     PathData() = default;
     PathData(const std::vector<cv::Vec3f>& pts, const QColor& col, const QString& owner = "")
         : points(pts), color(col), ownerWidget(owner) {}
+    
+    /**
+     * @brief Create a densified version of this path using Qt's interpolation
+     * @param samplingInterval Distance between sampled points in pixels
+     * @return PathData with interpolated points along the same visual path
+     */
+    PathData densify(float samplingInterval = 0.5f) const;
+
+private:
+    /**
+     * @brief Interpolate Z coordinate based on position along the path
+     * @param percent Position along path (0.0 to 1.0)
+     * @param totalLength Total length of the path
+     * @param path The QPainterPath for reference
+     * @return Interpolated Z coordinate
+     */
+    float interpolateZ(float percent, float totalLength, const QPainterPath& path) const;
 };
 
 } // namespace ChaoVis

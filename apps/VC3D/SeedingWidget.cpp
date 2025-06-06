@@ -867,17 +867,19 @@ void SeedingWidget::findPeaksAlongPath(const PathData& path)
         return;
     }
     
+    // densify the path so we don't skip over small surfaces when drawing 
+    PathData densifiedPath = path.densify(0.5f); // Sample every 0.5 pixels
+    
     // Get volume dimensions for bounds checking
     const int width = currentVolume->sliceWidth();
     const int height = currentVolume->sliceHeight();
     const int depth = currentVolume->numSlices();
     
- 
     std::vector<float> intensities;
     std::vector<cv::Vec3f> positions;
     
-    // Read intensity values at each 3D point
-    for (const auto& pt : path.points) {
+    // Read intensity values at each point along the (denser) path
+    for (const auto& pt : densifiedPath.points) {
         // Check bounds
         if (pt[0] >= 0 && pt[0] < width && 
             pt[1] >= 0 && pt[1] < height && 
