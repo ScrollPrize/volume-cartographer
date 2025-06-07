@@ -7,6 +7,9 @@
 #include <QMouseEvent>
 #include <QScrollBar>
 #include <QKeyEvent>
+#include <QPixmap>
+#include <QPainter>
+#include <QCursor>
 
 using namespace ChaoVis;
 

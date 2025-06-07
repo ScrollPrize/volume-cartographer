@@ -3,6 +3,7 @@
 #include "CWindow.hpp"
 
 #include <QKeySequence>
+#include <QKeyEvent>
 #include <QProgressBar>
 #include <QSettings>
 #include <QMdiArea>
@@ -25,6 +26,7 @@
 #include "SurfaceTreeWidget.hpp"
 #include "CSegmentationEditorWindow.hpp"
 #include "SeedingWidget.hpp"
+#include "DrawingWidget.hpp"
 
 #include "vc/core/types/Color.hpp"
 #include "vc/core/types/Exceptions.hpp"
@@ -45,7 +47,8 @@ namespace fs = std::filesystem;
 CWindow::CWindow() :
     fVpkg(nullptr),
     _cmdRunner(nullptr),
-    _seedingWidget(nullptr)
+    _seedingWidget(nullptr),
+    _drawingWidget(nullptr)
 {
     const QSettings settings("VC.ini", QSettings::IniFormat);
     setWindowIcon(QPixmap(":/images/logo.png"));
@@ -225,54 +228,83 @@ void CWindow::CreateWidgets(void)
     wOpsSettings = new OpsSettings(ui.dockWidgetOpSettings);
     ui.dockWidgetOpSettings->setWidget(wOpsSettings);
     
+    // i recognize that having both a seeding widget and a drawing widget that both handle mouse events and paths is redundant, 
+    // but i can't find an easy way yet to merge them and maintain the path iteration that the seeding widget currently uses
+    // so for now we have both. i suppose i could probably add a 'mode' , but for now i will just hate this section :(
+
+
+    // Create Drawing widget
+    _drawingWidget = new DrawingWidget(ui.dockWidgetDrawing);
+    ui.dockWidgetDrawing->setWidget(_drawingWidget);
+
+    connect(this, &CWindow::sendVolumeChanged, _drawingWidget, 
+            static_cast<void (DrawingWidget::*)(std::shared_ptr<volcart::Volume>, const std::string&)>(&DrawingWidget::onVolumeChanged));
+    connect(_drawingWidget, &DrawingWidget::sendStatusMessageAvailable, this, &CWindow::onShowStatusMessage);
+    connect(this, &CWindow::sendSurfacesLoaded, _drawingWidget, &DrawingWidget::onSurfacesLoaded);
+
+    _drawingWidget->setCache(chunk_cache);
+    
     // Create Seeding widget
     _seedingWidget = new SeedingWidget(ui.dockWidgetDistanceTransform);
     ui.dockWidgetDistanceTransform->setWidget(_seedingWidget);
     
-    // Connect Seeding widget signals/slots
     connect(this, &CWindow::sendVolumeChanged, _seedingWidget, 
             static_cast<void (SeedingWidget::*)(std::shared_ptr<volcart::Volume>, const std::string&)>(&SeedingWidget::onVolumeChanged));
     connect(_seedingWidget, &SeedingWidget::sendStatusMessageAvailable, this, &CWindow::onShowStatusMessage);
     connect(this, &CWindow::sendSurfacesLoaded, _seedingWidget, &SeedingWidget::onSurfacesLoaded);
     
-    // Set the chunk cache for the seeding widget
     _seedingWidget->setCache(chunk_cache);
     
-    // Connect seeding widget to all existing viewers
+    // Connect seeding and drawing widgets to the volume viewers
     for (auto& viewer : _viewers) {
-        // Connect signals for displaying points and paths
-        connect(_seedingWidget, &SeedingWidget::sendPointsChanged, 
-                viewer, &CVolumeViewer::onPointsChanged);
-        connect(_seedingWidget, &SeedingWidget::sendPathsChanged,
+
+        connect(_drawingWidget, &DrawingWidget::sendPathsChanged,
                 viewer, &CVolumeViewer::onPathsChanged);
-        
-        // Connect mouse events for drawing functionality
-        // First connect from view to viewer for coordinate transformation
         connect(viewer->fGraphicsView, &CVolumeViewerView::sendMousePress,
                 viewer, &CVolumeViewer::onMousePress);
         connect(viewer->fGraphicsView, &CVolumeViewerView::sendMouseMove,
                 viewer, &CVolumeViewer::onMouseMove);
         connect(viewer->fGraphicsView, &CVolumeViewerView::sendMouseRelease,
                 viewer, &CVolumeViewer::onMouseRelease);
+        connect(viewer, &CVolumeViewer::sendMousePressVolume,
+                _drawingWidget, &DrawingWidget::onMousePress);
+        connect(viewer, &CVolumeViewer::sendMouseMoveVolume,
+                _drawingWidget, &DrawingWidget::onMouseMove);
+        connect(viewer, &CVolumeViewer::sendMouseReleaseVolume,
+                _drawingWidget, &DrawingWidget::onMouseRelease);
+        connect(viewer, &CVolumeViewer::sendZSliceChanged,
+                _drawingWidget, &DrawingWidget::updateCurrentZSlice);
         
-        // Then connect from viewer to widget with transformed volume coordinates
+        // Connect drawing mode signal to update cursor
+        connect(_drawingWidget, &DrawingWidget::sendDrawingModeActive,
+                [viewer, this](bool active) {
+                    viewer->onDrawingModeActive(active, 
+                        _drawingWidget->getBrushSize(),
+                        _drawingWidget->getBrushShape() == PathData::BrushShape::SQUARE);
+                });
+    }
+    
+    for (auto& viewer : _viewers) {
+        connect(_seedingWidget, &SeedingWidget::sendPointsChanged, 
+                viewer, &CVolumeViewer::onPointsChanged);
+        connect(_seedingWidget, &SeedingWidget::sendPathsChanged,
+                viewer, &CVolumeViewer::onPathsChanged);
         connect(viewer, &CVolumeViewer::sendMousePressVolume,
                 _seedingWidget, &SeedingWidget::onMousePress);
         connect(viewer, &CVolumeViewer::sendMouseMoveVolume,
                 _seedingWidget, &SeedingWidget::onMouseMove);
         connect(viewer, &CVolumeViewer::sendMouseReleaseVolume,
                 _seedingWidget, &SeedingWidget::onMouseRelease);
-        
-        // Connect Z-slice changes
         connect(viewer, &CVolumeViewer::sendZSliceChanged,
                 _seedingWidget, &SeedingWidget::updateCurrentZSlice);
     }
     
-    // Tab the Distance Transform dock with the Segmentation dock
+    // Tab the docks - Drawing first, then Seeding, then Tools
     tabifyDockWidget(ui.dockWidgetSegmentation, ui.dockWidgetDistanceTransform);
+    tabifyDockWidget(ui.dockWidgetDistanceTransform, ui.dockWidgetDrawing);
     
-    // Make segmentation dock the active tab by default
-    ui.dockWidgetDistanceTransform->raise();
+    // Make Drawing dock the active tab by default
+    ui.dockWidgetDrawing->raise();
 
     connect(treeWidgetSurfaces, &QTreeWidget::itemSelectionChanged, this, &CWindow::onSurfaceSelected);
     connect(btnReloadSurfaces, &QPushButton::clicked, this, &CWindow::onRefreshSurfaces);
@@ -434,6 +466,19 @@ void CWindow::CreateMenus(void)
 }
 
 // Create actions
+void CWindow::keyPressEvent(QKeyEvent* event)
+{
+    if (event->key() == Qt::Key_Tab) {
+        // Toggle drawing mode
+        if (_drawingWidget) {
+            _drawingWidget->toggleDrawingMode();
+        }
+        event->accept();
+        return;
+    }
+    QMainWindow::keyPressEvent(event);
+}
+
 void CWindow::CreateActions(void)
 {
     fOpenVolAct = new QAction(style()->standardIcon(QStyle::SP_DialogOpenButton), tr("&Open volpkg..."), this);

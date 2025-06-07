@@ -41,6 +41,7 @@ class CVolumeViewer;
 class CSurfaceCollection;
 class CSegmentationEditorWindow;
 class SeedingWidget;
+class DrawingWidget;
 
 class CWindow : public QMainWindow
 {
@@ -83,6 +84,9 @@ public:
     
     // Helper method to get the current volume path
     QString getCurrentVolumePath() const;
+
+protected:
+    void keyPressEvent(QKeyEvent* event) override;
 
 private:
     void CreateWidgets(void);
@@ -176,8 +180,9 @@ private:
     QuadSurface *_surf;
     SurfaceID _surfID;
     
-    // Seeding widget
+  
     SeedingWidget* _seedingWidget;
+    DrawingWidget* _drawingWidget;
 
     std::vector<cv::Vec3f> _red_points;
     std::vector<cv::Vec3f> _blue_points;

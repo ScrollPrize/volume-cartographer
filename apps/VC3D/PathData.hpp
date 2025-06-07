@@ -29,6 +29,16 @@ struct PathData {
     };
     PathType type = PathType::FREEHAND;
     
+    enum class BrushShape {
+        CIRCLE,      ///< Circular brush
+        SQUARE       ///< Square brush
+    };
+    BrushShape brushShape = BrushShape::CIRCLE;
+    
+    float opacity = 1.0f;        ///< Opacity/transparency (0.0-1.0)
+    bool isEraser = false;       ///< Flag for eraser mode
+    int pathId = 0;             ///< Persistent ID for grouped paths
+    
     // Constructor
     PathData() = default;
     PathData(const std::vector<cv::Vec3f>& pts, const QColor& col, const QString& owner = "")

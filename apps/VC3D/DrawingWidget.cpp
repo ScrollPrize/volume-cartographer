@@ -1,0 +1,544 @@
+#include "DrawingWidget.hpp"
+
+#include <QVBoxLayout>
+#include <QHBoxLayout>
+#include <QGridLayout>
+#include <QLabel>
+#include <QSpinBox>
+#include <QSlider>
+#include <QPushButton>
+#include <QCheckBox>
+#include <QRadioButton>
+#include <QButtonGroup>
+#include <QColorDialog>
+#include <QMessageBox>
+#include <QFileDialog>
+#include <QApplication>
+#include <QPainter>
+#include <QPainterPath>
+
+#include <opencv2/imgproc.hpp>
+#include <opencv2/highgui.hpp>
+
+#include "vc/core/types/Volume.hpp"
+#include "vc/core/types/VolumePkg.hpp"
+#include "vc/core/util/Slicing.hpp"
+#include "vc/core/util/Logging.hpp"
+
+#include <filesystem>
+#include <fstream>
+
+namespace fs = std::filesystem;
+namespace vc = volcart;
+
+namespace ChaoVis {
+
+DrawingWidget::DrawingWidget(QWidget* parent)
+    : QWidget(parent)
+    , fVpkg(nullptr)
+    , currentVolume(nullptr)
+    , chunkCache(nullptr)
+    , currentPathId(0)
+    , brushSize(3.0f)
+    , opacity(1.0f)
+    , eraserMode(false)
+    , brushShape(PathData::BrushShape::CIRCLE)
+    , isDrawing(false)
+    , currentZSlice(0)
+    , drawingModeActive(false)
+{
+    setupUI();
+    
+    // Initialize with some default colors for path IDs
+    pathIdColors[0] = QColor(255, 100, 100);  // Red
+    pathIdColors[1] = QColor(100, 255, 100);  // Green
+    pathIdColors[2] = QColor(100, 100, 255);  // Blue
+    pathIdColors[3] = QColor(255, 255, 100);  // Yellow
+    pathIdColors[4] = QColor(255, 100, 255);  // Magenta
+    
+    updateColorPreview();
+}
+
+DrawingWidget::~DrawingWidget() = default;
+
+void DrawingWidget::setupUI()
+{
+    auto mainLayout = new QVBoxLayout(this);
+    
+    // Drawing mode toggle button
+    toggleModeButton = new QPushButton("Enable Drawing Mode (Tab)", this);
+    toggleModeButton->setCheckable(true);
+    toggleModeButton->setToolTip("Toggle drawing mode on/off (Tab key)");
+    mainLayout->addWidget(toggleModeButton);
+    
+    // Info label
+    infoLabel = new QLabel("Drawing mode disabled", this);
+    mainLayout->addWidget(infoLabel);
+    
+    mainLayout->addSpacing(10);
+    
+    // Path ID control with color preview
+    auto pathIdLayout = new QHBoxLayout();
+    pathIdLayout->addWidget(new QLabel("Path ID:", this));
+    
+    pathIdSpinBox = new QSpinBox(this);
+    pathIdSpinBox->setRange(0, 999);
+    pathIdSpinBox->setValue(0);
+    pathIdSpinBox->setToolTip("Current path ID - all drawn paths will use this ID");
+    pathIdLayout->addWidget(pathIdSpinBox);
+    
+    colorButton = new QPushButton(this);
+    colorButton->setFixedSize(30, 30);
+    colorButton->setToolTip("Click to change color for this path ID");
+    pathIdLayout->addWidget(colorButton);
+    
+    pathIdLayout->addStretch();
+    mainLayout->addLayout(pathIdLayout);
+    
+    // Brush size control
+    auto brushSizeLayout = new QHBoxLayout();
+    brushSizeLayout->addWidget(new QLabel("Brush Size:", this));
+    
+    brushSizeSlider = new QSlider(Qt::Horizontal, this);
+    brushSizeSlider->setRange(1, 50);
+    brushSizeSlider->setValue(3);
+    brushSizeSlider->setToolTip("Size of the drawing brush in pixels");
+    brushSizeLayout->addWidget(brushSizeSlider);
+    
+    brushSizeLabel = new QLabel("3", this);
+    brushSizeLabel->setMinimumWidth(30);
+    brushSizeLayout->addWidget(brushSizeLabel);
+    
+    mainLayout->addLayout(brushSizeLayout);
+    
+    // Opacity control
+    auto opacityLayout = new QHBoxLayout();
+    opacityLayout->addWidget(new QLabel("Opacity:", this));
+    
+    opacitySlider = new QSlider(Qt::Horizontal, this);
+    opacitySlider->setRange(0, 100);
+    opacitySlider->setValue(100);
+    opacitySlider->setToolTip("Transparency of drawn paths (0-100%)");
+    opacityLayout->addWidget(opacitySlider);
+    
+    opacityLabel = new QLabel("100%", this);
+    opacityLabel->setMinimumWidth(40);
+    opacityLayout->addWidget(opacityLabel);
+    
+    mainLayout->addLayout(opacityLayout);
+    
+    // Eraser mode
+    eraserCheckBox = new QCheckBox("Eraser Mode", this);
+    eraserCheckBox->setToolTip("Toggle eraser mode to remove drawn areas");
+    mainLayout->addWidget(eraserCheckBox);
+    
+    // Brush shape
+    auto brushShapeLayout = new QHBoxLayout();
+    brushShapeLayout->addWidget(new QLabel("Brush Shape:", this));
+    
+    brushShapeGroup = new QButtonGroup(this);
+    
+    circleRadio = new QRadioButton("Circle", this);
+    circleRadio->setChecked(true);
+    brushShapeGroup->addButton(circleRadio, 0);
+    brushShapeLayout->addWidget(circleRadio);
+    
+    squareRadio = new QRadioButton("Square", this);
+    brushShapeGroup->addButton(squareRadio, 1);
+    brushShapeLayout->addWidget(squareRadio);
+    
+    brushShapeLayout->addStretch();
+    mainLayout->addLayout(brushShapeLayout);
+    
+    // Action buttons
+    mainLayout->addSpacing(10);
+    
+    clearAllButton = new QPushButton("Clear All Paths", this);
+    clearAllButton->setToolTip("Remove all drawn paths");
+    mainLayout->addWidget(clearAllButton);
+    
+    saveAsMaskButton = new QPushButton("Save as Mask", this);
+    saveAsMaskButton->setToolTip("Export drawn paths as segmentation mask");
+    mainLayout->addWidget(saveAsMaskButton);
+    
+    mainLayout->addStretch();
+    
+    // Connect signals
+    connect(pathIdSpinBox, QOverload<int>::of(&QSpinBox::valueChanged),
+            this, &DrawingWidget::onPathIdChanged);
+    connect(brushSizeSlider, &QSlider::valueChanged,
+            this, &DrawingWidget::onBrushSizeChanged);
+    connect(opacitySlider, &QSlider::valueChanged,
+            this, &DrawingWidget::onOpacityChanged);
+    connect(eraserCheckBox, &QCheckBox::toggled,
+            this, &DrawingWidget::onEraserToggled);
+    connect(brushShapeGroup, QOverload<int>::of(&QButtonGroup::idClicked),
+            this, &DrawingWidget::onBrushShapeChanged);
+    connect(colorButton, &QPushButton::clicked,
+            this, &DrawingWidget::onColorButtonClicked);
+    connect(clearAllButton, &QPushButton::clicked,
+            this, &DrawingWidget::onClearAllClicked);
+    connect(saveAsMaskButton, &QPushButton::clicked,
+            this, &DrawingWidget::onSaveAsMaskClicked);
+    connect(toggleModeButton, &QPushButton::toggled,
+            [this](bool checked) {
+                drawingModeActive = checked;
+                toggleModeButton->setText(checked ? 
+                    "Disable Drawing Mode (Tab)" : "Enable Drawing Mode (Tab)");
+                updateUI();
+                emit sendDrawingModeActive(checked);
+            });
+    
+    // Set size policy
+    setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);
+    
+}
+
+void DrawingWidget::setVolumePkg(std::shared_ptr<volcart::VolumePkg> vpkg)
+{
+    fVpkg = vpkg;
+    updateUI();
+}
+
+void DrawingWidget::setCurrentVolume(std::shared_ptr<volcart::Volume> volume)
+{
+    currentVolume = volume;
+    updateUI();
+}
+
+void DrawingWidget::setCache(ChunkCache* cache)
+{
+    chunkCache = cache;
+}
+
+void DrawingWidget::onVolumeChanged(std::shared_ptr<volcart::Volume> vol)
+{
+    setCurrentVolume(vol);
+}
+
+void DrawingWidget::onVolumeChanged(std::shared_ptr<volcart::Volume> vol, const std::string& volumeId)
+{
+    currentVolume = vol;
+    currentVolumeId = volumeId;
+    updateUI();
+}
+
+void DrawingWidget::toggleDrawingMode()
+{
+    toggleModeButton->setChecked(!toggleModeButton->isChecked());
+}
+
+void DrawingWidget::onMousePress(cv::Vec3f vol_point, Qt::MouseButton button, Qt::KeyboardModifiers modifiers)
+{
+    if (!drawingModeActive || button != Qt::LeftButton) {
+        return;
+    }
+    
+    startDrawing(vol_point);
+}
+
+void DrawingWidget::onMouseMove(cv::Vec3f vol_point, Qt::MouseButtons buttons, Qt::KeyboardModifiers modifiers)
+{
+    if (!isDrawing || !(buttons & Qt::LeftButton)) {
+        return;
+    }
+    
+    addPointToPath(vol_point);
+}
+
+void DrawingWidget::onMouseRelease(cv::Vec3f vol_point, Qt::MouseButton button, Qt::KeyboardModifiers modifiers)
+{
+    if (button != Qt::LeftButton || !isDrawing) {
+        return;
+    }
+    
+    finalizePath();
+}
+
+void DrawingWidget::updateCurrentZSlice(int z)
+{
+    currentZSlice = z;
+}
+
+void DrawingWidget::onSurfacesLoaded()
+{
+    updateUI();
+}
+
+void DrawingWidget::onPathIdChanged(int value)
+{
+    currentPathId = value;
+    updateColorPreview();
+    infoLabel->setText(QString("Drawing with Path ID %1").arg(currentPathId));
+}
+
+void DrawingWidget::onBrushSizeChanged(int value)
+{
+    brushSize = static_cast<float>(value);
+    brushSizeLabel->setText(QString::number(value));
+    
+    // Update cursor if drawing mode is active
+    if (drawingModeActive) {
+        emit sendDrawingModeActive(true);
+    }
+}
+
+void DrawingWidget::onOpacityChanged(int value)
+{
+    opacity = value / 100.0f;
+    opacityLabel->setText(QString("%1%").arg(value));
+}
+
+void DrawingWidget::onEraserToggled(bool checked)
+{
+    eraserMode = checked;
+    infoLabel->setText(eraserMode ? "Eraser Mode Active" : "Drawing Mode Active");
+}
+
+void DrawingWidget::onBrushShapeChanged()
+{
+    brushShape = circleRadio->isChecked() ? 
+        PathData::BrushShape::CIRCLE : PathData::BrushShape::SQUARE;
+    
+    // Update cursor if drawing mode is active
+    if (drawingModeActive) {
+        emit sendDrawingModeActive(true);
+    }
+}
+
+void DrawingWidget::onClearAllClicked()
+{
+    if (!drawnPaths.isEmpty()) {
+        auto reply = QMessageBox::question(this, "Clear All Paths", 
+            "Are you sure you want to clear all drawn paths?",
+            QMessageBox::Yes | QMessageBox::No);
+        
+        if (reply == QMessageBox::Yes) {
+            clearAllPaths();
+        }
+    }
+}
+
+void DrawingWidget::onSaveAsMaskClicked()
+{
+    if (!currentVolume || drawnPaths.isEmpty()) {
+        QMessageBox::warning(this, "No Data", 
+            "No paths to save or volume not loaded.");
+        return;
+    }
+    
+    QString filename = QFileDialog::getSaveFileName(this, 
+        "Save Mask", QString(), "TIFF Files (*.tif *.tiff)");
+    
+    if (!filename.isEmpty()) {
+        cv::Mat mask = generateMask();
+        saveMask(mask, filename.toStdString());
+        
+        emit sendStatusMessageAvailable(
+            QString("Mask saved to %1").arg(filename), 5000);
+    }
+}
+
+void DrawingWidget::onColorButtonClicked()
+{
+    QColor current = getColorForPathId(currentPathId);
+    QColor newColor = QColorDialog::getColor(current, this, 
+        QString("Choose Color for Path ID %1").arg(currentPathId));
+    
+    if (newColor.isValid()) {
+        pathIdColors[currentPathId] = newColor;
+        updateColorPreview();
+    }
+}
+
+void DrawingWidget::clearAllPaths()
+{
+    drawnPaths.clear();
+    emit sendPathsChanged(drawnPaths);
+    infoLabel->setText("All paths cleared");
+}
+
+void DrawingWidget::updateUI()
+{
+    bool hasVolume = currentVolume != nullptr;
+    saveAsMaskButton->setEnabled(hasVolume && !drawnPaths.isEmpty());
+    
+    // Update info label based on drawing mode
+    if (drawingModeActive) {
+        if (eraserMode) {
+            infoLabel->setText("Drawing mode: Eraser Active");
+        } else {
+            infoLabel->setText(QString("Drawing mode: Path ID %1").arg(currentPathId));
+        }
+    } else {
+        infoLabel->setText("Drawing mode disabled");
+    }
+}
+
+void DrawingWidget::startDrawing(cv::Vec3f startPoint)
+{
+    isDrawing = true;
+    currentPath = PathData();
+    currentPath.points.clear();
+    currentPath.points.push_back(startPoint);
+    currentPath.color = getColorForPathId(currentPathId);
+    currentPath.lineWidth = brushSize;
+    currentPath.opacity = opacity;
+    currentPath.isEraser = eraserMode;
+    currentPath.brushShape = brushShape;
+    currentPath.pathId = currentPathId;
+    currentPath.type = PathData::PathType::FREEHAND;
+    currentPath.ownerWidget = "DrawingWidget";
+    
+    lastPoint = startPoint;
+    
+    // Show temporary path
+    QList<PathData> allPaths = drawnPaths;
+    allPaths.append(currentPath);
+    emit sendPathsChanged(allPaths);
+}
+
+void DrawingWidget::addPointToPath(cv::Vec3f point)
+{
+    if (!isDrawing) {
+        return;
+    }
+    
+    // Only add if there's some distance from the last point
+    float distance = cv::norm(point - lastPoint);
+    
+    if (distance > 0.5f) {  // Minimum distance threshold
+        currentPath.points.push_back(point);
+        lastPoint = point;
+        
+        // Update display periodically
+        if (currentPath.points.size() % 5 == 0) {
+            QList<PathData> allPaths = drawnPaths;
+            allPaths.append(currentPath);
+            emit sendPathsChanged(allPaths);
+        }
+    }
+}
+
+void DrawingWidget::finalizePath()
+{
+    if (!isDrawing || currentPath.points.size() < 2) {
+        isDrawing = false;
+        return;
+    }
+    
+    // Add the path to the collection
+    drawnPaths.append(currentPath);
+    
+    isDrawing = false;
+    currentPath.points.clear();
+    
+    // Update UI
+    updateUI();
+    emit sendPathsChanged(drawnPaths);
+    
+    // Update info
+    infoLabel->setText(QString("%1 paths drawn").arg(drawnPaths.size()));
+}
+
+QColor DrawingWidget::getColorForPathId(int pathId)
+{
+    if (!pathIdColors.contains(pathId)) {
+        // Generate a new color for this ID
+        int hue = (pathId * 137) % 360;  
+        pathIdColors[pathId] = QColor::fromHsv(hue, 200, 255);
+    }
+    return pathIdColors[pathId];
+}
+
+void DrawingWidget::updateColorPreview()
+{
+    QColor color = getColorForPathId(currentPathId);
+    colorButton->setStyleSheet(QString("background-color: %1; border: 1px solid black;")
+        .arg(color.name()));
+}
+
+cv::Mat DrawingWidget::generateMask()
+{
+    if (!currentVolume || drawnPaths.isEmpty()) {
+        return cv::Mat();
+    }
+    
+    // Generate a 2D mask at the current Z slice 
+    const int width = currentVolume->sliceWidth();
+    const int height = currentVolume->sliceHeight();
+    
+    QImage maskImage(width, height, QImage::Format_Grayscale8);
+    maskImage.fill(0); // Start with black (background)
+    
+    QPainter painter(&maskImage);
+    painter.setRenderHint(QPainter::Antialiasing, false); // No antialiasing for masks
+    
+    // Process paths in order
+    for (const auto& path : drawnPaths) {
+        if (path.points.size() < 2) {
+            continue;
+        }
+        
+        // Build QPainterPath from 3D points (using only X,Y coordinates)
+        QPainterPath painterPath;
+        bool firstPoint = true;
+        bool hasPointsOnSlice = false;
+        
+        for (const auto& pt3d : path.points) {
+            // Only include points that are on or near the current Z slice
+            if (std::abs(pt3d[2] - currentZSlice) < 1.0f) {
+                if (firstPoint) {
+                    painterPath.moveTo(pt3d[0], pt3d[1]);
+                    firstPoint = false;
+                } else {
+                    painterPath.lineTo(pt3d[0], pt3d[1]);
+                }
+                hasPointsOnSlice = true;
+            }
+        }
+        
+        if (!hasPointsOnSlice) {
+            continue;
+        }
+        
+        QPen pen;
+        pen.setWidthF(path.lineWidth);
+        pen.setCapStyle(path.brushShape == PathData::BrushShape::SQUARE ? 
+                        Qt::SquareCap : Qt::RoundCap);
+        pen.setJoinStyle(path.brushShape == PathData::BrushShape::SQUARE ? 
+                         Qt::MiterJoin : Qt::RoundJoin);
+        
+        // For eraser, use black (0). For drawing, use the path ID + 1
+        // (since 0 is reserved for background)
+        int grayValue = path.isEraser ? 0 : std::min(path.pathId + 1, 255);
+        pen.setColor(QColor(grayValue, grayValue, grayValue));
+        
+        painter.setPen(pen);
+        painter.drawPath(painterPath);
+    }
+    
+    painter.end();
+    
+    cv::Mat mask(height, width, CV_8UC1);
+    
+    for (int y = 0; y < height; ++y) {
+        const uchar* qImageLine = maskImage.scanLine(y);
+        uchar* cvMatLine = mask.ptr<uchar>(y);
+        std::memcpy(cvMatLine, qImageLine, width);
+    }
+    
+    return mask;
+}
+
+void DrawingWidget::saveMask(const cv::Mat& mask, const std::string& filename)
+{
+    if (mask.empty()) {
+        return;
+    }
+    
+    // Save as TIFF
+    cv::imwrite(filename, mask);
+}
+
+} // namespace ChaoVis

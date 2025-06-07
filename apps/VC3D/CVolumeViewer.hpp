@@ -82,6 +82,7 @@ public slots:
     void onMouseMove(QPointF scene_loc, Qt::MouseButtons buttons, Qt::KeyboardModifiers modifiers);
     void onMouseRelease(QPointF scene_loc, Qt::MouseButton button, Qt::KeyboardModifiers modifiers);
     void onVolumeClosing(); // Clear surface pointers when volume is closing
+    void onDrawingModeActive(bool active, float brushSize = 3.0f, bool isSquare = false);
 
 signals:
     void SendSignalSliceShift(int shift, int axis);
@@ -153,6 +154,11 @@ protected:
     
     QList<PathData> _paths;
     std::vector<QGraphicsItem*> _path_items;
+    
+    // Drawing mode state
+    bool _drawingModeActive = false;
+    float _brushSize = 3.0f;
+    bool _brushIsSquare = false;
 };  // class CVolumeViewer
 
 }  // namespace ChaoVis
