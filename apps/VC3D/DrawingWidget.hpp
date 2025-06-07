@@ -134,6 +134,9 @@ private:
     
     /** Save mask to file */
     void saveMask(const cv::Mat& mask, const std::string& filename);
+    
+    /** Check if a volume point is valid (within bounds and not -1) */
+    bool isValidVolumePoint(const cv::Vec3f& point) const;
 
 private:
     // Volume data

@@ -66,9 +66,9 @@ void DrawingWidget::setupUI()
     auto mainLayout = new QVBoxLayout(this);
     
     // Drawing mode toggle button
-    toggleModeButton = new QPushButton("Enable Drawing Mode (Tab)", this);
+    toggleModeButton = new QPushButton("Enable Drawing Mode (D)", this);
     toggleModeButton->setCheckable(true);
-    toggleModeButton->setToolTip("Toggle drawing mode on/off (Tab key)");
+    toggleModeButton->setToolTip("Toggle drawing mode on/off (D key)");
     mainLayout->addWidget(toggleModeButton);
     
     // Info label
@@ -184,7 +184,7 @@ void DrawingWidget::setupUI()
             [this](bool checked) {
                 drawingModeActive = checked;
                 toggleModeButton->setText(checked ? 
-                    "Disable Drawing Mode (Tab)" : "Enable Drawing Mode (Tab)");
+                    "Disable Drawing Mode (D)" : "Enable Drawing Mode (D)");
                 updateUI();
                 emit sendDrawingModeActive(checked);
             });
@@ -234,12 +234,20 @@ void DrawingWidget::onMousePress(cv::Vec3f vol_point, Qt::MouseButton button, Qt
         return;
     }
     
+    if (!isValidVolumePoint(vol_point)) {
+        return;
+    }
+    
     startDrawing(vol_point);
 }
 
 void DrawingWidget::onMouseMove(cv::Vec3f vol_point, Qt::MouseButtons buttons, Qt::KeyboardModifiers modifiers)
 {
     if (!isDrawing || !(buttons & Qt::LeftButton)) {
+        return;
+    }
+    
+    if (!isValidVolumePoint(vol_point)) {
         return;
     }
     
@@ -539,6 +547,30 @@ void DrawingWidget::saveMask(const cv::Mat& mask, const std::string& filename)
     
     // Save as TIFF
     cv::imwrite(filename, mask);
+}
+
+bool DrawingWidget::isValidVolumePoint(const cv::Vec3f& point) const
+{
+    // Check if we have a valid volume
+    if (!currentVolume) {
+        return false;
+    }
+    
+    // Check for invalid marker value (-1)
+    if (point[0] < 0 || point[1] < 0 || point[2] < 0) {
+        return false;
+    }
+    
+    // Check if the point is within volume bounds
+    const float width = static_cast<float>(currentVolume->sliceWidth());
+    const float height = static_cast<float>(currentVolume->sliceHeight());
+    const float depth = static_cast<float>(currentVolume->numSlices());
+    
+    if (point[0] >= width || point[1] >= height || point[2] >= depth) {
+        return false;
+    }
+    
+    return true;
 }
 
 } // namespace ChaoVis

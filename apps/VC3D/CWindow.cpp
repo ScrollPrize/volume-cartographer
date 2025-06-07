@@ -468,7 +468,7 @@ void CWindow::CreateMenus(void)
 // Create actions
 void CWindow::keyPressEvent(QKeyEvent* event)
 {
-    if (event->key() == Qt::Key_Tab) {
+    if (event->key() == Qt::Key_D) {
         // Toggle drawing mode
         if (_drawingWidget) {
             _drawingWidget->toggleDrawingMode();
