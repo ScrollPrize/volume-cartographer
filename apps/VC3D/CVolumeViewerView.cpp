@@ -7,9 +7,72 @@
 #include <QMouseEvent>
 #include <QScrollBar>
 #include <QKeyEvent>
+#include <QPainter>
+#include <cmath>
 
 using namespace ChaoVis;
 
+double CVolumeViewerView::chooseNiceLength(double nominal) const
+{
+    double expn = std::floor(std::log10(nominal));
+    double base = std::pow(10.0, expn);
+    double d    = nominal / base;
+    if (d < 2.0)      return 1.0   * base;
+    else if (d < 5.0) return 2.0   * base;
+    else              return 5.0   * base;
+}
+
+void CVolumeViewerView::drawForeground(QPainter* p, const QRectF& sceneRect)
+{
+    // 1) Let QGraphicsView draw any foreground items
+    QGraphicsView::drawForeground(p, sceneRect);
+
+    // 2) Scalebar overlay, in **viewport** coords so it never moves
+    p->save();
+    // reset any scene→view transform so we draw in raw pixels
+    p->resetTransform();
+    p->setRenderHint(QPainter::Antialiasing);
+
+    // red, 2px pen
+    QPen pen(Qt::red, 2);
+    p->setPen(pen);
+
+    // font (scaled for HiDPI)
+    QFont f = p->font();
+    f.setPointSizeF(12 * devicePixelRatioF());
+    p->setFont(f);
+
+    constexpr int M = 10;  // margin in px
+    // transform: scene units → view pixels
+    QTransform t = transform();
+    double pxPerScene = t.m11();
+    double pxPerUm    = pxPerScene / m_vx;
+
+    // pick a “nice” bar taking ~¼ width in µm
+    double wPx    = viewport()->width();
+    double wUm    = wPx / pxPerUm;
+    double ideal  = wUm / 4.0;
+    double barUm  = chooseNiceLength(ideal);
+    double barPx  = barUm * pxPerUm;
+
+    // decide on unit and display value
+    double displayLength = barUm;
+    QString unit = QStringLiteral(" µm");
+    if (barUm >= 1000.0) {
+        displayLength = barUm / 1000.0;      // convert to mm
+        unit = QStringLiteral(" mm");
+    }
+
+    // draw the line (in pixels)
+    int x0 = M;
+    int y0 = viewport()->height() - M;
+    p->drawLine(x0, y0, x0 + int(barPx), y0);
+
+    // draw the label
+    QString label = QString::number(displayLength) + unit;
+    p->drawText(x0, y0 - 5, label);
+    p->restore();
+}
 
 CVolumeViewerView::CVolumeViewerView(QWidget* parent) : QGraphicsView(parent)
 { 
