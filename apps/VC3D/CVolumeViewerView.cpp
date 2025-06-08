@@ -45,15 +45,22 @@ void CVolumeViewerView::drawForeground(QPainter* p, const QRectF& sceneRect)
     constexpr int M = 10;  // margin in px
     // transform: scene units → view pixels
     QTransform t = transform();
-    double pxPerScene = t.m11();
-    double pxPerUm    = pxPerScene / m_vx;
+    const double dpr = devicePixelRatioF();
 
-    // pick a “nice” bar taking ~¼ width in µm
-    double wPx    = viewport()->width();
-    double wUm    = wPx / pxPerUm;
-    double ideal  = wUm / 4.0;
-    double barUm  = chooseNiceLength(ideal);
-    double barPx  = barUm * pxPerUm;
+    // 1) how many device-px per scene‐unit
+    double pxPerScene = transform().m11() * dpr;
+
+    // 2) how many device-px in the viewport
+    double wPx = viewport()->width() * dpr;
+
+    // 3) device-px per µm
+    double pxPerUm = pxPerScene / m_vx;
+
+    // now compute the physical width in µm …
+    double wUm   = wPx / pxPerUm;
+    double ideal = wUm / 4.0;
+    double barUm = chooseNiceLength(ideal);
+    double barPx = barUm * pxPerUm;
 
     // decide on unit and display value
     double displayLength = barUm;
@@ -64,13 +71,12 @@ void CVolumeViewerView::drawForeground(QPainter* p, const QRectF& sceneRect)
     }
 
     // draw the line (in pixels)
-    int x0 = M;
-    int y0 = viewport()->height() - M;
-    p->drawLine(x0, y0, x0 + int(barPx), y0);
+    p->drawLine(int(M), int(viewport()->height()*dpr) - M, 
+                int(M + barPx), int(viewport()->height()*dpr) - M);
 
     // draw the label
     QString label = QString::number(displayLength) + unit;
-    p->drawText(x0, y0 - 5, label);
+    p->drawText(int(M), int(viewport()->height()*dpr) - M - 5, label);
     p->restore();
 }
 

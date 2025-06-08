@@ -150,22 +150,25 @@ void CVolumeViewer::onCursorMove(QPointF scene_loc)
 
 void CVolumeViewer::recalcScales()
 {
+
+    float old_ds = _ds_scale;         // remember previous level
     // if (dynamic_cast<PlaneSurface*>(_surf))
-        _min_scale = pow(2.0,1.-volume->numScales());
+    _min_scale = pow(2.0,1.-volume->numScales());
     // else
         // _min_scale = std::max(pow(2.0,1.-volume->numScales()), 0.5);
     
-    if (_scale >= _max_scale) {
-        _ds_scale = _max_scale;
-        _ds_sd_idx = -log2(_ds_scale);
-    }
-    else if (_scale < _min_scale) {
-        _ds_scale = _min_scale;
-        _ds_sd_idx = -log2(_ds_scale);
-    }
-    else {
-        _ds_sd_idx = -log2(_scale);
-        _ds_scale = pow(2,-_ds_sd_idx);
+    /* -------- chooses _ds_scale/_ds_sd_idx -------- */
+    if      (_scale >= _max_scale) { _ds_sd_idx = 0;                         }
+    else if (_scale <  _min_scale) { _ds_sd_idx = volume->numScales()-1;     }
+    else  { _ds_sd_idx = int(std::round(-std::log2(_scale))); }
+    _ds_scale = std::pow(2.0f, -_ds_sd_idx);
+    /* ---------------------------------------------------------------- */
+
+    /* ---- refresh physical voxel size when pyramid level flips -- */
+    if (volume && std::abs(_ds_scale - old_ds) > 1e-6f)
+    {
+        double vs = volume->voxelSize() / _ds_scale;   // µm per scene-unit
+        fGraphicsView->setVoxelSize(vs, vs);           // keep scalebar honest
     }
 }
 
