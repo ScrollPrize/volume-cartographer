@@ -234,13 +234,7 @@ bool CommandLineToolRunner::execute(Tool tool)
         _process->setArguments(QStringList() << "-c" << shellCmd);
         _process->start();
     } else {
-        QString segmentName;
-        if (tool == Tool::GrowSegFromSegment) {
-            segmentName = QFileInfo(_srcSegment).fileName();
-        } else {
-            segmentName = QFileInfo(_segmentPath).fileName();
-        }
-        startMessage = tr("Starting %1 for: %2").arg(toolCommand).arg(segmentName);
+        startMessage = tr("Starting %1 for: %2").arg(toolCommand).arg(QFileInfo(_segmentPath).fileName());
         emit toolStarted(_currentTool, startMessage);
         
         _consoleOutput->setTitle(tr("Running: %1").arg(toolCommand));

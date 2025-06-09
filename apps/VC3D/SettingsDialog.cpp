@@ -24,6 +24,7 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent)
     spinScrollSpeed->setValue(settings.value("viewer/scroll_speed", -1).toInt());
     spinDisplayOpacity->setValue(settings.value("viewer/display_segment_opacity", 70).toInt());
     chkPlaySoundAfterSegRun->setChecked(settings.value("viewer/play_sound_after_seg_run", true).toInt() != 0);
+    edtUsername->setText(settings.value("viewer/username", "").toString());
 
     spinPreloadedSlices->setValue(settings.value("perf/preloaded_slices", 200).toInt());
     chkSkipImageFormatConvExp->setChecked(settings.value("perf/chkSkipImageFormatConvExp", false).toBool());
@@ -61,6 +62,7 @@ void SettingsDialog::accept()
     settings.setValue("viewer/scroll_speed", spinScrollSpeed->value());
     settings.setValue("viewer/display_segment_opacity", spinDisplayOpacity->value());
     settings.setValue("viewer/play_sound_after_seg_run", chkPlaySoundAfterSegRun->isChecked() ? "1" : "0");
+    settings.setValue("viewer/username", edtUsername->text());
 
     settings.setValue("perf/preloaded_slices", spinPreloadedSlices->value());
     settings.setValue("perf/chkSkipImageFormatConvExp", chkSkipImageFormatConvExp->isChecked() ? "1" : "0");

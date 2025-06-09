@@ -476,6 +476,20 @@ void CWindow::keyPressEvent(QKeyEvent* event)
         event->accept();
         return;
     }
+    else if (event->key() == Qt::Key_R) {
+        // Handle R key for reviewed checkbox, Shift+R for revisit checkbox
+        if (_chkReviewed && _chkRevisit && _surf) {
+            if (event->modifiers() & Qt::ShiftModifier) {
+                // Toggle revisit checkbox
+                _chkRevisit->setCheckState(_chkRevisit->checkState() == Qt::Unchecked ? Qt::Checked : Qt::Unchecked);
+            } else {
+                // Toggle reviewed checkbox
+                _chkReviewed->setCheckState(_chkReviewed->checkState() == Qt::Unchecked ? Qt::Checked : Qt::Unchecked);
+            }
+            event->accept();
+            return;
+        }
+    }
     QMainWindow::keyPressEvent(event);
 }
 
@@ -1081,33 +1095,67 @@ void CWindow::onOpChainChanged(OpChain *chain)
     _surf_col->setSurface("segmentation", chain);
 }
 
-void sync_tag(nlohmann::json &dict, bool checked, std::string name)
+void sync_tag(nlohmann::json &dict, bool checked, std::string name, const std::string& username = "")
 {
-    if (checked && !dict.count(name))
-        dict[name] = nullptr;
+    if (checked && !dict.count(name)) {
+        if (!username.empty()) {
+            dict[name] = nlohmann::json::object();
+            dict[name]["user"] = username;
+        } else {
+            dict[name] = nullptr;
+        }
+    }
     if (!checked && dict.count(name))
         dict.erase(name);
 }
 
 void CWindow::onTagChanged(void)
 {
+    // Get username from settings
+    QSettings settings("VC.ini", QSettings::IniFormat);
+    std::string username = settings.value("viewer/username", "").toString().toStdString();
+    
     if (_surf->meta->contains("tags")) {
-        sync_tag(_surf->meta->at("tags"), _chkApproved->checkState(), "approved");
-        sync_tag(_surf->meta->at("tags"), _chkDefective->checkState(), "defective");
-        sync_tag(_surf->meta->at("tags"), _chkReviewed->checkState(), "reviewed");
-        sync_tag(_surf->meta->at("tags"), _chkRevisit->checkState(), "revisit");
+        sync_tag(_surf->meta->at("tags"), _chkApproved->checkState(), "approved", username);
+        sync_tag(_surf->meta->at("tags"), _chkDefective->checkState(), "defective", username);
+        sync_tag(_surf->meta->at("tags"), _chkReviewed->checkState(), "reviewed", username);
+        sync_tag(_surf->meta->at("tags"), _chkRevisit->checkState(), "revisit", username);
         _surf->save_meta();
     }
     else if (_chkApproved->checkState() || _chkDefective->checkState() || _chkReviewed->checkState() || _chkRevisit->checkState()) {
         _surf->meta->push_back({"tags", nlohmann::json::object()});
-        if (_chkApproved->checkState())
-            _surf->meta->at("tags").push_back({"approved", nullptr});
-        if (_chkDefective->checkState())
-            _surf->meta->at("tags").push_back({"defective", nullptr});
-        if (_chkReviewed->checkState())
-            _surf->meta->at("tags").push_back({"reviewed", nullptr});
-        if (_chkRevisit->checkState())
-            _surf->meta->at("tags").push_back({"revisit", nullptr});
+        if (_chkApproved->checkState()) {
+            if (!username.empty()) {
+                _surf->meta->at("tags")["approved"] = nlohmann::json::object();
+                _surf->meta->at("tags")["approved"]["user"] = username;
+            } else {
+                _surf->meta->at("tags")["approved"] = nullptr;
+            }
+        }
+        if (_chkDefective->checkState()) {
+            if (!username.empty()) {
+                _surf->meta->at("tags")["defective"] = nlohmann::json::object();
+                _surf->meta->at("tags")["defective"]["user"] = username;
+            } else {
+                _surf->meta->at("tags")["defective"] = nullptr;
+            }
+        }
+        if (_chkReviewed->checkState()) {
+            if (!username.empty()) {
+                _surf->meta->at("tags")["reviewed"] = nlohmann::json::object();
+                _surf->meta->at("tags")["reviewed"]["user"] = username;
+            } else {
+                _surf->meta->at("tags")["reviewed"] = nullptr;
+            }
+        }
+        if (_chkRevisit->checkState()) {
+            if (!username.empty()) {
+                _surf->meta->at("tags")["revisit"] = nlohmann::json::object();
+                _surf->meta->at("tags")["revisit"]["user"] = username;
+            } else {
+                _surf->meta->at("tags")["revisit"] = nullptr;
+            }
+        }
         _surf->save_meta();
     }
 
