@@ -165,8 +165,13 @@ bool CommandLineToolRunner::execute(Tool tool)
         return false;
     }
     
-    if (_segmentPath.isEmpty() && (tool == Tool::RenderTifXYZ || tool == Tool::GrowSegFromSegment)) {
+    if (tool == Tool::RenderTifXYZ && _segmentPath.isEmpty()) {
         QMessageBox::warning(nullptr, tr("Error"), tr("Segment path not specified."));
+        return false;
+    }
+    
+    if (tool == Tool::GrowSegFromSegment && _srcSegment.isEmpty()) {
+        QMessageBox::warning(nullptr, tr("Error"), tr("Source segment not specified."));
         return false;
     }
     
@@ -229,7 +234,13 @@ bool CommandLineToolRunner::execute(Tool tool)
         _process->setArguments(QStringList() << "-c" << shellCmd);
         _process->start();
     } else {
-        startMessage = tr("Starting %1 for: %2").arg(toolCommand).arg(QFileInfo(_segmentPath).fileName());
+        QString segmentName;
+        if (tool == Tool::GrowSegFromSegment) {
+            segmentName = QFileInfo(_srcSegment).fileName();
+        } else {
+            segmentName = QFileInfo(_segmentPath).fileName();
+        }
+        startMessage = tr("Starting %1 for: %2").arg(toolCommand).arg(segmentName);
         emit toolStarted(_currentTool, startMessage);
         
         _consoleOutput->setTitle(tr("Running: %1").arg(toolCommand));

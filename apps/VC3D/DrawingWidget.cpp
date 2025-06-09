@@ -243,11 +243,38 @@ void DrawingWidget::onMousePress(cv::Vec3f vol_point, Qt::MouseButton button, Qt
 
 void DrawingWidget::onMouseMove(cv::Vec3f vol_point, Qt::MouseButtons buttons, Qt::KeyboardModifiers modifiers)
 {
-    if (!isDrawing || !(buttons & Qt::LeftButton)) {
+    // Check if mouse button is still pressed and we're in drawing mode
+    if (!(buttons & Qt::LeftButton) || !drawingModeActive) {
         return;
     }
     
+    // Handle invalid points
     if (!isValidVolumePoint(vol_point)) {
+        // If we were drawing and hit an invalid point, save the current segment
+        if (isDrawing && currentPath.points.size() >= 2) {
+            // Save the current path segment with its path ID and color
+            drawnPaths.append(currentPath);
+            emit sendPathsChanged(drawnPaths);
+            
+            // Mark that we're no longer drawing but remember the path settings
+            isDrawing = false;
+        }
+        return;
+    }
+    
+    // If we're back in a valid region but not currently drawing
+    if (!isDrawing) {
+        // Start a new segment with the same path ID and color
+        isDrawing = true;
+        // Keep the same path settings but clear the points
+        currentPath.points.clear();
+        currentPath.points.push_back(vol_point);
+        lastPoint = vol_point;
+        
+        // Show the new segment
+        QList<PathData> allPaths = drawnPaths;
+        allPaths.append(currentPath);
+        emit sendPathsChanged(allPaths);
         return;
     }
     
