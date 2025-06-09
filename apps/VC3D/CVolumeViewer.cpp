@@ -150,22 +150,25 @@ void CVolumeViewer::onCursorMove(QPointF scene_loc)
 
 void CVolumeViewer::recalcScales()
 {
+
+    float old_ds = _ds_scale;         // remember previous level
     // if (dynamic_cast<PlaneSurface*>(_surf))
-        _min_scale = pow(2.0,1.-volume->numScales());
+    _min_scale = pow(2.0,1.-volume->numScales());
     // else
         // _min_scale = std::max(pow(2.0,1.-volume->numScales()), 0.5);
     
-    if (_scale >= _max_scale) {
-        _ds_scale = _max_scale;
-        _ds_sd_idx = -log2(_ds_scale);
-    }
-    else if (_scale < _min_scale) {
-        _ds_scale = _min_scale;
-        _ds_sd_idx = -log2(_ds_scale);
-    }
-    else {
-        _ds_sd_idx = -log2(_scale);
-        _ds_scale = pow(2,-_ds_sd_idx);
+    /* -------- chooses _ds_scale/_ds_sd_idx -------- */
+    if      (_scale >= _max_scale) { _ds_sd_idx = 0;                         }
+    else if (_scale <  _min_scale) { _ds_sd_idx = volume->numScales()-1;     }
+    else  { _ds_sd_idx = int(std::round(-std::log2(_scale))); }
+    _ds_scale = std::pow(2.0f, -_ds_sd_idx);
+    /* ---------------------------------------------------------------- */
+
+    /* ---- refresh physical voxel size when pyramid level flips -- */
+    if (volume && std::abs(_ds_scale - old_ds) > 1e-6f)
+    {
+        double vs = volume->voxelSize() / _ds_scale;   // µm per scene-unit
+        fGraphicsView->setVoxelSize(vs, vs);           // keep scalebar honest
     }
 }
 
@@ -207,21 +210,29 @@ void CVolumeViewer::onZoom(int steps, QPointF scene_loc, Qt::KeyboardModifiers m
         renderVisible(true);
     }
     else {
+        // 1) compute our zoom factor
         float zoom = pow(ZOOM_FACTOR, steps);
-        
+
+        // 2) remember the current center in scene-coords
+        QPointF sceneCenter = visible_center(fGraphicsView);
+
+        // 3) actually apply it to the view’s transform
+        fGraphicsView->setTransformationAnchor(QGraphicsView::AnchorUnderMouse);
+        fGraphicsView->scale(zoom, zoom);
+        // force a repaint so drawForeground() runs immediately
+        fGraphicsView->viewport()->update();
+
+        // 4) update your internal “resolution” scale and re-render at new detail
         _scale *= zoom;
         round_scale(_scale);
-        
         recalcScales();
-        
+
         curr_img_area = {0,0,0,0};
-        QPointF center = visible_center(fGraphicsView) * zoom;
-        
+        // 5) re-center on the same scene point
         //FIXME get correct size for slice!
-        int max_size = 100000 ;//std::max(volume->sliceWidth(), std::max(volume->numSlices(), volume->sliceHeight()))*_ds_scale + 512;
-        fGraphicsView->setSceneRect(-max_size/2,-max_size/2,max_size,max_size);
-        
-        fGraphicsView->centerOn(center);
+        int max_size = 100000; //std::max(volume->sliceWidth(), std::max(volume->numSlices(), volume->sliceHeight()))*_ds_scale + 512;
+        fGraphicsView->setSceneRect(-max_size/2, -max_size/2, max_size, max_size);
+        fGraphicsView->centerOn(sceneCenter);
         renderVisible();
     }
 
@@ -256,6 +267,13 @@ void CVolumeViewer::OnVolumeChanged(volcart::Volume::Pointer volume_)
     _lbl->setText(QString("%1x %2").arg(_scale).arg(_z_off));
 
     renderVisible(true);
+
+    // ——— Scalebar: physical size per scene-unit, compensating for down-sampling ———
+    // volume->voxelSize() is µm per original voxel;
+    // each scene-unit is still one original voxel, but we read data at (_ds_scale) resolution,
+    // so we scale the voxelSize by 1/_ds_scale.
+    double vs = volume->voxelSize() / _ds_scale;
+    fGraphicsView->setVoxelSize(vs, vs);
 }
 
 void CVolumeViewer::onVolumeClicked(QPointF scene_loc, Qt::MouseButton buttons, Qt::KeyboardModifiers modifiers)

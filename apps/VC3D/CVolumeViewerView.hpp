@@ -17,7 +17,10 @@ public:
     void wheelEvent(QWheelEvent *event);
     void scrollContentsBy(int dx, int dy);
     void keyPressEvent(QKeyEvent *event);
-    
+    /// Set physical voxel size (units per scene-unit, e.g. µm/pixel).
+    /// Call this after you load your Zarr spacing metadata.
+    void setVoxelSize(double sx, double sy) { m_vx = sx; m_vy = sy; update(); }
+
 signals:
     void sendScrolled();
     void sendZoom(int steps, QPointF scene_point, Qt::KeyboardModifiers);
@@ -33,6 +36,15 @@ protected:
     bool _regular_pan = false;
     QPoint _last_pan_position;
     bool _left_button_pressed = false;
+    /// Draw our scalebar on every repaint
+    void drawForeground(QPainter* painter, const QRectF& sceneRect) override;
+
+ private:
+    /// Round “ideal” length to 1,2 or 5 × 10^n
+    double chooseNiceLength(double nominal) const;
+
+    // µm per scene-unit (pixel)  
+    double m_vx = 32.0, m_vy = 32.0;
 };
 
 }
