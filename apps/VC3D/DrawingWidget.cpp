@@ -254,7 +254,10 @@ void DrawingWidget::onMouseMove(cv::Vec3f vol_point, Qt::MouseButtons buttons, Q
         if (isDrawing && currentPath.points.size() >= 2) {
             // Save the current path segment with its path ID and color
             drawnPaths.append(currentPath);
-            emit sendPathsChanged(drawnPaths);
+            
+            // Process paths to apply eraser operations
+            QList<PathData> processedPaths = processPathsWithErasers(drawnPaths);
+            emit sendPathsChanged(processedPaths);
             
             // Mark that we're no longer drawing but remember the path settings
             isDrawing = false;
@@ -274,7 +277,10 @@ void DrawingWidget::onMouseMove(cv::Vec3f vol_point, Qt::MouseButtons buttons, Q
         // Show the new segment
         QList<PathData> allPaths = drawnPaths;
         allPaths.append(currentPath);
-        emit sendPathsChanged(allPaths);
+        
+        // Process paths to apply eraser operations
+        QList<PathData> processedPaths = processPathsWithErasers(allPaths);
+        emit sendPathsChanged(processedPaths);
         return;
     }
     
@@ -430,7 +436,9 @@ void DrawingWidget::startDrawing(cv::Vec3f startPoint)
     // Show temporary path
     QList<PathData> allPaths = drawnPaths;
     allPaths.append(currentPath);
-    emit sendPathsChanged(allPaths);
+    
+    QList<PathData> processedPaths = processPathsWithErasers(allPaths);
+    emit sendPathsChanged(processedPaths);
 }
 
 void DrawingWidget::addPointToPath(cv::Vec3f point)
@@ -450,7 +458,9 @@ void DrawingWidget::addPointToPath(cv::Vec3f point)
         if (currentPath.points.size() % 5 == 0) {
             QList<PathData> allPaths = drawnPaths;
             allPaths.append(currentPath);
-            emit sendPathsChanged(allPaths);
+            
+            QList<PathData> processedPaths = processPathsWithErasers(allPaths);
+            emit sendPathsChanged(processedPaths);
         }
     }
 }
@@ -470,7 +480,10 @@ void DrawingWidget::finalizePath()
     
     // Update UI
     updateUI();
-    emit sendPathsChanged(drawnPaths);
+    
+    // Process paths to apply eraser operations
+    QList<PathData> processedPaths = processPathsWithErasers(drawnPaths);
+    emit sendPathsChanged(processedPaths);
     
     // Update info
     infoLabel->setText(QString("%1 paths drawn").arg(drawnPaths.size()));
@@ -509,8 +522,11 @@ cv::Mat DrawingWidget::generateMask()
     QPainter painter(&maskImage);
     painter.setRenderHint(QPainter::Antialiasing, false); // No antialiasing for masks
     
+    // Process paths to apply eraser operations
+    QList<PathData> processedPaths = processPathsWithErasers(drawnPaths);
+    
     // Process paths in order
-    for (const auto& path : drawnPaths) {
+    for (const auto& path : processedPaths) {
         if (path.points.size() < 2) {
             continue;
         }
@@ -598,6 +614,123 @@ bool DrawingWidget::isValidVolumePoint(const cv::Vec3f& point) const
     }
     
     return true;
+}
+
+float DrawingWidget::pointToSegmentDistance(const cv::Vec3f& point, const cv::Vec3f& segStart, const cv::Vec3f& segEnd) const
+{
+    cv::Vec3f segVec = segEnd - segStart;
+    float segLengthSq = segVec.dot(segVec);
+    
+    if (segLengthSq < 0.0001f) {
+        // Segment is essentially a point
+        return cv::norm(point - segStart);
+    }
+    
+    // Calculate parameter t for the closest point on the line segment
+    float t = std::max(0.0f, std::min(1.0f, (point - segStart).dot(segVec) / segLengthSq));
+    
+    // Find the closest point on the segment
+    cv::Vec3f projection = segStart + t * segVec;
+    
+    // Return distance from point to the projection
+    return cv::norm(point - projection);
+}
+
+bool DrawingWidget::isPointInEraserBrush(const cv::Vec3f& point, const cv::Vec3f& eraserPoint, 
+                                          float eraserRadius, PathData::BrushShape brushShape) const
+{
+    // For now, we only consider 2D distance (X,Y) as we're drawing on slices
+    float dx = point[0] - eraserPoint[0];
+    float dy = point[1] - eraserPoint[1];
+    
+    if (brushShape == PathData::BrushShape::CIRCLE) {
+        float distSq = dx * dx + dy * dy;
+        return distSq <= (eraserRadius * eraserRadius);
+    } else { // SQUARE
+        return std::abs(dx) <= eraserRadius && std::abs(dy) <= eraserRadius;
+    }
+}
+
+QList<PathData> DrawingWidget::processPathsWithErasers(const QList<PathData>& rawPaths) const
+{
+    QList<PathData> processedPaths;
+    
+    // Process paths in chronological order
+    for (const auto& path : rawPaths) {
+        if (!path.isEraser) {
+            // For non-eraser paths, add them to processed list
+            processedPaths.append(path);
+        } else {
+            // For eraser paths, process all previous paths
+            QList<PathData> updatedPaths;
+            
+            for (const auto& targetPath : processedPaths) {
+                // Skip if this is also an eraser path (shouldn't happen, but be safe)
+                if (targetPath.isEraser) {
+                    updatedPaths.append(targetPath);
+                    continue;
+                }
+                
+                // Process this target path against the eraser
+                PathData currentSegment = targetPath;
+                currentSegment.points.clear();
+                QList<PathData> segments;
+                
+                bool inErasedSection = false;
+                
+                for (size_t i = 0; i < targetPath.points.size(); ++i) {
+                    const cv::Vec3f& point = targetPath.points[i];
+                    bool isErased = false;
+                    
+                    // Check if this point is within eraser influence
+                    for (size_t j = 0; j < path.points.size(); ++j) {
+                        if (isPointInEraserBrush(point, path.points[j], path.lineWidth / 2.0f, path.brushShape)) {
+                            isErased = true;
+                            break;
+                        }
+                        
+                        // Also check line segments between eraser points
+                        if (j > 0) {
+                            float dist = pointToSegmentDistance(point, path.points[j-1], path.points[j]);
+                            if (dist <= path.lineWidth / 2.0f) {
+                                isErased = true;
+                                break;
+                            }
+                        }
+                    }
+                    
+                    if (isErased && !inErasedSection) {
+                        // Entering erased section
+                        if (currentSegment.points.size() >= 2) {
+                            segments.append(currentSegment);
+                            currentSegment = targetPath;
+                            currentSegment.points.clear();
+                        }
+                        inErasedSection = true;
+                    } else if (!isErased && inErasedSection) {
+                        // Exiting erased section
+                        inErasedSection = false;
+                    }
+                    
+                    if (!isErased) {
+                        currentSegment.points.push_back(point);
+                    }
+                }
+                
+                // Add final segment if it has enough points
+                if (currentSegment.points.size() >= 2) {
+                    segments.append(currentSegment);
+                }
+                
+                // Add all segments from this path
+                updatedPaths.append(segments);
+            }
+            
+            processedPaths = updatedPaths;
+        }
+    }
+    
+    return processedPaths;
 }
 
 } // namespace ChaoVis

@@ -137,6 +137,16 @@ private:
     
     /** Check if a volume point is valid (within bounds and not -1) */
     bool isValidVolumePoint(const cv::Vec3f& point) const;
+    
+    /** Process paths to apply eraser operations */
+    QList<PathData> processPathsWithErasers(const QList<PathData>& rawPaths) const;
+    
+    /** Calculate distance from point to line segment */
+    float pointToSegmentDistance(const cv::Vec3f& point, const cv::Vec3f& segStart, const cv::Vec3f& segEnd) const;
+    
+    /** Check if a point is within eraser brush */
+    bool isPointInEraserBrush(const cv::Vec3f& point, const cv::Vec3f& eraserPoint, 
+                              float eraserRadius, PathData::BrushShape brushShape) const;
 
 private:
     // Volume data
