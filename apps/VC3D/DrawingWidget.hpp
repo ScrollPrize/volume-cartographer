@@ -175,6 +175,10 @@ private:
     // Drawing mode state
     bool drawingModeActive;
     
+    // Temporary eraser state (for shift-to-erase)
+    bool temporaryEraserMode;
+    bool originalEraserMode;
+    
     // UI elements
     QLabel* infoLabel;
     QPushButton* toggleModeButton;

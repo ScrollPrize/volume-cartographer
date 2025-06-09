@@ -46,6 +46,8 @@ DrawingWidget::DrawingWidget(QWidget* parent)
     , isDrawing(false)
     , currentZSlice(0)
     , drawingModeActive(false)
+    , temporaryEraserMode(false)
+    , originalEraserMode(false)
 {
     setupUI();
     
@@ -129,7 +131,8 @@ void DrawingWidget::setupUI()
     
     // Eraser mode
     eraserCheckBox = new QCheckBox("Eraser Mode", this);
-    eraserCheckBox->setToolTip("Toggle eraser mode to remove drawn areas");
+    eraserCheckBox->setToolTip("Toggle eraser mode to remove drawn areas\n"
+                                "Tip: Hold Shift while drawing to temporarily erase");
     mainLayout->addWidget(eraserCheckBox);
     
     // Brush shape
@@ -238,6 +241,13 @@ void DrawingWidget::onMousePress(cv::Vec3f vol_point, Qt::MouseButton button, Qt
         return;
     }
     
+    // Check for shift key to enable temporary eraser mode
+    if (modifiers & Qt::ShiftModifier) {
+        temporaryEraserMode = true;
+        originalEraserMode = eraserMode;
+        eraserMode = true;
+    }
+    
     startDrawing(vol_point);
 }
 
@@ -294,6 +304,15 @@ void DrawingWidget::onMouseRelease(cv::Vec3f vol_point, Qt::MouseButton button, 
     }
     
     finalizePath();
+    
+    // Restore original eraser mode if we were using temporary eraser mode
+    if (temporaryEraserMode) {
+        eraserMode = originalEraserMode;
+        temporaryEraserMode = false;
+        
+        // Update UI to reflect the restored state
+        eraserCheckBox->setChecked(originalEraserMode);
+    }
 }
 
 void DrawingWidget::updateCurrentZSlice(int z)
