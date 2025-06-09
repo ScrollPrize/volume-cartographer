@@ -9,6 +9,8 @@
 #include "CommandLineToolRunner.hpp"
 #include "vc/core/util/SurfaceDef.hpp"
 
+#include <QShortcut>
+
 #define MAX_RECENT_VOLPKG 10
 
 // Volpkg version required by this app
@@ -212,6 +214,12 @@ private:
     
     // runner for command line tools 
     CommandLineToolRunner* _cmdRunner;
+    
+    // Keyboard shortcuts
+    QShortcut* fReviewedShortcut;
+    QShortcut* fRevisitShortcut;
+    QShortcut* fDrawingModeShortcut;
+    QShortcut* fCompositeViewShortcut;
 };  // class CWindow
 
 }  // namespace ChaoVis

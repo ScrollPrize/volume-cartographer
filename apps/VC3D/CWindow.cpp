@@ -122,6 +122,43 @@ CWindow::CWindow() :
         }
     }
 
+    // Create application-wide keyboard shortcuts
+    fReviewedShortcut = new QShortcut(QKeySequence("R"), this);
+    fReviewedShortcut->setContext(Qt::ApplicationShortcut);
+    connect(fReviewedShortcut, &QShortcut::activated, [this]() {
+        if (_chkReviewed && _surf) {
+            _chkReviewed->setCheckState(_chkReviewed->checkState() == Qt::Unchecked ? Qt::Checked : Qt::Unchecked);
+        }
+    });
+    
+    fRevisitShortcut = new QShortcut(QKeySequence("Shift+R"), this);
+    fRevisitShortcut->setContext(Qt::ApplicationShortcut);
+    connect(fRevisitShortcut, &QShortcut::activated, [this]() {
+        if (_chkRevisit && _surf) {
+            _chkRevisit->setCheckState(_chkRevisit->checkState() == Qt::Unchecked ? Qt::Checked : Qt::Unchecked);
+        }
+    });
+    
+    fDrawingModeShortcut = new QShortcut(QKeySequence("D"), this);
+    fDrawingModeShortcut->setContext(Qt::ApplicationShortcut);
+    connect(fDrawingModeShortcut, &QShortcut::activated, [this]() {
+        if (_drawingWidget) {
+            _drawingWidget->toggleDrawingMode();
+        }
+    });
+    
+    fCompositeViewShortcut = new QShortcut(QKeySequence("C"), this);
+    fCompositeViewShortcut->setContext(Qt::ApplicationShortcut);
+    connect(fCompositeViewShortcut, &QShortcut::activated, [this]() {
+        // Find the segmentation viewer and toggle its composite view
+        for (auto& viewer : _viewers) {
+            if (viewer->surfName() == "segmentation") {
+                viewer->setCompositeEnabled(!viewer->isCompositeEnabled());
+                break;
+            }
+        }
+    });
+
     appInitComplete = true;
 }
 
@@ -468,28 +505,7 @@ void CWindow::CreateMenus(void)
 // Create actions
 void CWindow::keyPressEvent(QKeyEvent* event)
 {
-    if (event->key() == Qt::Key_D) {
-        // Toggle drawing mode
-        if (_drawingWidget) {
-            _drawingWidget->toggleDrawingMode();
-        }
-        event->accept();
-        return;
-    }
-    else if (event->key() == Qt::Key_R) {
-        // Handle R key for reviewed checkbox, Shift+R for revisit checkbox
-        if (_chkReviewed && _chkRevisit && _surf) {
-            if (event->modifiers() & Qt::ShiftModifier) {
-                // Toggle revisit checkbox
-                _chkRevisit->setCheckState(_chkRevisit->checkState() == Qt::Unchecked ? Qt::Checked : Qt::Unchecked);
-            } else {
-                // Toggle reviewed checkbox
-                _chkReviewed->setCheckState(_chkReviewed->checkState() == Qt::Unchecked ? Qt::Checked : Qt::Unchecked);
-            }
-            event->accept();
-            return;
-        }
-    }
+    // Key handling moved to QShortcut objects for application-wide access
     QMainWindow::keyPressEvent(event);
 }
 

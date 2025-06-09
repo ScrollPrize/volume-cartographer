@@ -71,16 +71,7 @@ void CVolumeViewerView::mouseReleaseEvent(QMouseEvent *event)
 
 void CVolumeViewerView::keyPressEvent(QKeyEvent *event)
 {
-    if (event->key() == Qt::Key_C && !event->isAutoRepeat()) {
-        // Toggle composite view when 'C' is pressed
-        CVolumeViewer* viewer = qobject_cast<CVolumeViewer*>(parent());
-        if (viewer && viewer->surfName() == "segmentation") {
-            viewer->setCompositeEnabled(!viewer->isCompositeEnabled());
-        }
-        event->accept();
-        return;
-    }
-    
+    // Key handling moved to global QShortcut objects in CWindow
     // Pass the event to the base class
     QGraphicsView::keyPressEvent(event);
 }
