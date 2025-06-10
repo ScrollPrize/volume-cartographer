@@ -361,7 +361,12 @@
                 <property name="text">
                  <string>Filter by Revisit</string>
                 </property>
-               </item> 
+               </item>
+               <item>
+                <property name="text">
+                 <string>Filter out Expansion</string>
+                </property>
+               </item>
               </widget>
              </item>
              <item>

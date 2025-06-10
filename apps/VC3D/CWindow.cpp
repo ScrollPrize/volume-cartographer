@@ -1351,6 +1351,22 @@ void CWindow::onSegFilterChanged(int index)
                     // If no metadata, don't show for revisit filter
                     show = false;
                 }
+            } else if (index == 5) {
+                // Filter out Expansion - show surfaces that do NOT have vc_gsfs_mode set to "expansion"
+                auto* surface = _vol_qsurfs[id]->surface();
+                if (surface && surface->meta) {
+                    // Check if vc_gsfs_mode exists and is set to "expansion"
+                    if (surface->meta->contains("vc_gsfs_mode")) {
+                        std::string mode = surface->meta->value("vc_gsfs_mode", "");
+                        show = (mode != "expansion");
+                    } else {
+                        // If the key doesn't exist, show the surface
+                        show = true;
+                    }
+                } else {
+                    // If no metadata, show the surface
+                    show = true;
+                }
             }
         }
 
