@@ -139,6 +139,14 @@ CWindow::CWindow() :
         }
     });
     
+    fDefectiveShortcut = new QShortcut(QKeySequence("Shift+D"), this);
+    fDefectiveShortcut->setContext(Qt::ApplicationShortcut);
+    connect(fDefectiveShortcut, &QShortcut::activated, [this]() {
+        if (_chkDefective && _surf) {
+            _chkDefective->setCheckState(_chkDefective->checkState() == Qt::Unchecked ? Qt::Checked : Qt::Unchecked);
+        }
+    });
+    
     fDrawingModeShortcut = new QShortcut(QKeySequence("D"), this);
     fDrawingModeShortcut->setContext(Qt::ApplicationShortcut);
     connect(fDrawingModeShortcut, &QShortcut::activated, [this]() {
@@ -1187,6 +1195,9 @@ void CWindow::onTagChanged(void)
     }
 
     UpdateSurfaceTreeIcon(static_cast<SurfaceTreeWidgetItem*>(treeWidgetSurfaces->currentItem()));
+    
+    // Update filters to reflect the tag changes
+    onSegFilterChanged(0);
 }
 
 void CWindow::onSurfaceSelected()

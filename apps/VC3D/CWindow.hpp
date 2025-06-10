@@ -223,6 +223,7 @@ private:
     // Keyboard shortcuts
     QShortcut* fReviewedShortcut;
     QShortcut* fRevisitShortcut;
+    QShortcut* fDefectiveShortcut;
     QShortcut* fDrawingModeShortcut;
     QShortcut* fCompositeViewShortcut;
 };  // class CWindow
