@@ -336,37 +336,83 @@
               <number>8</number>
              </property>
              <item>
-              <widget class="QComboBox" name="cmbFilterSegs">
-               <item>
-                <property name="text">
-                 <string>Show All</string>
+              <widget class="QWidget" name="filterWidget" native="true">
+               <layout class="QVBoxLayout" name="filterMainLayout">
+                <property name="leftMargin">
+                 <number>0</number>
                 </property>
-               </item>
-               <item>
-                <property name="text">
-                 <string>Filter by Focus Points</string>
+                <property name="topMargin">
+                 <number>0</number>
                 </property>
-               </item>
-               <item>
-                <property name="text">
-                 <string>Filter by Point Sets</string>
+                <property name="rightMargin">
+                 <number>0</number>
                 </property>
-               </item>
-               <item>
-                <property name="text">
-                 <string>Filter by Unreviewed</string>
+                <property name="bottomMargin">
+                 <number>0</number>
                 </property>
-               </item>
-               <item>
-                <property name="text">
-                 <string>Filter by Revisit</string>
+                <property name="spacing">
+                 <number>0</number>
                 </property>
-               </item>
-               <item>
-                <property name="text">
-                 <string>Filter out Expansion</string>
-                </property>
-               </item>
+                <item>
+                 <widget class="QLabel" name="lblFilters">
+                  <property name="text">
+                   <string>Filters:</string>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <layout class="QGridLayout" name="filterGridLayout">
+                  <property name="horizontalSpacing">
+                   <number>6</number>
+                  </property>
+                  <property name="verticalSpacing">
+                   <number>0</number>
+                  </property>
+                  <item row="0" column="0">
+                   <widget class="QCheckBox" name="chkFilterFocusPoints">
+                    <property name="text">
+                     <string>Focus Point</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="0" column="1">
+                   <widget class="QCheckBox" name="chkFilterPointSets">
+                    <property name="text">
+                     <string>Point Sets</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="1" column="0">
+                   <widget class="QCheckBox" name="chkFilterUnreviewed">
+                    <property name="text">
+                     <string>Unreviewed</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="1" column="1">
+                   <widget class="QCheckBox" name="chkFilterRevisit">
+                    <property name="text">
+                     <string>Revisit</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="2" column="0">
+                   <widget class="QCheckBox" name="chkFilterNoExpansion">
+                    <property name="text">
+                     <string>Hide Expansion</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="2" column="1">
+                   <widget class="QCheckBox" name="chkFilterNoDefective">
+                    <property name="text">
+                     <string>Hide Defective</string>
+                    </property>
+                   </widget>
+                  </item>
+                 </layout>
+                </item>
+               </layout>
               </widget>
              </item>
              <item>

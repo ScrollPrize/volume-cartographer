@@ -170,7 +170,12 @@ private:
     QAction* fShowConsoleOutputAct;
 
     QComboBox* volSelect;
-    QComboBox* cmbFilterSegs;
+    QCheckBox* chkFilterFocusPoints;
+    QCheckBox* chkFilterPointSets;
+    QCheckBox* chkFilterUnreviewed;
+    QCheckBox* chkFilterRevisit;
+    QCheckBox* chkFilterNoExpansion;
+    QCheckBox* chkFilterNoDefective;
     QComboBox* cmbSegmentationDir;
     
     QCheckBox* _chkApproved;

@@ -369,8 +369,19 @@ void CWindow::CreateWidgets(void)
             setVolume(newVolume);
         });
 
-    cmbFilterSegs = ui.cmbFilterSegs;
-    connect(cmbFilterSegs, &QComboBox::currentIndexChanged, this, &CWindow::onSegFilterChanged);
+    chkFilterFocusPoints = ui.chkFilterFocusPoints;
+    chkFilterPointSets = ui.chkFilterPointSets;
+    chkFilterUnreviewed = ui.chkFilterUnreviewed;
+    chkFilterRevisit = ui.chkFilterRevisit;
+    chkFilterNoExpansion = ui.chkFilterNoExpansion;
+    chkFilterNoDefective = ui.chkFilterNoDefective;
+    
+    connect(chkFilterFocusPoints, &QCheckBox::toggled, [this]() { onSegFilterChanged(0); });
+    connect(chkFilterPointSets, &QCheckBox::toggled, [this]() { onSegFilterChanged(0); });
+    connect(chkFilterUnreviewed, &QCheckBox::toggled, [this]() { onSegFilterChanged(0); });
+    connect(chkFilterRevisit, &QCheckBox::toggled, [this]() { onSegFilterChanged(0); });
+    connect(chkFilterNoExpansion, &QCheckBox::toggled, [this]() { onSegFilterChanged(0); });
+    connect(chkFilterNoDefective, &QCheckBox::toggled, [this]() { onSegFilterChanged(0); });
 
     cmbSegmentationDir = ui.cmbSegmentationDir;
     connect(cmbSegmentationDir, &QComboBox::currentIndexChanged, this, &CWindow::onSegmentationDirChanged);
@@ -896,7 +907,7 @@ void CWindow::LoadSurfaces(bool reload)
     FillSurfaceTree();
 
     // Re-apply filter to update views
-    onSegFilterChanged(cmbFilterSegs->currentIndex());
+    onSegFilterChanged(0);
 
     // Check if the previously selected item still exists and if yes, select it again.
     if (!id.empty()) {
@@ -1032,7 +1043,7 @@ void CWindow::onVolumeClicked(cv::Vec3f vol_loc, cv::Vec3f normal, Surface *surf
         }
 
         // Force an update of the filter
-        onSegFilterChanged(cmbFilterSegs->currentIndex());
+        onSegFilterChanged(0);
     }
     else if (modifiers & Qt::ControlModifier) {
         std::cout << "clicked on vol loc " << vol_loc << std::endl;
@@ -1083,7 +1094,7 @@ void CWindow::onVolumeClicked(cv::Vec3f vol_loc, cv::Vec3f normal, Surface *surf
         lblLoc[2]->setText(QString::number(poi->p[2]));
 
         // Force an update of the filter
-        onSegFilterChanged(cmbFilterSegs->currentIndex());
+        onSegFilterChanged(0);
     }
     else {
     }
@@ -1315,57 +1326,88 @@ void CWindow::onSegFilterChanged(int index)
     POI *poi = _surf_col->poi("focus");
     int filterCounter = 0;
 
+    // Check if any filters are active
+    bool hasActiveFilters = chkFilterFocusPoints->isChecked() ||
+                           chkFilterPointSets->isChecked() ||
+                           chkFilterUnreviewed->isChecked() ||
+                           chkFilterRevisit->isChecked() ||
+                           chkFilterNoExpansion->isChecked() ||
+                           chkFilterNoDefective->isChecked();
+
     QTreeWidgetItemIterator it(treeWidgetSurfaces);
     while (*it) {
         std::string id = (*it)->data(SURFACE_ID_COLUMN, Qt::UserRole).toString().toStdString();
 
-        bool show = false;
+        bool show = true;
         if (!_vol_qsurfs.count(id)) {
             show = true;
+        } else if (!hasActiveFilters) {
+            // If no filters are active, show all
+            show = true;
         } else {
-            if (index == 0) {
-                show = true;
-            } else if (index == 1 && contains(*_vol_qsurfs[id], poi->p)) {
-                show = true;
-            } else if (
-                index == 2 && contains(*_vol_qsurfs[id], _red_points) &&
-                contains(*_vol_qsurfs[id], _blue_points)) {
-                show = true;
-            } else if (index == 3) {
-                // Filter by Unreviewed - show only surfaces that do NOT have the "reviewed" tag
+            // Start with show = true and apply filters as AND conditions
+            show = true;
+            
+            // Filter by focus points
+            if (chkFilterFocusPoints->isChecked() && poi) {
+                show = show && contains(*_vol_qsurfs[id], poi->p);
+            }
+            
+            // Filter by point sets (red and blue points)
+            if (chkFilterPointSets->isChecked()) {
+                show = show && contains(*_vol_qsurfs[id], _red_points) && contains(*_vol_qsurfs[id], _blue_points);
+            }
+            
+            // Filter by unreviewed
+            if (chkFilterUnreviewed->isChecked()) {
                 auto* surface = _vol_qsurfs[id]->surface();
                 if (surface && surface->meta) {
                     auto tags = surface->meta->value("tags", nlohmann::json::object_t());
-                    show = !tags.count("reviewed");
+                    show = show && !tags.count("reviewed");
                 } else {
                     // If no metadata, consider it unreviewed
-                    show = true;
+                    show = show && true;
                 }
-            } else if (index == 4) {
-                // Filter by Revisit - show only surfaces that DO have the "revisit" tag
+            }
+            
+            // Filter by revisit
+            if (chkFilterRevisit->isChecked()) {
                 auto* surface = _vol_qsurfs[id]->surface();
                 if (surface && surface->meta) {
                     auto tags = surface->meta->value("tags", nlohmann::json::object_t());
-                    show = tags.count("revisit") > 0;
+                    show = show && (tags.count("revisit") > 0);
                 } else {
                     // If no metadata, don't show for revisit filter
-                    show = false;
+                    show = show && false;
                 }
-            } else if (index == 5) {
-                // Filter out Expansion - show surfaces that do NOT have vc_gsfs_mode set to "expansion"
+            }
+            
+            // Filter out expansion
+            if (chkFilterNoExpansion->isChecked()) {
                 auto* surface = _vol_qsurfs[id]->surface();
                 if (surface && surface->meta) {
-                    // Check if vc_gsfs_mode exists and is set to "expansion"
                     if (surface->meta->contains("vc_gsfs_mode")) {
                         std::string mode = surface->meta->value("vc_gsfs_mode", "");
-                        show = (mode != "expansion");
+                        show = show && (mode != "expansion");
                     } else {
                         // If the key doesn't exist, show the surface
-                        show = true;
+                        show = show && true;
                     }
                 } else {
                     // If no metadata, show the surface
-                    show = true;
+                    show = show && true;
+                }
+            }
+            
+            // Filter out defective
+            if (chkFilterNoDefective->isChecked()) {
+                auto* surface = _vol_qsurfs[id]->surface();
+                if (surface && surface->meta) {
+                    auto tags = surface->meta->value("tags", nlohmann::json::object_t());
+                    show = show && !tags.count("defective");
+                } else {
+                    // If no metadata, consider it not defective (show it)
+                    show = show && true;
                 }
             }
         }
