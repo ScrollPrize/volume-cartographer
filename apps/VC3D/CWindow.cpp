@@ -1176,10 +1176,10 @@ void CWindow::onTagChanged(void)
         bool reviewedJustAdded = !wasReviewed && isNowReviewed;
         
         if (surf->meta->contains("tags")) {
-            sync_tag(surf->meta->at("tags"), _chkApproved->checkState(), "approved", username);
-            sync_tag(surf->meta->at("tags"), _chkDefective->checkState(), "defective", username);
-            sync_tag(surf->meta->at("tags"), _chkReviewed->checkState(), "reviewed", username);
-            sync_tag(surf->meta->at("tags"), _chkRevisit->checkState(), "revisit", username);
+            sync_tag(surf->meta->at("tags"), _chkApproved->checkState() == Qt::Checked, "approved", username);
+            sync_tag(surf->meta->at("tags"), _chkDefective->checkState() == Qt::Checked, "defective", username);
+            sync_tag(surf->meta->at("tags"), _chkReviewed->checkState() == Qt::Checked, "reviewed", username);
+            sync_tag(surf->meta->at("tags"), _chkRevisit->checkState() == Qt::Checked, "revisit", username);
             surf->save_meta();
         }
         else if (_chkApproved->checkState() || _chkDefective->checkState() || _chkReviewed->checkState() || _chkRevisit->checkState()) {
