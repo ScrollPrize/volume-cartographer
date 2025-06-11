@@ -383,6 +383,7 @@ void CWindow::CreateWidgets(void)
     chkFilterRevisit = ui.chkFilterRevisit;
     chkFilterNoExpansion = ui.chkFilterNoExpansion;
     chkFilterNoDefective = ui.chkFilterNoDefective;
+    chkFilterPartialReview = ui.chkFilterPartialReview;
     
     connect(chkFilterFocusPoints, &QCheckBox::toggled, [this]() { onSegFilterChanged(0); });
     connect(chkFilterPointSets, &QCheckBox::toggled, [this]() { onSegFilterChanged(0); });
@@ -390,6 +391,7 @@ void CWindow::CreateWidgets(void)
     connect(chkFilterRevisit, &QCheckBox::toggled, [this]() { onSegFilterChanged(0); });
     connect(chkFilterNoExpansion, &QCheckBox::toggled, [this]() { onSegFilterChanged(0); });
     connect(chkFilterNoDefective, &QCheckBox::toggled, [this]() { onSegFilterChanged(0); });
+    connect(chkFilterPartialReview, &QCheckBox::toggled, [this]() { onSegFilterChanged(0); });
 
     cmbSegmentationDir = ui.cmbSegmentationDir;
     connect(cmbSegmentationDir, &QComboBox::currentIndexChanged, this, &CWindow::onSegmentationDirChanged);
@@ -1223,6 +1225,8 @@ void CWindow::onTagChanged(void)
         if (reviewedJustAdded && _vol_qsurfs.count(id)) {
             SurfaceMeta* surfMeta = _vol_qsurfs[id];
             
+            std::cout << "Marking partial review for overlaps of " << id << ", found " << surfMeta->overlapping_str.size() << " overlaps" << std::endl;
+            
             // Iterate through overlapping surfaces
             for (const std::string& overlapId : surfMeta->overlapping_str) {
                 if (_vol_qsurfs.count(overlapId)) {
@@ -1252,6 +1256,8 @@ void CWindow::onTagChanged(void)
                             
                             // Save the metadata
                             overlapSurf->save_meta();
+                            
+                            std::cout << "Added partial_review tag to " << overlapId << std::endl;
                         }
                     }
                 }
@@ -1409,7 +1415,8 @@ void CWindow::onSegFilterChanged(int index)
                            chkFilterUnreviewed->isChecked() ||
                            chkFilterRevisit->isChecked() ||
                            chkFilterNoExpansion->isChecked() ||
-                           chkFilterNoDefective->isChecked();
+                           chkFilterNoDefective->isChecked() ||
+                           chkFilterPartialReview->isChecked();
 
     QTreeWidgetItemIterator it(treeWidgetSurfaces);
     while (*it) {
@@ -1484,6 +1491,18 @@ void CWindow::onSegFilterChanged(int index)
                     show = show && !tags.count("defective");
                 } else {
                     // If no metadata, consider it not defective (show it)
+                    show = show && true;
+                }
+            }
+            
+            // Filter out partial review
+            if (chkFilterPartialReview->isChecked()) {
+                auto* surface = _vol_qsurfs[id]->surface();
+                if (surface && surface->meta) {
+                    auto tags = surface->meta->value("tags", nlohmann::json::object_t());
+                    show = show && !tags.count("partial_review");
+                } else {
+                    // If no metadata, consider it not partially reviewed (show it)
                     show = show && true;
                 }
             }
