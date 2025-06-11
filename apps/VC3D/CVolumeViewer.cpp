@@ -24,7 +24,7 @@ using qga = QGuiApplication;
 #define BGND_RECT_MARGIN 8
 #define DEFAULT_TEXT_COLOR QColor(255, 255, 120)
 // More gentle zoom factor for smoother experience
-#define ZOOM_FACTOR 1.15 // Changed from 2.0 (which was too aggressive)
+#define ZOOM_FACTOR 1.05 // Reduced from 1.15 for even smoother zooming
 
 #define COLOR_CURSOR Qt::cyan
 #define COLOR_FOCUS QColor(50, 255, 215)

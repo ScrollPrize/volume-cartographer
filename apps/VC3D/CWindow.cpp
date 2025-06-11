@@ -1169,6 +1169,12 @@ void CWindow::onTagChanged(void)
             continue;
         }
         
+        // Track if reviewed status changed from unchecked to checked
+        bool wasReviewed = surf->meta->contains("tags") && 
+                          surf->meta->at("tags").contains("reviewed");
+        bool isNowReviewed = _chkReviewed->checkState() == Qt::Checked;
+        bool reviewedJustAdded = !wasReviewed && isNowReviewed;
+        
         if (surf->meta->contains("tags")) {
             sync_tag(surf->meta->at("tags"), _chkApproved->checkState(), "approved", username);
             sync_tag(surf->meta->at("tags"), _chkDefective->checkState(), "defective", username);
@@ -1211,6 +1217,45 @@ void CWindow::onTagChanged(void)
                 }
             }
             surf->save_meta();
+        }
+        
+        // If reviewed was just added, mark overlapping segmentations with partial_review
+        if (reviewedJustAdded && _vol_qsurfs.count(id)) {
+            SurfaceMeta* surfMeta = _vol_qsurfs[id];
+            
+            // Iterate through overlapping surfaces
+            for (const std::string& overlapId : surfMeta->overlapping_str) {
+                if (_vol_qsurfs.count(overlapId)) {
+                    SurfaceMeta* overlapMeta = _vol_qsurfs[overlapId];
+                    QuadSurface* overlapSurf = overlapMeta->surface();
+                    
+                    if (overlapSurf && overlapSurf->meta) {
+                        // Don't mark as partial_review if it's already reviewed
+                        bool alreadyReviewed = overlapSurf->meta->contains("tags") && 
+                                             overlapSurf->meta->at("tags").contains("reviewed");
+                        
+                        if (!alreadyReviewed) {
+                            // Ensure tags object exists
+                            if (!overlapSurf->meta->contains("tags")) {
+                                (*overlapSurf->meta)["tags"] = nlohmann::json::object();
+                            }
+                            
+                            // Add partial_review tag
+                            if (!username.empty()) {
+                                (*overlapSurf->meta)["tags"]["partial_review"] = nlohmann::json::object();
+                                (*overlapSurf->meta)["tags"]["partial_review"]["user"] = username;
+                                (*overlapSurf->meta)["tags"]["partial_review"]["source"] = id;
+                            } else {
+                                (*overlapSurf->meta)["tags"]["partial_review"] = nlohmann::json::object();
+                                (*overlapSurf->meta)["tags"]["partial_review"]["source"] = id;
+                            }
+                            
+                            // Save the metadata
+                            overlapSurf->save_meta();
+                        }
+                    }
+                }
+            }
         }
         
         // Update the tree icon for this item

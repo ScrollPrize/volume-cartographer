@@ -176,6 +176,7 @@ private:
     QCheckBox* chkFilterRevisit;
     QCheckBox* chkFilterNoExpansion;
     QCheckBox* chkFilterNoDefective;
+    QCheckBox* chkFilterPartialReview;
     QComboBox* cmbSegmentationDir;
     
     QCheckBox* _chkApproved;
