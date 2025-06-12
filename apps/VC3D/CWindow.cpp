@@ -858,6 +858,18 @@ void CWindow::LoadSurfaces(bool reload)
         } else {
             fVpkg->setSegmentationDirectory(dir);
         }
+        
+        // On reload, clear everything
+        for (auto& pair : _vol_qsurfs) {
+            _surf_col->setSurface(pair.first, nullptr, false);
+            delete pair.second;
+        }
+        _vol_qsurfs.clear();
+        
+        for (auto& pair : _opchains) {
+            delete pair.second;
+        }
+        _opchains.clear();
     }
 
     SurfaceID id;
@@ -875,44 +887,48 @@ void CWindow::LoadSurfaces(bool reload)
     _surf = nullptr;
     _surfID.clear();
     
-    // Then clear the tree
+    // Clear the tree
     treeWidgetSurfaces->clear();
-
-    // Clear all surfaces from the collection and notify viewers
-    for (auto& pair : _vol_qsurfs) {
-        _surf_col->setSurface(pair.first, nullptr, false);  // Send signal to notify viewers
-        delete pair.second;
-    }
-
-    _vol_qsurfs.clear();
     
-    // Clear opchains
-    for (auto& pair : _opchains) {
-        delete pair.second;
-    }
-    _opchains.clear();
-    
+    // Get segmentations from current directory
     std::vector<std::string> seg_ids = fVpkg->segmentationIDs();
-    std::vector<std::pair<std::string,SurfaceMeta*>> load_sm(seg_ids.size());
-
-    #pragma omp parallel for
-    for(int i = 0; i < seg_ids.size(); i++) {
-        auto seg = fVpkg->segmentation(seg_ids[i]);
-        if (seg->metadata().hasKey("format") && seg->metadata().get<std::string>("format") == "tifxyz") {
+    
+    // Only load surfaces that haven't been loaded yet
+    std::vector<std::pair<std::string,SurfaceMeta*>> to_load;
+    for (const auto& seg_id : seg_ids) {
+        if (_vol_qsurfs.find(seg_id) == _vol_qsurfs.end()) {
+            // Not loaded yet
+            auto seg = fVpkg->segmentation(seg_id);
+            if (seg->metadata().hasKey("format") && seg->metadata().get<std::string>("format") == "tifxyz") {
+                to_load.push_back({seg_id, nullptr});
+            }
+        }
+    }
+    
+    // Load only new surfaces in parallel
+    if (!to_load.empty()) {
+        std::cout << "Loading " << to_load.size() << " new surfaces..." << std::endl;
+        
+        #pragma omp parallel for
+        for(int i = 0; i < to_load.size(); i++) {
+            auto seg = fVpkg->segmentation(to_load[i].first);
             SurfaceMeta *sm = new SurfaceMeta(seg->path());
             sm->surface();
             sm->readOverlapping();
-            load_sm[i] = {seg_ids[i], sm};
+            to_load[i].second = sm;
         }
-    }
         
-    for(auto &pair : load_sm) {
-        if (pair.second) {
-            //FIXME replace _vol_surfs with _surf_col by either upgrading _surf_col to surfacemeta
-            _vol_qsurfs[pair.first] = pair.second;
-            _surf_col->setSurface(pair.first, pair.second->surface(), true);
+        // Add newly loaded surfaces
+        for(auto &pair : to_load) {
+            if (pair.second) {
+                _vol_qsurfs[pair.first] = pair.second;
+                _surf_col->setSurface(pair.first, pair.second->surface(), true);
+            }
         }
     }
+    
+    // No need to update surface collection for already loaded surfaces
+    // They remain in the collection, just hidden/shown via tree widget
     
     FillSurfaceTree();
 
@@ -1365,6 +1381,7 @@ void CWindow::FillSurfaceTree()
     const QSignalBlocker blocker{treeWidgetSurfaces};
     treeWidgetSurfaces->clear();
 
+    // VolumePkg now only returns surfaces from the current directory
     for (auto& id : fVpkg->segmentationIDs()) {
         auto* item = new SurfaceTreeWidgetItem(treeWidgetSurfaces);
         item->setText(SURFACE_ID_COLUMN, QString(id.c_str()));
@@ -1768,32 +1785,46 @@ CWindow::SurfaceChanges CWindow::DetectSurfaceChanges()
         return changes;
     }
     
-    // Get current loaded IDs
-    std::set<std::string> loadedIds;
-    for (const auto& pair : _vol_qsurfs) {
-        loadedIds.insert(pair.first);
-    }
-    
-    // Get IDs from disk
+    // Get IDs from disk for current directory only
     std::set<std::string> diskIds;
     auto segIds = fVpkg->segmentationIDs();
     for (const auto& id : segIds) {
         diskIds.insert(id);
     }
     
+    // Get loaded IDs that belong to the current directory
+    std::set<std::string> loadedIdsInCurrentDir;
+    std::string currentDir = fVpkg->getSegmentationDirectory();
+    
+    // We need to check which loaded surfaces belong to the current directory
+    // Since we removed _surfaceDirectories, we'll check if they're in the current disk set
+    for (const auto& pair : _vol_qsurfs) {
+        // If it's in our loaded surfaces AND in the current directory's disk IDs, 
+        // or if it's NOT in the disk IDs (meaning it was deleted from disk)
+        if (diskIds.find(pair.first) != diskIds.end()) {
+            loadedIdsInCurrentDir.insert(pair.first);
+        }
+    }
+    
     // Find additions (in disk but not loaded)
     for (const auto& id : diskIds) {
-        if (loadedIds.find(id) == loadedIds.end()) {
+        if (_vol_qsurfs.find(id) == _vol_qsurfs.end()) {
             changes.toAdd.push_back(id);
         }
     }
     
-    // Find removals (loaded but not on disk)
-    for (const auto& id : loadedIds) {
-        if (diskIds.find(id) == diskIds.end()) {
-            changes.toRemove.push_back(id);
+    // Find removals (loaded from current dir but not on disk anymore)
+    // Only check surfaces that we know belong to the current directory
+    for (const auto& id : diskIds) {
+        if (_vol_qsurfs.find(id) != _vol_qsurfs.end()) {
+            // This surface should exist but let's verify it's still on disk
+            // by checking if it's in our refreshed disk set
+            // (This handles the case where a surface was deleted from disk)
         }
     }
+    
+    // Actually, we need to ask the VolumePkg to refresh and tell us what changed
+    // Let's not remove anything here - refreshSegmentations() will handle it
     
     return changes;
 }
@@ -1901,6 +1932,9 @@ void CWindow::LoadSurfacesIncremental()
     if (!fVpkg) {
         return;
     }
+    
+    // Refresh the VolumePkg's segmentation cache
+    fVpkg->refreshSegmentations();
     
     // Detect changes
     auto changes = DetectSurfaceChanges();

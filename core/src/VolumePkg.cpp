@@ -1,6 +1,7 @@
 #include "vc/core/types/VolumePkg.hpp"
 
 #include <functional>
+#include <set>
 #include <utility>
 
 #include "vc/core/util/DateTime.hpp"
@@ -304,8 +305,11 @@ VolumePkg::VolumePkg(const fs::path& fileLocation) : rootDir_{fileLocation}
         }
     }
 
-    // Load segmentations from default directory
-    loadSegmentationsFromDirectory(currentSegmentationDir_);
+    // Load segmentations from ALL available directories at startup
+    auto availableDirs = getAvailableSegmentationDirectories();
+    for (const auto& dirName : availableDirs) {
+        loadSegmentationsFromDirectory(dirName);
+    }
 }
 
 auto VolumePkg::New(fs::path fileLocation, int version) -> VolumePkg::Pointer
@@ -466,8 +470,12 @@ auto VolumePkg::segmentation(const DiskBasedObjectBaseClass::Identifier& id)
 auto VolumePkg::segmentationIDs() const -> std::vector<Segmentation::Identifier>
 {
     std::vector<Segmentation::Identifier> ids;
+    // Only return IDs from the current directory
     for (const auto& s : segmentations_) {
-        ids.emplace_back(s.first);
+        auto it = segmentationDirectories_.find(s.first);
+        if (it != segmentationDirectories_.end() && it->second == currentSegmentationDir_) {
+            ids.emplace_back(s.first);
+        }
     }
     return ids;
 }
@@ -543,9 +551,28 @@ void VolumePkg::Upgrade(const fs::path& path, int version, bool force)
 // SEGMENTATION DIRECTORY METHODS //
 void VolumePkg::loadSegmentationsFromDirectory(const std::string& dirName)
 {
-    // Clear existing segmentations
-    segmentations_.clear();
-    segmentation_files_.clear();
+    // DO NOT clear existing segmentations - we keep all directories in memory
+    // Only remove segmentations from this specific directory
+    std::vector<Segmentation::Identifier> toRemove;
+    for (const auto& pair : segmentationDirectories_) {
+        if (pair.second == dirName) {
+            toRemove.push_back(pair.first);
+        }
+    }
+    
+    // Remove old segmentations from this directory
+    for (const auto& id : toRemove) {
+        segmentations_.erase(id);
+        segmentationDirectories_.erase(id);
+        
+        // Remove from files vector
+        auto it = std::remove_if(segmentation_files_.begin(), segmentation_files_.end(),
+            [&id, this](const fs::path& path) {
+                auto segIt = segmentations_.find(id);
+                return segIt != segmentations_.end() && segIt->second->path() == path;
+            });
+        segmentation_files_.erase(it, segmentation_files_.end());
+    }
     
     // Check if directory exists
     const auto segDir = ::SegsDir(rootDir_, dirName);
@@ -562,6 +589,8 @@ void VolumePkg::loadSegmentationsFromDirectory(const std::string& dirName)
                 auto s = Segmentation::New(dirpath);
                 segmentations_.emplace(s->id(), s);
                 segmentation_files_.push_back(dirpath);
+                // Track which directory this segmentation came from
+                segmentationDirectories_[s->id()] = dirName;
             }
             catch (const std::exception &exc) {
                 std::cout << "WARNING: some exception occured, skipping segment dir: " << dirpath << std::endl;
@@ -573,10 +602,8 @@ void VolumePkg::loadSegmentationsFromDirectory(const std::string& dirName)
 
 void VolumePkg::setSegmentationDirectory(const std::string& dirName)
 {
-    if (currentSegmentationDir_ != dirName) {
-        currentSegmentationDir_ = dirName;
-        loadSegmentationsFromDirectory(dirName);
-    }
+    // Just change the current directory - all segmentations are already loaded
+    currentSegmentationDir_ = dirName;
 }
 
 auto VolumePkg::getSegmentationDirectory() const -> std::string
@@ -623,5 +650,50 @@ void VolumePkg::removeSegmentation(const Segmentation::Identifier& id)
     // Delete the physical folder
     if (fs::exists(segPath)) {
         fs::remove_all(segPath);
+    }
+}
+
+void VolumePkg::refreshSegmentations()
+{
+    const auto segDir = ::SegsDir(rootDir_, currentSegmentationDir_);
+    if (!fs::exists(segDir)) {
+        Logger()->warn("Segmentation directory '{}' does not exist", currentSegmentationDir_);
+        return;
+    }
+    
+    // Build a set of current segmentation paths on disk for the current directory
+    std::set<fs::path> diskPaths;
+    for (const auto& entry : fs::directory_iterator(segDir)) {
+        fs::path dirpath = fs::canonical(entry);
+        if (fs::is_directory(dirpath)) {
+            diskPaths.insert(dirpath);
+        }
+    }
+    
+    // Build a set of currently loaded segmentation paths for the current directory
+    std::set<fs::path> loadedPaths;
+    for (const auto& seg : segmentations_) {
+        auto dirIt = segmentationDirectories_.find(seg.first);
+        if (dirIt != segmentationDirectories_.end() && dirIt->second == currentSegmentationDir_) {
+            loadedPaths.insert(seg.second->path());
+        }
+    }
+    
+    // Since we're keeping all directories in memory, we only add new segmentations
+    // We don't remove any because they might belong to other directories
+    
+    // Find and add new segmentations (on disk but not in memory)
+    for (const auto& diskPath : diskPaths) {
+        if (loadedPaths.find(diskPath) == loadedPaths.end()) {
+            try {
+                auto s = Segmentation::New(diskPath);
+                segmentations_.emplace(s->id(), s);
+                segmentation_files_.push_back(diskPath);
+                segmentationDirectories_[s->id()] = currentSegmentationDir_;
+            }
+            catch (const std::exception &exc) {
+                Logger()->warn("Failed to load segment dir: {} - {}", diskPath.string(), exc.what());
+            }
+        }
     }
 }
