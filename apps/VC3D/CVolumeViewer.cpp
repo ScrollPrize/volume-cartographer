@@ -471,6 +471,11 @@ void CVolumeViewer::onPOIChanged(std::string name, POI *poi)
         return;
     
     if (name == "focus") {
+        // Add safety check before dynamic_cast
+        if (!_surf) {
+            return;
+        }
+        
         PlaneSurface *plane = dynamic_cast<PlaneSurface*>(_surf);
         
         if (!plane)

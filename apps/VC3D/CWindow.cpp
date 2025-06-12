@@ -880,7 +880,7 @@ void CWindow::LoadSurfaces(bool reload)
 
     // Clear all surfaces from the collection and notify viewers
     for (auto& pair : _vol_qsurfs) {
-        _surf_col->setSurface(pair.first, nullptr, false);
+        _surf_col->setSurface(pair.first, nullptr, false);  // Send signal to notify viewers
         delete pair.second;
     }
 
@@ -1590,7 +1590,7 @@ void CWindow::onEditMaskPressed(void)
 
 void CWindow::onRefreshSurfaces()
 {
-    LoadSurfaces(true);
+    LoadSurfacesIncremental();
 }
 
 QString CWindow::getCurrentVolumePath() const
@@ -1758,4 +1758,174 @@ void CWindow::onSegmentationDirChanged(int index)
         // Update the status bar to show the change
         statusBar->showMessage(tr("Switched to %1 directory").arg(QString::fromStdString(newDir)), 3000);
     }
+}
+
+CWindow::SurfaceChanges CWindow::DetectSurfaceChanges()
+{
+    SurfaceChanges changes;
+    
+    if (!fVpkg) {
+        return changes;
+    }
+    
+    // Get current loaded IDs
+    std::set<std::string> loadedIds;
+    for (const auto& pair : _vol_qsurfs) {
+        loadedIds.insert(pair.first);
+    }
+    
+    // Get IDs from disk
+    std::set<std::string> diskIds;
+    auto segIds = fVpkg->segmentationIDs();
+    for (const auto& id : segIds) {
+        diskIds.insert(id);
+    }
+    
+    // Find additions (in disk but not loaded)
+    for (const auto& id : diskIds) {
+        if (loadedIds.find(id) == loadedIds.end()) {
+            changes.toAdd.push_back(id);
+        }
+    }
+    
+    // Find removals (loaded but not on disk)
+    for (const auto& id : loadedIds) {
+        if (diskIds.find(id) == diskIds.end()) {
+            changes.toRemove.push_back(id);
+        }
+    }
+    
+    return changes;
+}
+
+void CWindow::AddSingleSegmentation(const std::string& segId)
+{
+    if (!fVpkg) {
+        return;
+    }
+    
+    std::cout << "Adding segmentation: " << segId << std::endl;
+    
+    try {
+        auto seg = fVpkg->segmentation(segId);
+        if (seg->metadata().hasKey("format") && seg->metadata().get<std::string>("format") == "tifxyz") {
+            SurfaceMeta *sm = new SurfaceMeta(seg->path());
+            sm->surface();
+            sm->readOverlapping();
+            
+            // Add to collections
+            _vol_qsurfs[segId] = sm;
+            _surf_col->setSurface(segId, sm->surface(), true);
+            
+            // Add to tree widget
+            auto* item = new SurfaceTreeWidgetItem(treeWidgetSurfaces);
+            item->setText(SURFACE_ID_COLUMN, QString(segId.c_str()));
+            item->setData(SURFACE_ID_COLUMN, Qt::UserRole, QVariant(segId.c_str()));
+            double size = sm->meta->value("area_cm2", -1.f);
+            item->setText(2, QString::number(size, 'f', 3));
+            double cost = sm->meta->value("avg_cost", -1.f);
+            item->setText(3, QString::number(cost, 'f', 3));
+            item->setText(4, QString::number(sm->overlapping_str.size()));
+            UpdateSurfaceTreeIcon(item);
+        }
+    } catch (const std::exception& e) {
+        std::cout << "Failed to add segmentation " << segId << ": " << e.what() << std::endl;
+    }
+}
+
+void CWindow::RemoveSingleSegmentation(const std::string& segId)
+{
+    std::cout << "Removing segmentation: " << segId << std::endl;
+    
+    // Check if this is the currently selected segmentation
+    bool wasSelected = (_surfID == segId);
+    
+    // Remove from surface collection - send signal to notify viewers
+    _surf_col->setSurface(segId, nullptr, false);
+    
+    // If this was the selected segmentation, clear the segmentation surface
+    if (wasSelected) {
+        _surf_col->setSurface("segmentation", nullptr, false);  // Send signal to clear viewer pointers
+        _surf = nullptr;
+        _surfID.clear();
+        
+        // Clear checkboxes
+        const QSignalBlocker b1{_chkApproved};
+        const QSignalBlocker b2{_chkDefective};
+        const QSignalBlocker b3{_chkReviewed};
+        const QSignalBlocker b4{_chkRevisit};
+        _chkApproved->setCheckState(Qt::Unchecked);
+        _chkDefective->setCheckState(Qt::Unchecked);
+        _chkReviewed->setCheckState(Qt::Unchecked);
+        _chkRevisit->setCheckState(Qt::Unchecked);
+        _chkApproved->setEnabled(false);
+        _chkDefective->setEnabled(false);
+        _chkReviewed->setEnabled(false);
+        _chkRevisit->setEnabled(false);
+        
+        // Reset window title
+        for (auto &viewer : _viewers) {
+            if (viewer->surfName() == "segmentation") {
+                viewer->setWindowTitle(tr("Surface"));
+                break;
+            }
+        }
+    }
+    
+    // Remove from tree widget
+    QTreeWidgetItemIterator it(treeWidgetSurfaces);
+    while (*it) {
+        if ((*it)->data(SURFACE_ID_COLUMN, Qt::UserRole).toString().toStdString() == segId) {
+            delete *it;
+            break;
+        }
+        ++it;
+    }
+    
+    // Clean up memory
+    if (_vol_qsurfs.count(segId)) {
+        delete _vol_qsurfs[segId];
+        _vol_qsurfs.erase(segId);
+    }
+    
+    if (_opchains.count(segId)) {
+        delete _opchains[segId];
+        _opchains.erase(segId);
+    }
+}
+
+void CWindow::LoadSurfacesIncremental()
+{
+    std::cout << "Starting incremental surface load..." << std::endl;
+    
+    if (!fVpkg) {
+        return;
+    }
+    
+    // Detect changes
+    auto changes = DetectSurfaceChanges();
+    
+    std::cout << "Found " << changes.toAdd.size() << " surfaces to add and " 
+              << changes.toRemove.size() << " surfaces to remove" << std::endl;
+    
+    // Apply removals first
+    for (const auto& id : changes.toRemove) {
+        RemoveSingleSegmentation(id);
+    }
+    
+    // Then apply additions
+    for (const auto& id : changes.toAdd) {
+        AddSingleSegmentation(id);
+    }
+    
+    // Re-apply filter to update views
+    onSegFilterChanged(0);
+    
+    // Update the volpkg label
+    UpdateVolpkgLabel(0);
+    
+    // Emit signal to notify that surfaces have been updated
+    emit sendSurfacesLoaded();
+    
+    std::cout << "Incremental surface load completed." << std::endl;
 }

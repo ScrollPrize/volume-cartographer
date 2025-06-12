@@ -119,6 +119,16 @@ private:
     void OpenVolume(const QString& path);
     void CloseVolume(void);
     void LoadSurfaces(bool reload = false);
+    
+    // Incremental surface loading methods
+    struct SurfaceChanges {
+        std::vector<std::string> toAdd;
+        std::vector<std::string> toRemove;
+    };
+    SurfaceChanges DetectSurfaceChanges();
+    void AddSingleSegmentation(const std::string& segId);
+    void RemoveSingleSegmentation(const std::string& segId);
+    void LoadSurfacesIncremental();
 
     static void audio_callback(void *user_data, uint8_t *raw_buffer, int bytes);
     void playPing();
