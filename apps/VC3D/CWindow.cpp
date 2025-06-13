@@ -12,6 +12,10 @@
 #include <QApplication>
 #include <QClipboard>
 #include <QTimer>
+#include <QDateTime>
+#include <QFileDialog>
+#include <QTextStream>
+#include <QFileInfo>
 #include <opencv2/imgproc.hpp>
 #include <opencv2/highgui.hpp>
 
@@ -492,6 +496,8 @@ void CWindow::CreateMenus(void)
     fFileMenu->addAction(fOpenVolAct);
     fFileMenu->addMenu(fRecentVolpkgMenu);
     fFileMenu->addSeparator();
+    fFileMenu->addAction(fReportingAct);
+    fFileMenu->addSeparator();
     fFileMenu->addAction(fSettingsAct);
     fFileMenu->addSeparator();
     fFileMenu->addAction(fExitAct);
@@ -560,6 +566,9 @@ void CWindow::CreateActions(void)
     
     fShowConsoleOutputAct = new QAction(tr("Show Console Output"), this);
     connect(fShowConsoleOutputAct, &QAction::triggered, this, &CWindow::onToggleConsoleOutput);
+    
+    fReportingAct = new QAction(tr("Generate Review Report..."), this);
+    connect(fReportingAct, &QAction::triggered, this, &CWindow::onGenerateReviewReport);
 }
 
 void CWindow::UpdateRecentVolpkgActions()
@@ -1151,12 +1160,11 @@ void CWindow::onOpChainChanged(OpChain *chain)
 void sync_tag(nlohmann::json &dict, bool checked, std::string name, const std::string& username = "")
 {
     if (checked && !dict.count(name)) {
+        dict[name] = nlohmann::json::object();
         if (!username.empty()) {
-            dict[name] = nlohmann::json::object();
             dict[name]["user"] = username;
-        } else {
-            dict[name] = nullptr;
         }
+        dict[name]["date"] = QDateTime::currentDateTime().toString(Qt::ISODate).toStdString();
     }
     if (!checked && dict.count(name))
         dict.erase(name);
@@ -1962,4 +1970,118 @@ void CWindow::LoadSurfacesIncremental()
     emit sendSurfacesLoaded();
     
     std::cout << "Incremental surface load completed." << std::endl;
+}
+
+void CWindow::onGenerateReviewReport()
+{
+    if (!fVpkg) {
+        QMessageBox::warning(this, tr("Error"), tr("No volume package loaded."));
+        return;
+    }
+    
+    // Let user choose save location
+    QString fileName = QFileDialog::getSaveFileName(this, 
+        tr("Save Review Report"), 
+        "review_report.csv", 
+        tr("CSV Files (*.csv)"));
+    
+    if (fileName.isEmpty()) {
+        return;
+    }
+    
+    // Data structure to aggregate by date and username
+    struct UserStats {
+        double totalArea = 0.0;
+        int surfaceCount = 0;
+    };
+    std::map<QString, std::map<QString, UserStats>> dailyStats; // date -> username -> stats
+    
+    int totalReviewedCount = 0;
+    double grandTotalArea = 0.0;
+    
+    // Iterate through all surfaces
+    for (const auto& pair : _vol_qsurfs) {
+        const std::string& surfaceId = pair.first;
+        SurfaceMeta* surfMeta = pair.second;
+        
+        if (!surfMeta || !surfMeta->surface() || !surfMeta->surface()->meta) {
+            continue;
+        }
+        
+        nlohmann::json* meta = surfMeta->surface()->meta;
+        
+        // Check if surface has reviewed tag
+        if (!meta->contains("tags") || !meta->at("tags").contains("reviewed")) {
+            continue;
+        }
+        
+        // Get review date
+        QString reviewDate = "Unknown";
+        if (meta->at("tags").at("reviewed").contains("date")) {
+            QString fullDate = QString::fromStdString(meta->at("tags").at("reviewed").at("date").get<std::string>());
+            // Extract just the date portion (YYYY-MM-DD) from ISO date string
+            reviewDate = fullDate.left(10);
+        } else {
+            // Fallback to file modification time
+            QFileInfo metaFile(QString::fromStdString(surfMeta->path.string()) + "/meta.json");
+            if (metaFile.exists()) {
+                reviewDate = metaFile.lastModified().toString("yyyy-MM-dd");
+            }
+        }
+        
+        // Get username
+        QString username = "Unknown";
+        if (meta->at("tags").at("reviewed").contains("user")) {
+            username = QString::fromStdString(meta->at("tags").at("reviewed").at("user").get<std::string>());
+        }
+        
+        // Get area
+        double area = meta->value("area_cm2", 0.0);
+        
+        // Aggregate data
+        dailyStats[reviewDate][username].totalArea += area;
+        dailyStats[reviewDate][username].surfaceCount++;
+        
+        totalReviewedCount++;
+        grandTotalArea += area;
+    }
+    
+    // Open file for writing
+    QFile file(fileName);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        QMessageBox::warning(this, tr("Error"), tr("Could not open file for writing."));
+        return;
+    }
+    
+    QTextStream stream(&file);
+    
+    // Write header
+    stream << "Date,Username,CM² Reviewed,Surface Count\n";
+    
+    // Write aggregated data sorted by date and username
+    for (const auto& dateEntry : dailyStats) {
+        const QString& date = dateEntry.first;
+        for (const auto& userEntry : dateEntry.second) {
+            const QString& username = userEntry.first;
+            const UserStats& stats = userEntry.second;
+            
+            stream << date << ","
+                   << username << ","
+                   << QString::number(stats.totalArea, 'f', 3) << ","
+                   << stats.surfaceCount << "\n";
+        }
+    }
+    
+    file.close();
+    
+    // Show summary message
+    QString message = tr("Review report saved successfully.\n\n"
+                        "Total reviewed surfaces: %1\n"
+                        "Total area reviewed: %2 cm²\n"
+                        "Days covered: %3")
+                        .arg(totalReviewedCount)
+                        .arg(grandTotalArea, 0, 'f', 3)
+                        .arg(dailyStats.size());
+    
+    QMessageBox::information(this, tr("Report Generated"), message);
 }

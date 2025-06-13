@@ -148,6 +148,7 @@ private slots:
     void onSegmentationDirChanged(int index);
     void onEditMaskPressed();
     void onRefreshSurfaces();
+    void onGenerateReviewReport();
 
 private:
     bool appInitComplete{false};
@@ -178,6 +179,7 @@ private:
     QAction* fAboutAct;
     QAction* fResetMdiView;
     QAction* fShowConsoleOutputAct;
+    QAction* fReportingAct;
 
     QComboBox* volSelect;
     QCheckBox* chkFilterFocusPoints;

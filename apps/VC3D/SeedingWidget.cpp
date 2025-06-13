@@ -199,6 +199,7 @@ void SeedingWidget::setupUI()
 
 void SeedingWidget::setVolumePkg(std::shared_ptr<volcart::VolumePkg> vpkg)
 {
+    std::cout << "SeedingWidget::setVolumePkg called - vpkg: " << (vpkg ? "valid" : "null") << std::endl;
     fVpkg = vpkg;
     updateButtonStates();
 }
@@ -214,13 +215,10 @@ void SeedingWidget::setCache(ChunkCache* cache)
     chunkCache = cache;
 }
 
-void SeedingWidget::onVolumeChanged(std::shared_ptr<volcart::Volume> vol)
-{
-    setCurrentVolume(vol);
-}
-
 void SeedingWidget::onVolumeChanged(std::shared_ptr<volcart::Volume> vol, const std::string& volumeId)
 {
+    std::cout << "SeedingWidget::onVolumeChanged called - volume: " << (vol ? "valid" : "null") 
+              << ", volumeId: " << volumeId << std::endl;
     currentVolume = vol;
     currentVolumeId = volumeId;
     updateButtonStates();
@@ -487,6 +485,11 @@ void SeedingWidget::findPeaksAlongRay(
 
 void SeedingWidget::onRunSegmentationClicked()
 {
+    std::cout << "SeedingWidget::onRunSegmentationClicked - START" << std::endl;
+    std::cout << "  currentVolume: " << (currentVolume ? "valid" : "null") << std::endl;
+    std::cout << "  currentVolumeId: " << currentVolumeId << std::endl;
+    std::cout << "  fVpkg: " << (fVpkg ? "valid" : "null") << std::endl;
+    
     // Combine analysis points and user-placed points for segmentation
     std::vector<cv::Vec3f> allPoints = peakPoints;
     allPoints.insert(allPoints.end(), userPlacedPoints.begin(), userPlacedPoints.end());
@@ -515,7 +518,7 @@ void SeedingWidget::onRunSegmentationClicked()
     fs::path pathsDir;
     fs::path seedJsonPath;
     
-    if (fVpkg->hasSegmentations()) {
+    if (fVpkg->hasSegmentations() && !fVpkg->segmentationIDs().empty()) {
         auto segID = fVpkg->segmentationIDs()[0];
         auto seg = fVpkg->segmentation(segID);
         pathsDir = seg->path().parent_path();
@@ -1163,7 +1166,7 @@ void SeedingWidget::onExpandSeedsClicked()
     fs::path pathsDir;
     fs::path expandJsonPath;
     
-    if (fVpkg->hasSegmentations()) {
+    if (fVpkg->hasSegmentations() && !fVpkg->segmentationIDs().empty()) {
         auto segID = fVpkg->segmentationIDs()[0];
         auto seg = fVpkg->segmentation(segID);
         pathsDir = seg->path().parent_path();
