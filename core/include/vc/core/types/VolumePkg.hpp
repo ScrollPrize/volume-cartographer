@@ -223,6 +223,18 @@ public:
     /** @brief Get list of available segmentation directories */
     [[nodiscard]] auto getAvailableSegmentationDirectories() const 
         -> std::vector<std::string>;
+    
+    /** 
+     * @brief Refresh the segmentation cache by scanning the current directory
+     * 
+     * This method efficiently updates the internal segmentation cache by:
+     * - Adding any new segmentations found on disk
+     * - Removing any segmentations that no longer exist on disk
+     * 
+     * This is much faster than reloading the entire VolumePkg when only
+     * segmentations have changed.
+     */
+    void refreshSegmentations();
     /**@}*/
 
     /**
@@ -251,6 +263,8 @@ private:
     std::vector<filesystem::path> segmentation_files_;
     /** Current segmentation directory name */
     std::string currentSegmentationDir_ = "paths";
+    /** Track which directory each segmentation came from */
+    std::map<Segmentation::Identifier, std::string> segmentationDirectories_;
 
     /**
      * @brief Populates an empty VolumePkg::config from a volcart::Dictionary

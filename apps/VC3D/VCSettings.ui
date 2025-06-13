@@ -133,6 +133,20 @@
            </property>
           </widget>
          </item>
+         <item row="7" column="0">
+          <widget class="QLabel" name="label_8">
+           <property name="text">
+            <string>Username (for tagging)</string>
+           </property>
+          </widget>
+         </item>
+         <item row="7" column="1">
+          <widget class="QLineEdit" name="edtUsername">
+           <property name="placeholderText">
+            <string>Enter your username</string>
+           </property>
+          </widget>
+         </item>
          <item row="0" column="1">
           <widget class="QSpinBox" name="spinFwdBackStepMs">
            <property name="minimum">

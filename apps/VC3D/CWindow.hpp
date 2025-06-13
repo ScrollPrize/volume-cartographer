@@ -9,6 +9,8 @@
 #include "CommandLineToolRunner.hpp"
 #include "vc/core/util/SurfaceDef.hpp"
 
+#include <QShortcut>
+
 #define MAX_RECENT_VOLPKG 10
 
 // Volpkg version required by this app
@@ -41,6 +43,7 @@ class CVolumeViewer;
 class CSurfaceCollection;
 class CSegmentationEditorWindow;
 class SeedingWidget;
+class DrawingWidget;
 
 class CWindow : public QMainWindow
 {
@@ -76,6 +79,7 @@ public slots:
     void onGrowSeeds(const SurfaceID& segmentId, bool isExpand, bool isRandomSeed = false);
     void onToggleConsoleOutput();
     void onDeleteSegments(const std::vector<SurfaceID>& segmentIds);
+    void onVoxelizePaths();
 
 public:
     CWindow();
@@ -83,6 +87,9 @@ public:
     
     // Helper method to get the current volume path
     QString getCurrentVolumePath() const;
+
+protected:
+    void keyPressEvent(QKeyEvent* event) override;
 
 private:
     void CreateWidgets(void);
@@ -113,6 +120,16 @@ private:
     void OpenVolume(const QString& path);
     void CloseVolume(void);
     void LoadSurfaces(bool reload = false);
+    
+    // Incremental surface loading methods
+    struct SurfaceChanges {
+        std::vector<std::string> toAdd;
+        std::vector<std::string> toRemove;
+    };
+    SurfaceChanges DetectSurfaceChanges();
+    void AddSingleSegmentation(const std::string& segId);
+    void RemoveSingleSegmentation(const std::string& segId);
+    void LoadSurfacesIncremental();
 
     static void audio_callback(void *user_data, uint8_t *raw_buffer, int bytes);
     void playPing();
@@ -132,6 +149,7 @@ private slots:
     void onSegmentationDirChanged(int index);
     void onEditMaskPressed();
     void onRefreshSurfaces();
+    void onGenerateReviewReport();
 
 private:
     bool appInitComplete{false};
@@ -151,6 +169,7 @@ private:
     QMenu* fFileMenu;
     QMenu* fEditMenu;
     QMenu* fViewMenu;
+    QMenu* fActionsMenu;
     QMenu* fHelpMenu;
     QMenu* fRecentVolpkgMenu{};
 
@@ -162,9 +181,17 @@ private:
     QAction* fAboutAct;
     QAction* fResetMdiView;
     QAction* fShowConsoleOutputAct;
+    QAction* fReportingAct;
+    QAction* fVoxelizePathsAct;
 
     QComboBox* volSelect;
-    QComboBox* cmbFilterSegs;
+    QCheckBox* chkFilterFocusPoints;
+    QCheckBox* chkFilterPointSets;
+    QCheckBox* chkFilterUnreviewed;
+    QCheckBox* chkFilterRevisit;
+    QCheckBox* chkFilterNoExpansion;
+    QCheckBox* chkFilterNoDefective;
+    QCheckBox* chkFilterPartialReview;
     QComboBox* cmbSegmentationDir;
     
     QCheckBox* _chkApproved;
@@ -176,8 +203,9 @@ private:
     QuadSurface *_surf;
     SurfaceID _surfID;
     
-    // Seeding widget
+  
     SeedingWidget* _seedingWidget;
+    DrawingWidget* _drawingWidget;
 
     std::vector<cv::Vec3f> _red_points;
     std::vector<cv::Vec3f> _blue_points;
@@ -207,6 +235,13 @@ private:
     
     // runner for command line tools 
     CommandLineToolRunner* _cmdRunner;
+    
+    // Keyboard shortcuts
+    QShortcut* fReviewedShortcut;
+    QShortcut* fRevisitShortcut;
+    QShortcut* fDefectiveShortcut;
+    QShortcut* fDrawingModeShortcut;
+    QShortcut* fCompositeViewShortcut;
 };  // class CWindow
 
 }  // namespace ChaoVis

@@ -47,7 +47,6 @@ public slots:
     
 public slots:
     void onPointSelected(cv::Vec3f point, cv::Vec3f normal);
-    void onVolumeChanged(std::shared_ptr<volcart::Volume> vol);
     void onVolumeChanged(std::shared_ptr<volcart::Volume> vol, const std::string& volumeId);
     void updateCurrentZSlice(int z);
     void onUserPointAdded(cv::Vec3f point);

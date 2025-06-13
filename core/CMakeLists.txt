@@ -37,6 +37,7 @@ set(surface_srcs
     src/Surface.cpp
     src/SurfaceHelpers.cpp
     src/ChunkedTensor.cpp
+    src/SurfaceVoxelizer.cpp
 )
 add_library(vc_surface
     ${surface_srcs}
@@ -50,6 +51,8 @@ target_link_libraries(vc_surface
     PUBLIC
         opencv_core
         opencv_video
+        z5
+        nlohmann_json::nlohmann_json
 )
 target_include_directories(vc_surface
     PUBLIC

@@ -24,7 +24,7 @@ using qga = QGuiApplication;
 #define BGND_RECT_MARGIN 8
 #define DEFAULT_TEXT_COLOR QColor(255, 255, 120)
 // More gentle zoom factor for smoother experience
-#define ZOOM_FACTOR 1.15 // Changed from 2.0 (which was too aggressive)
+#define ZOOM_FACTOR 1.05 // Reduced from 1.15 for even smoother zooming
 
 #define COLOR_CURSOR Qt::cyan
 #define COLOR_FOCUS QColor(50, 255, 215)
@@ -401,20 +401,55 @@ void CVolumeViewer::onSurfaceChanged(std::string name, Surface *surf)
     renderIntersections();
 }
 
-QGraphicsItem *cursorItem()
+QGraphicsItem *cursorItem(bool drawingMode = false, float brushSize = 3.0f, bool isSquare = false)
 {
-    QPen pen(QBrush(COLOR_CURSOR), 2);
-    QGraphicsLineItem *parent = new QGraphicsLineItem(-10, 0, -5, 0);
-    parent->setZValue(10);
-    parent->setPen(pen);
-    QGraphicsLineItem *line = new QGraphicsLineItem(10, 0, 5, 0, parent);
-    line->setPen(pen);
-    line = new QGraphicsLineItem(0, -10, 0, -5, parent);
-    line->setPen(pen);
-    line = new QGraphicsLineItem(0, 10, 0, 5, parent);
-    line->setPen(pen);
-    
-    return parent;
+    if (drawingMode) {
+        // Drawing mode cursor - shows brush shape and size
+        QGraphicsItemGroup *group = new QGraphicsItemGroup();
+        group->setZValue(10);
+        
+        QPen brushPen(QBrush(COLOR_CURSOR), 1.5);
+        brushPen.setStyle(Qt::DashLine);
+        
+        // Draw brush shape
+        if (isSquare) {
+            float halfSize = brushSize / 2.0f;
+            QGraphicsRectItem *rect = new QGraphicsRectItem(-halfSize, -halfSize, brushSize, brushSize);
+            rect->setPen(brushPen);
+            rect->setBrush(Qt::NoBrush);
+            group->addToGroup(rect);
+        } else {
+            QGraphicsEllipseItem *circle = new QGraphicsEllipseItem(-brushSize/2, -brushSize/2, brushSize, brushSize);
+            circle->setPen(brushPen);
+            circle->setBrush(Qt::NoBrush);
+            group->addToGroup(circle);
+        }
+        
+        // Add small crosshair in center
+        QPen centerPen(QBrush(COLOR_CURSOR), 1);
+        QGraphicsLineItem *line = new QGraphicsLineItem(-2, 0, 2, 0);
+        line->setPen(centerPen);
+        group->addToGroup(line);
+        line = new QGraphicsLineItem(0, -2, 0, 2);
+        line->setPen(centerPen);
+        group->addToGroup(line);
+        
+        return group;
+    } else {
+        // Regular cursor
+        QPen pen(QBrush(COLOR_CURSOR), 2);
+        QGraphicsLineItem *parent = new QGraphicsLineItem(-10, 0, -5, 0);
+        parent->setZValue(10);
+        parent->setPen(pen);
+        QGraphicsLineItem *line = new QGraphicsLineItem(10, 0, 5, 0, parent);
+        line->setPen(pen);
+        line = new QGraphicsLineItem(0, -10, 0, -5, parent);
+        line->setPen(pen);
+        line = new QGraphicsLineItem(0, 10, 0, 5, parent);
+        line->setPen(pen);
+        
+        return parent;
+    }
 }
 
 QGraphicsItem *crossItem()
@@ -436,6 +471,11 @@ void CVolumeViewer::onPOIChanged(std::string name, POI *poi)
         return;
     
     if (name == "focus") {
+        // Add safety check before dynamic_cast
+        if (!_surf) {
+            return;
+        }
+        
         PlaneSurface *plane = dynamic_cast<PlaneSurface*>(_surf);
         
         if (!plane)
@@ -474,7 +514,7 @@ void CVolumeViewer::onPOIChanged(std::string name, POI *poi)
         }
         
         if (!_cursor) {
-            _cursor = cursorItem();
+            _cursor = cursorItem(_drawingModeActive, _brushSize, _brushIsSquare);
             fScene->addItem(_cursor);
         }
         
@@ -897,8 +937,20 @@ void CVolumeViewer::renderPaths()
         return;
     }
     
-    // Draw each path
+    // Separate paths by type for proper rendering order
+    QList<PathData> drawPaths;
+    QList<PathData> eraserPaths;
+    
     for (const auto& path : _paths) {
+        if (path.isEraser) {
+            eraserPaths.append(path);
+        } else {
+            drawPaths.append(path);
+        }
+    }
+    
+    // First render regular drawing paths
+    for (const auto& path : drawPaths) {
         if (path.points.size() < 2) {
             continue;
         }
@@ -935,10 +987,77 @@ void CVolumeViewer::renderPaths()
             }
         }
         
-        // Create the path item with the specified color
-        QPen pen(path.color, path.lineWidth, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin);
+        // Create the path item with the specified color and properties
+        QColor color = path.color;
+        if (path.opacity < 1.0f) {
+            color.setAlphaF(path.opacity);
+        }
+        
+        QPen pen(color, path.lineWidth, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin);
+        
+        // Apply different brush shapes
+        if (path.brushShape == PathData::BrushShape::SQUARE) {
+            pen.setCapStyle(Qt::SquareCap);
+            pen.setJoinStyle(Qt::MiterJoin);
+        }
+        
         auto item = fScene->addPath(painterPath, pen);
         item->setZValue(25); // Higher than intersections but lower than points
+        _path_items.push_back(item);
+    }
+    
+    // Then render eraser paths with a distinctive style
+    // In the actual mask generation, these will subtract from the drawn areas
+    for (const auto& path : eraserPaths) {
+        if (path.points.size() < 2) {
+            continue;
+        }
+        
+        QPainterPath painterPath;
+        bool firstPoint = true;
+        
+        PlaneSurface *plane = dynamic_cast<PlaneSurface*>(_surf);
+        QuadSurface *quad = dynamic_cast<QuadSurface*>(_surf);
+        
+        for (const auto& wp : path.points) {
+            cv::Vec3f p;
+            
+            if (plane) {
+                if (plane->pointDist(wp) >= 4.0)
+                    continue;
+                p = plane->project(wp, 1.0, _scale);
+            }
+            else if (quad) {
+                SurfacePointer *ptr = quad->pointer();
+                float res = _surf->pointTo(ptr, wp, 4.0, 100);
+                p = _surf->loc(ptr)*_scale;
+                if (res >= 4.0)
+                    continue;
+            }
+            else
+                continue;
+            
+            if (firstPoint) {
+                painterPath.moveTo(p[0], p[1]);
+                firstPoint = false;
+            } else {
+                painterPath.lineTo(p[0], p[1]);
+            }
+        }
+        
+        // Render eraser paths with a distinctive appearance
+        // Using a dashed pattern to indicate eraser mode
+        QPen pen(Qt::red, path.lineWidth, Qt::DashLine, Qt::RoundCap, Qt::RoundJoin);
+        pen.setDashPattern(QVector<qreal>() << 4 << 4);
+        
+        if (path.opacity < 1.0f) {
+            QColor eraserColor = pen.color();
+            eraserColor.setAlphaF(path.opacity);
+            pen.setColor(eraserColor);
+        }
+        
+        auto item = fScene->addPath(painterPath, pen);
+        item->setZValue(26); // Slightly higher than regular paths
         _path_items.push_back(item);
     }
 }
@@ -1118,5 +1237,25 @@ void CVolumeViewer::onVolumeClosing()
     else {
         // For other surface types (seg xz, seg yz), clear them
         onSurfaceChanged(_surf_name, nullptr);
+    }
+}
+
+void CVolumeViewer::onDrawingModeActive(bool active, float brushSize, bool isSquare)
+{
+    _drawingModeActive = active;
+    _brushSize = brushSize;
+    _brushIsSquare = isSquare;
+    
+    // Update the cursor to reflect the drawing mode state
+    if (_cursor) {
+        fScene->removeItem(_cursor);
+        delete _cursor;
+        _cursor = nullptr;
+    }
+    
+    // Force cursor update
+    POI *cursor = _surf_col->poi("cursor");
+    if (cursor) {
+        onPOIChanged("cursor", cursor);
     }
 }

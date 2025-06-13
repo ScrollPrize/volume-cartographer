@@ -165,8 +165,13 @@ bool CommandLineToolRunner::execute(Tool tool)
         return false;
     }
     
-    if (_segmentPath.isEmpty() && (tool == Tool::RenderTifXYZ || tool == Tool::GrowSegFromSegment)) {
+    if (tool == Tool::RenderTifXYZ && _segmentPath.isEmpty()) {
         QMessageBox::warning(nullptr, tr("Error"), tr("Segment path not specified."));
+        return false;
+    }
+    
+    if (tool == Tool::GrowSegFromSegment && _srcSegment.isEmpty()) {
+        QMessageBox::warning(nullptr, tr("Error"), tr("Source segment not specified."));
         return false;
     }
     

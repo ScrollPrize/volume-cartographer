@@ -359,12 +359,27 @@ void CWindow::onDeleteSegments(const std::vector<SurfaceID>& segmentIds)
         }
     }
     
-    // Only reload surfaces if we successfully deleted something
+    // Only update UI if we successfully deleted something
     if (needsReload) {
         try {
-            LoadSurfaces(false);
+            // Use incremental removal to update the UI for each successfully deleted segment
+            for (const auto& segmentId : segmentIds) {
+                // Only remove from UI if it was successfully deleted from disk
+                if (std::find(failedSegments.begin(), failedSegments.end(), 
+                            QString::fromStdString(segmentId)) == failedSegments.end() &&
+                    std::find(failedSegments.begin(), failedSegments.end(), 
+                            QString::fromStdString(segmentId) + " (permission denied)") == failedSegments.end() &&
+                    std::find(failedSegments.begin(), failedSegments.end(), 
+                            QString::fromStdString(segmentId) + " (filesystem error)") == failedSegments.end()) {
+                    RemoveSingleSegmentation(segmentId);
+                }
+            }
+            
+            // Update the volpkg label and filters
+            UpdateVolpkgLabel(0);
+            onSegFilterChanged(0);
         } catch (const std::exception& e) {
-            std::cerr << "Error reloading surfaces after deletion: " << e.what() << std::endl;
+            std::cerr << "Error updating UI after deletion: " << e.what() << std::endl;
             QMessageBox::warning(this, tr("Warning"), 
                                tr("Segments were deleted but there was an error refreshing the list. "
                                   "Please reload surfaces manually."));
