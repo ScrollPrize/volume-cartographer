@@ -1792,19 +1792,8 @@ CWindow::SurfaceChanges CWindow::DetectSurfaceChanges()
         diskIds.insert(id);
     }
     
-    // Get loaded IDs that belong to the current directory
-    std::set<std::string> loadedIdsInCurrentDir;
+    // Get the current directory
     std::string currentDir = fVpkg->getSegmentationDirectory();
-    
-    // We need to check which loaded surfaces belong to the current directory
-    // Since we removed _surfaceDirectories, we'll check if they're in the current disk set
-    for (const auto& pair : _vol_qsurfs) {
-        // If it's in our loaded surfaces AND in the current directory's disk IDs, 
-        // or if it's NOT in the disk IDs (meaning it was deleted from disk)
-        if (diskIds.find(pair.first) != diskIds.end()) {
-            loadedIdsInCurrentDir.insert(pair.first);
-        }
-    }
     
     // Find additions (in disk but not loaded)
     for (const auto& id : diskIds) {
@@ -1813,18 +1802,29 @@ CWindow::SurfaceChanges CWindow::DetectSurfaceChanges()
         }
     }
     
-    // Find removals (loaded from current dir but not on disk anymore)
-    // Only check surfaces that we know belong to the current directory
-    for (const auto& id : diskIds) {
-        if (_vol_qsurfs.find(id) != _vol_qsurfs.end()) {
-            // This surface should exist but let's verify it's still on disk
-            // by checking if it's in our refreshed disk set
-            // (This handles the case where a surface was deleted from disk)
+    // Find removals - iterate through loaded surfaces to see if they still exist on disk
+    // We need to check all loaded surfaces, not just those in diskIds
+    for (const auto& pair : _vol_qsurfs) {
+        const std::string& loadedId = pair.first;
+        
+        // Check if this loaded surface is no longer on disk
+        if (diskIds.find(loadedId) == diskIds.end()) {
+            // This surface was loaded but is no longer on disk for the current directory
+            // We need to check if it belongs to the current directory
+            // Since VolumePkg keeps all directories in memory, we need to be careful
+            // Only remove if it was supposed to be in the current directory
+            
+            // Get the segmentation from VolumePkg to check its directory
+            try {
+                auto seg = fVpkg->segmentation(loadedId);
+                // If we can still get it from VolumePkg, it exists in another directory
+                // So we shouldn't remove it from our display - it's just not in current dir
+            } catch (const std::out_of_range& e) {
+                // Can't find it in VolumePkg anymore - it was truly deleted
+                changes.toRemove.push_back(loadedId);
+            }
         }
     }
-    
-    // Actually, we need to ask the VolumePkg to refresh and tell us what changed
-    // Let's not remove anything here - refreshSegmentations() will handle it
     
     return changes;
 }

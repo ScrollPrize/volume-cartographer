@@ -670,26 +670,65 @@ void VolumePkg::refreshSegmentations()
         }
     }
     
-    // Build a set of currently loaded segmentation paths for the current directory
-    std::set<fs::path> loadedPaths;
+    // Find segmentations to remove (loaded from current directory but not on disk anymore)
+    std::vector<Segmentation::Identifier> toRemove;
     for (const auto& seg : segmentations_) {
         auto dirIt = segmentationDirectories_.find(seg.first);
         if (dirIt != segmentationDirectories_.end() && dirIt->second == currentSegmentationDir_) {
-            loadedPaths.insert(seg.second->path());
+            // This segmentation belongs to the current directory
+            // Check if it still exists on disk
+            if (diskPaths.find(seg.second->path()) == diskPaths.end()) {
+                // Not on disk anymore - mark for removal
+                toRemove.push_back(seg.first);
+            }
         }
     }
     
-    // Since we're keeping all directories in memory, we only add new segmentations
-    // We don't remove any because they might belong to other directories
+    // Remove segmentations that no longer exist
+    for (const auto& id : toRemove) {
+        Logger()->info("Removing segmentation '{}' - no longer exists on disk", id);
+        
+        // Get the path before removing the segmentation
+        fs::path segPath;
+        auto segIt = segmentations_.find(id);
+        if (segIt != segmentations_.end()) {
+            segPath = segIt->second->path();
+        }
+        
+        // Remove from segmentations map
+        segmentations_.erase(id);
+        
+        // Remove from directories map
+        segmentationDirectories_.erase(id);
+        
+        // Remove from files vector if we have a path
+        if (!segPath.empty()) {
+            auto fileIt = std::find(segmentation_files_.begin(), 
+                                  segmentation_files_.end(), 
+                                  segPath);
+            if (fileIt != segmentation_files_.end()) {
+                segmentation_files_.erase(fileIt);
+            }
+        }
+    }
     
     // Find and add new segmentations (on disk but not in memory)
     for (const auto& diskPath : diskPaths) {
-        if (loadedPaths.find(diskPath) == loadedPaths.end()) {
+        bool found = false;
+        for (const auto& seg : segmentations_) {
+            if (seg.second->path() == diskPath) {
+                found = true;
+                break;
+            }
+        }
+        
+        if (!found) {
             try {
                 auto s = Segmentation::New(diskPath);
                 segmentations_.emplace(s->id(), s);
                 segmentation_files_.push_back(diskPath);
                 segmentationDirectories_[s->id()] = currentSegmentationDir_;
+                Logger()->info("Added new segmentation '{}'", s->id());
             }
             catch (const std::exception &exc) {
                 Logger()->warn("Failed to load segment dir: {} - {}", diskPath.string(), exc.what());
