@@ -16,6 +16,13 @@
 #include <QFileDialog>
 #include <QTextStream>
 #include <QFileInfo>
+#include <QProgressDialog>
+#include <QMessageBox>
+#include <QThread>
+#include <QtConcurrent/QtConcurrent>
+#include <QFutureWatcher>
+#include <atomic>
+#include <omp.h>
 #include <opencv2/imgproc.hpp>
 #include <opencv2/highgui.hpp>
 
@@ -41,6 +48,9 @@
 
 #include "vc/core/util/Surface.hpp"
 #include "vc/core/util/Slicing.hpp"
+#include "vc/core/util/SurfaceVoxelizer.hpp"
+
+
 
 namespace vc = volcart;
 using namespace ChaoVis;
@@ -517,6 +527,9 @@ void CWindow::CreateMenus(void)
     fViewMenu->addSeparator();
     fViewMenu->addAction(fShowConsoleOutputAct);
 
+    fActionsMenu = new QMenu(tr("&Actions"), this);
+    fActionsMenu->addAction(fVoxelizePathsAct);
+
     fHelpMenu = new QMenu(tr("&Help"), this);
     fHelpMenu->addAction(fKeybinds);
     fFileMenu->addSeparator();
@@ -526,6 +539,7 @@ void CWindow::CreateMenus(void)
     menuBar()->addMenu(fFileMenu);
     menuBar()->addMenu(fEditMenu);
     menuBar()->addMenu(fViewMenu);
+    menuBar()->addMenu(fActionsMenu);
     menuBar()->addMenu(fHelpMenu);
 }
 
@@ -569,6 +583,9 @@ void CWindow::CreateActions(void)
     
     fReportingAct = new QAction(tr("Generate Review Report..."), this);
     connect(fReportingAct, &QAction::triggered, this, &CWindow::onGenerateReviewReport);
+    
+    fVoxelizePathsAct = new QAction(tr("&Voxelize Paths..."), this);
+    connect(fVoxelizePathsAct, &QAction::triggered, this, &CWindow::onVoxelizePaths);
 }
 
 void CWindow::UpdateRecentVolpkgActions()
@@ -921,10 +938,15 @@ void CWindow::LoadSurfaces(bool reload)
         #pragma omp parallel for
         for(int i = 0; i < to_load.size(); i++) {
             auto seg = fVpkg->segmentation(to_load[i].first);
-            SurfaceMeta *sm = new SurfaceMeta(seg->path());
-            sm->surface();
-            sm->readOverlapping();
-            to_load[i].second = sm;
+            try {
+                SurfaceMeta *sm = new SurfaceMeta(seg->path());
+                sm->surface();
+                sm->readOverlapping();
+                to_load[i].second = sm;
+            } catch (const std::exception& e) {
+                std::cerr << "Failed to load surface " << to_load[i].first << ": " << e.what() << std::endl;
+                to_load[i].second = nullptr;
+            }
         }
         
         // Add newly loaded surfaces
@@ -932,6 +954,8 @@ void CWindow::LoadSurfaces(bool reload)
             if (pair.second) {
                 _vol_qsurfs[pair.first] = pair.second;
                 _surf_col->setSurface(pair.first, pair.second->surface(), true);
+            } else {
+                std::cout << "Skipping surface " << pair.first << " due to invalid metadata" << std::endl;
             }
         }
     }
@@ -2084,4 +2108,132 @@ void CWindow::onGenerateReviewReport()
                         .arg(dailyStats.size());
     
     QMessageBox::information(this, tr("Report Generated"), message);
+}
+
+void CWindow::onVoxelizePaths()
+{
+    // Check if volume is loaded
+    if (!fVpkg || !currentVolume) {
+        QMessageBox::warning(this, tr("Error"), 
+                           tr("Please load a volume package first."));
+        return;
+    }
+    
+    // Get output path
+    QString outputPath = QFileDialog::getSaveFileName(
+        this, 
+        tr("Save Voxelized Surfaces"), 
+        fVpkgPath + "/voxelized_paths.zarr",
+        tr("Zarr Files (*.zarr)")
+    );
+    
+    if (outputPath.isEmpty()) return;
+    
+    // Create progress dialog (non-modal)
+    QProgressDialog* progress = new QProgressDialog(tr("Voxelizing surfaces..."), 
+                                                   tr("Cancel"), 0, 100, this);
+    progress->setWindowModality(Qt::NonModal);
+    progress->setAttribute(Qt::WA_DeleteOnClose);
+    
+    // Gather surfaces from current paths directory
+    std::map<std::string, QuadSurface*> surfacesToVoxelize;
+    for (const auto& [id, surfMeta] : _vol_qsurfs) {
+        // Only include surfaces from current segmentation directory
+        if (surfMeta && surfMeta->surface()) {
+            surfacesToVoxelize[id] = surfMeta->surface();
+        }
+    }
+    
+    if (surfacesToVoxelize.empty()) {
+        QMessageBox::warning(this, tr("Error"), 
+                           tr("No surfaces found in current paths directory."));
+        return;
+    }
+    
+    // Set up volume info from current volume
+    volcart::SurfaceVoxelizer::VolumeInfo volumeInfo;
+    volumeInfo.width = currentVolume->sliceWidth();
+    volumeInfo.height = currentVolume->sliceHeight();
+    volumeInfo.depth = currentVolume->numSlices();
+    // Get voxel size from volume metadata if available
+    float voxelSize = 1.0f;
+    try {
+        if (currentVolume->metadata().hasKey("voxelsize")) {
+            voxelSize = currentVolume->metadata().get<float>("voxelsize");
+        }
+    } catch (...) {
+        // Default to 1.0 if not found
+        voxelSize = 1.0f;
+    }
+    volumeInfo.voxelSize = voxelSize;
+    
+    // Set up parameters
+    volcart::SurfaceVoxelizer::VoxelizationParams params;
+    params.voxelSize = volumeInfo.voxelSize; // Match volume voxel size
+    params.samplingDensity = 0.5f; // Sample every 0.5 surface units
+    params.fillGaps = true;
+    params.chunkSize = 64;
+    
+    // Set OpenMP thread count based on system
+    int numThreads = std::max(1, QThread::idealThreadCount() - 1); // Leave one core free
+    omp_set_num_threads(numThreads);
+    
+    // Run voxelization in separate thread
+    QFutureWatcher<void>* watcher = new QFutureWatcher<void>(this);
+    connect(watcher, &QFutureWatcher<void>::finished, [progress, watcher]() {
+        progress->close();
+        watcher->deleteLater();
+    });
+    
+    // Progress tracking  
+    std::atomic<bool> cancelled(false);
+    connect(progress, &QProgressDialog::canceled, [&cancelled]() {
+        cancelled = true;
+    });
+    
+    auto surfaces = surfacesToVoxelize;  // Copy for lambda capture
+    auto outputStr = outputPath.toStdString();
+    
+    QFuture<void> future = QtConcurrent::run([this, outputStr, surfaces, volumeInfo, params, progress, &cancelled]() {
+        try {
+            volcart::SurfaceVoxelizer::voxelizeSurfaces(
+                outputStr,
+                surfaces,
+                volumeInfo,
+                params,
+                [progress, &cancelled](int value) {
+                    if (!cancelled) {
+                        QMetaObject::invokeMethod(progress, [progress, value]() {
+                            progress->setValue(value);
+                        }, Qt::QueuedConnection);
+                    }
+                }
+            );
+        } catch (const std::exception& e) {
+            QString errorMsg = QString::fromStdString(e.what());
+            QMetaObject::invokeMethod(this, [this, errorMsg]() {
+                QMessageBox::critical(this, tr("Error"), 
+                    tr("Voxelization failed: %1").arg(errorMsg));
+            }, Qt::QueuedConnection);
+        }
+    });
+    
+    watcher->setFuture(future);
+    progress->show();  // Show progress dialog non-blocking
+    
+    // When voxelization completes and dialog closes, show success message
+    connect(watcher, &QFutureWatcher<void>::finished, [this, outputPath, surfacesToVoxelize, volumeInfo, progress, &cancelled]() {
+        if (!progress->wasCanceled() && !cancelled) {
+            QMessageBox::information(this, tr("Success"),
+                tr("Surfaces voxelized successfully!\n\n"
+                   "Output saved to: %1\n"
+                   "Surfaces processed: %2\n"
+                   "Volume dimensions: %3x%4x%5")
+                .arg(outputPath)
+                .arg(surfacesToVoxelize.size())
+                .arg(volumeInfo.width)
+                .arg(volumeInfo.height)
+                .arg(volumeInfo.depth));
+        }
+    });
 }

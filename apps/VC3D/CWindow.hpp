@@ -79,6 +79,7 @@ public slots:
     void onGrowSeeds(const SurfaceID& segmentId, bool isExpand, bool isRandomSeed = false);
     void onToggleConsoleOutput();
     void onDeleteSegments(const std::vector<SurfaceID>& segmentIds);
+    void onVoxelizePaths();
 
 public:
     CWindow();
@@ -168,6 +169,7 @@ private:
     QMenu* fFileMenu;
     QMenu* fEditMenu;
     QMenu* fViewMenu;
+    QMenu* fActionsMenu;
     QMenu* fHelpMenu;
     QMenu* fRecentVolpkgMenu{};
 
@@ -180,6 +182,7 @@ private:
     QAction* fResetMdiView;
     QAction* fShowConsoleOutputAct;
     QAction* fReportingAct;
+    QAction* fVoxelizePathsAct;
 
     QComboBox* volSelect;
     QCheckBox* chkFilterFocusPoints;

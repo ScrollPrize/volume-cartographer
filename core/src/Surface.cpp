@@ -1493,8 +1493,19 @@ SurfaceMeta::SurfaceMeta(const std::filesystem::path &path_, const nlohmann::jso
 SurfaceMeta::SurfaceMeta(const std::filesystem::path &path_) : path(path_)
 {
     std::ifstream meta_f(path_/"meta.json");
+    if (!meta_f.is_open() || !meta_f.good()) {
+        throw std::runtime_error("Cannot open meta.json file at: " + path_.string());
+    }
+    
     meta = new nlohmann::json;
-    *meta = nlohmann::json::parse(meta_f);
+    try {
+        *meta = nlohmann::json::parse(meta_f);
+    } catch (const nlohmann::json::parse_error& e) {
+        delete meta;
+        meta = nullptr;
+        throw std::runtime_error("Invalid JSON in meta.json at: " + path_.string() + " - " + e.what());
+    }
+    
     if (meta->contains("bbox"))
         bbox = rect_from_json((*meta)["bbox"]);
 }
