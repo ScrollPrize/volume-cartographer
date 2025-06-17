@@ -64,6 +64,13 @@ target_link_libraries(vc_tifxyz2obj
     VC::surface
 )
 
+add_executable(vc_obj2tifxyz src/vc_obj2tifxyz.cpp)
+target_link_libraries(vc_obj2tifxyz
+    opencv_highgui
+    VC::slicing
+    VC::surface
+)
+
 add_executable(vc_tifxyz_inp_mask src/vc_tifxyz_inp_mask.cpp)
 target_link_libraries(vc_tifxyz_inp_mask
     opencv_highgui
@@ -114,6 +121,7 @@ install(
         vc_grow_seg_from_segments
         vc_seg_add_overlap
         vc_tifxyz2obj
+        vc_obj2tifxyz
         vc_tifxyz_winding
         vc_fill_quadmesh
         ${extra_apps}

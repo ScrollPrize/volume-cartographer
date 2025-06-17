@@ -2,6 +2,7 @@
 
 #include <string>
 #include <map>
+#include <vector>
 #include <opencv2/core.hpp>
 #include <xtensor/xarray.hpp>
 #include "vc/core/util/Surface.hpp"
@@ -37,7 +38,7 @@ public:
             voxelSize(1.0f),
             samplingDensity(0.5f),
             fillGaps(true),
-            chunkSize(64) {}
+            chunkSize(256) {}
     };
     
     /**
@@ -68,6 +69,27 @@ public:
     
 private:
     /**
+     * @brief Spatial index for fast quad lookup
+     */
+    struct QuadIndex {
+        struct QuadEntry {
+            int i, j;  // Quad indices in surface
+            cv::Vec3f minBound;
+            cv::Vec3f maxBound;
+        };
+        
+        // Grid-based spatial index
+        int gridSize;
+        cv::Vec3f minBound;
+        cv::Vec3f maxBound;
+        cv::Vec3f cellSize;
+        std::vector<std::vector<QuadEntry>> grid;
+        
+        void build(QuadSurface* surface, int targetGridSize = 64);
+        std::vector<QuadEntry> getQuadsInRegion(const cv::Vec3f& minRegion, const cv::Vec3f& maxRegion) const;
+    };
+    
+    /**
      * @brief Voxelize a surface into a specific chunk
      */
     static void voxelizeSurfaceChunk(
@@ -75,7 +97,8 @@ private:
         xt::xarray<uint8_t>& chunk,
         const cv::Vec3i& chunkOffset,  // Offset in voxel coordinates
         const cv::Vec3i& chunkSize,    // Size of chunk in voxels
-        const VoxelizationParams& params
+        const VoxelizationParams& params,
+        const QuadIndex* spatialIndex = nullptr
     );
     
     /**
