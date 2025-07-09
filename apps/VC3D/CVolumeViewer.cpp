@@ -213,26 +213,39 @@ void CVolumeViewer::onZoom(int steps, QPointF scene_loc, Qt::KeyboardModifiers m
         // 1) compute our zoom factor
         float zoom = pow(ZOOM_FACTOR, steps);
 
-        // 2) remember the current center in scene-coords
-        QPointF sceneCenter = visible_center(fGraphicsView);
+        // 2) Store the mouse position in view coordinates before zooming
+        QPointF mouseViewPos = fGraphicsView->mapFromScene(scene_loc);
+        
+        // 3) Store the mouse position in scene coordinates before zooming
+        QPointF mouseScenePos = scene_loc;
 
-        // 3) actually apply it to the view’s transform
-        fGraphicsView->setTransformationAnchor(QGraphicsView::AnchorUnderMouse);
+        // 4) Apply the zoom transformation
+        fGraphicsView->setTransformationAnchor(QGraphicsView::NoAnchor);
         fGraphicsView->scale(zoom, zoom);
+        
+        // 5) Calculate where the mouse scene position is now in view coordinates after zoom
+        QPointF newMouseViewPos = fGraphicsView->mapFromScene(mouseScenePos);
+        
+        // 6) Calculate the difference and adjust the view to keep mouse position fixed
+        QPointF delta = mouseViewPos - newMouseViewPos;
+        QScrollBar *hBar = fGraphicsView->horizontalScrollBar();
+        QScrollBar *vBar = fGraphicsView->verticalScrollBar();
+        hBar->setValue(hBar->value() - delta.x());
+        vBar->setValue(vBar->value() - delta.y());
+        
         // force a repaint so drawForeground() runs immediately
         fGraphicsView->viewport()->update();
 
-        // 4) update your internal “resolution” scale and re-render at new detail
+        // 7) update your internal "resolution" scale and re-render at new detail
         _scale *= zoom;
         round_scale(_scale);
         recalcScales();
 
         curr_img_area = {0,0,0,0};
-        // 5) re-center on the same scene point
+        // 8) Update scene rect
         //FIXME get correct size for slice!
         int max_size = 100000; //std::max(volume->sliceWidth(), std::max(volume->numSlices(), volume->sliceHeight()))*_ds_scale + 512;
         fGraphicsView->setSceneRect(-max_size/2, -max_size/2, max_size, max_size);
-        fGraphicsView->centerOn(sceneCenter);
         renderVisible();
     }
 
