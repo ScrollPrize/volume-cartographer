@@ -364,6 +364,12 @@ void CWindow::CreateWidgets(void)
     
     // Make Drawing dock the active tab by default
     ui.dockWidgetDrawing->raise();
+    
+    // Tab the composite widget with the Volume Package widget on the left dock
+    tabifyDockWidget(ui.dockWidgetVolumes, ui.dockWidgetComposite);
+    
+    // Make Volume Package dock the active tab by default
+    ui.dockWidgetVolumes->raise();
 
     connect(treeWidgetSurfaces, &QTreeWidget::itemSelectionChanged, this, &CWindow::onSurfaceSelected);
     connect(btnReloadSurfaces, &QPushButton::clicked, this, &CWindow::onRefreshSurfaces);
