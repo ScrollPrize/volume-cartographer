@@ -369,6 +369,7 @@ void CWindow::CreateWidgets(void)
     tabifyDockWidget(ui.dockWidgetVolumes, ui.dockWidgetComposite);
     
     // Make Volume Package dock the active tab by default
+    ui.dockWidgetVolumes->show();
     ui.dockWidgetVolumes->raise();
 
     connect(treeWidgetSurfaces, &QTreeWidget::itemSelectionChanged, this, &CWindow::onSurfaceSelected);
