@@ -28,21 +28,11 @@ bool orientNormals(
 {
     cv::Vec3f refPt = referencePoint;
     if (usePointsForCentroid) {
-        refPt = cv::Vec3f(0, 0, 0);
-        int validPoints = 0;
-        for (int y = 0; y < points.rows; y++) {
-            for (int x = 0; x < points.cols; x++) {
-                const cv::Vec3f& pt = points(y, x);
-                if (std::isnan(pt[0]) || std::isnan(pt[1]) || std::isnan(pt[2])) {
-                    continue;
-                }
-                refPt += pt;
-                validPoints++;
-            }
-        }
-        if (validPoints > 0) {
-            refPt /= static_cast<float>(validPoints);
-        }
+        // Calculate centroid based on shape dimensions (middle of y,z)
+        // For a shape with dimensions (rows, cols), the center would be (rows/2, cols/2)
+        refPt = cv::Vec3f(static_cast<float>(points.cols) / 2.0f, 
+                          static_cast<float>(points.rows) / 2.0f, 
+                          0.0f);
     }
 
     size_t pointingToward = 0;
@@ -195,11 +185,19 @@ int main(int argc, char *argv[])
             float off = i-num_slices/2;
             if (slice_gen) {
                 img.create(tgt_size);
+                // Calculate consistent reference point for all chunks based on full target size
+                cv::Vec3f consistentRefPt = cv::Vec3f(static_cast<float>(tgt_size.width) / 2.0f, 
+                                                      static_cast<float>(tgt_size.height) / 2.0f, 
+                                                      0.0f);
+                
                 for(int x=crop.x;x<crop.x+crop.width;x+=1024) {
                     int w = std::min(tgt_size.width+crop.x-x, 1024);
                     surf->gen(&points, &normals, {w,crop.height}, nullptr, tgt_scale, {-full_size.width/2+x,-full_size.height/2+crop.y,0});
                     
-                    orientNormals(points, normals);
+                    // Use consistent reference point for all chunks, adjust for chunk position
+                    cv::Vec3f chunkRefPt = consistentRefPt;
+                    chunkRefPt[0] -= (x - crop.x); // Adjust x coordinate for chunk position
+                    orientNormals(points, normals, chunkRefPt, false);
                     
                     cv::Mat_<uint8_t> slice;
                     readInterpolated3D(slice, ds.get(), points*ds_scale+off*normals*ds_scale, &chunk_cache);

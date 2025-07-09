@@ -542,6 +542,16 @@ cv::Mat CVolumeViewer::render_area(const cv::Rect &roi)
         
         int half_range = (_composite_layers - 1) / 2;
         
+        // Alpha composition state for each pixel
+        cv::Mat_<float> alpha_accumulator;
+        cv::Mat_<float> value_accumulator;
+        
+        // Alpha composition parameters (could be made configurable later)
+        const float alpha_min = 0.0f;
+        const float alpha_max = 1.0f;
+        const float alpha_opacity = 1.0f;
+        const float alpha_cutoff = 0.95f;
+        
         for (int z = -half_range; z <= half_range; z++) {
             cv::Mat_<cv::Vec3f> slice_coords;
             cv::Mat_<uint8_t> slice_img;
@@ -551,7 +561,8 @@ cv::Mat CVolumeViewer::render_area(const cv::Rect &roi)
             cv::Vec3f diff = {roi_c[0],roi_c[1],0};
             _surf->move(_ptr, diff/_scale);
             _vis_center = roi_c;
-            _surf->gen(&slice_coords, nullptr, roi.size(), _ptr, _scale, {-roi.width/2, -roi.height/2, _z_off + z});
+            float z_step = z * _ds_scale;  // Scale the step to maintain consistent physical distance
+            _surf->gen(&slice_coords, nullptr, roi.size(), _ptr, _scale, {-roi.width/2, -roi.height/2, _z_off + z_step});
             
             readInterpolated3D(slice_img, volume->zarrDataset(_ds_sd_idx), slice_coords*_ds_scale, cache);
             
@@ -559,20 +570,70 @@ cv::Mat CVolumeViewer::render_area(const cv::Rect &roi)
             cv::Mat_<float> slice_float;
             slice_img.convertTo(slice_float, CV_32F);
             
-            if (accumulator.empty()) {
-                accumulator = slice_float;
-                if (_composite_method == "min") {
-                    accumulator.setTo(255.0); // Initialize to max value for min operation
-                    accumulator = cv::min(accumulator, slice_float);
+            if (_composite_method == "alpha") {
+                // Alpha composition algorithm
+                if (alpha_accumulator.empty()) {
+                    alpha_accumulator = cv::Mat_<float>::zeros(slice_float.size());
+                    value_accumulator = cv::Mat_<float>::zeros(slice_float.size());
+                }
+                
+                // Process each pixel
+                for (int y = 0; y < slice_float.rows; y++) {
+                    for (int x = 0; x < slice_float.cols; x++) {
+                        float pixel_value = slice_float(y, x);
+                        
+                        // Normalize pixel value
+                        float normalized_value = (pixel_value / 255.0f - alpha_min) / (alpha_max - alpha_min);
+                        normalized_value = std::max(0.0f, std::min(1.0f, normalized_value)); // Clamp to [0,1]
+                        
+                        // Skip empty areas (speed through)
+                        if (normalized_value == 0.0f) {
+                            continue;
+                        }
+                        
+                        float current_alpha = alpha_accumulator(y, x);
+                        
+                        // Check alpha cutoff for early termination
+                        if (current_alpha >= alpha_cutoff) {
+                            continue;
+                        }
+                        
+                        // Calculate weight
+                        float weight = (1.0f - current_alpha) * std::min(normalized_value * alpha_opacity, 1.0f);
+                        
+                        // Accumulate
+                        value_accumulator(y, x) += weight * normalized_value;
+                        alpha_accumulator(y, x) += weight;
+                    }
                 }
             } else {
-                if (_composite_method == "max") {
-                    accumulator = cv::max(accumulator, slice_float);
-                } else if (_composite_method == "mean") {
-                    accumulator += slice_float;
-                    count++;
-                } else if (_composite_method == "min") {
-                    accumulator = cv::min(accumulator, slice_float);
+                // Original composite methods
+                if (accumulator.empty()) {
+                    accumulator = slice_float;
+                    if (_composite_method == "min") {
+                        accumulator.setTo(255.0); // Initialize to max value for min operation
+                        accumulator = cv::min(accumulator, slice_float);
+                    }
+                } else {
+                    if (_composite_method == "max") {
+                        accumulator = cv::max(accumulator, slice_float);
+                    } else if (_composite_method == "mean") {
+                        accumulator += slice_float;
+                        count++;
+                    } else if (_composite_method == "min") {
+                        accumulator = cv::min(accumulator, slice_float);
+                    }
+                }
+            }
+        }
+        
+        // Finalize alpha composition result
+        if (_composite_method == "alpha") {
+            accumulator = cv::Mat_<float>::zeros(value_accumulator.size());
+            for (int y = 0; y < value_accumulator.rows; y++) {
+                for (int x = 0; x < value_accumulator.cols; x++) {
+                    float final_value = value_accumulator(y, x) * 255.0f;
+                    accumulator(y, x) = std::max(0.0f, std::min(255.0f, final_value)); // Clamp to [0,255]
                 }
             }
         }
@@ -1196,7 +1257,7 @@ void CVolumeViewer::setCompositeLayers(int layers)
 
 void CVolumeViewer::setCompositeMethod(const std::string& method)
 {
-    if (method != _composite_method && (method == "max" || method == "mean" || method == "min")) {
+    if (method != _composite_method && (method == "max" || method == "mean" || method == "min" || method == "alpha")) {
         _composite_method = method;
         if (_composite_enabled) {
             renderVisible(true);
