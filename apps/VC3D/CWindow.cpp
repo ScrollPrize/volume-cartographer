@@ -364,6 +364,13 @@ void CWindow::CreateWidgets(void)
     
     // Make Drawing dock the active tab by default
     ui.dockWidgetDrawing->raise();
+    
+    // Tab the composite widget with the Volume Package widget on the left dock
+    tabifyDockWidget(ui.dockWidgetVolumes, ui.dockWidgetComposite);
+    
+    // Make Volume Package dock the active tab by default
+    ui.dockWidgetVolumes->show();
+    ui.dockWidgetVolumes->raise();
 
     connect(treeWidgetSurfaces, &QTreeWidget::itemSelectionChanged, this, &CWindow::onSurfaceSelected);
     connect(btnReloadSurfaces, &QPushButton::clicked, this, &CWindow::onRefreshSurfaces);
@@ -475,17 +482,7 @@ void CWindow::CreateWidgets(void)
         }
     });
     
-    connect(ui.spinCompositeLayers, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int value) {
-        // Find the segmentation viewer and update its composite layers
-        for (auto& viewer : _viewers) {
-            if (viewer->surfName() == "segmentation") {
-                viewer->setCompositeLayers(value);
-                break;
-            }
-        }
-    });
-    
-    connect(ui.cmbCompositeMethod, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int index) {
+    connect(ui.cmbCompositeMode, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int index) {
         // Find the segmentation viewer and update its composite method
         std::string method = "max";
         switch (index) {
@@ -498,6 +495,76 @@ void CWindow::CreateWidgets(void)
         for (auto& viewer : _viewers) {
             if (viewer->surfName() == "segmentation") {
                 viewer->setCompositeMethod(method);
+                break;
+            }
+        }
+    });
+    
+    // Connect Layers In Front controls
+    connect(ui.spinLayersInFront, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int value) {
+        for (auto& viewer : _viewers) {
+            if (viewer->surfName() == "segmentation") {
+                viewer->setCompositeLayersInFront(value);
+                break;
+            }
+        }
+    });
+    
+    // Connect Layers Behind controls
+    connect(ui.spinLayersBehind, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int value) {
+        for (auto& viewer : _viewers) {
+            if (viewer->surfName() == "segmentation") {
+                viewer->setCompositeLayersBehind(value);
+                break;
+            }
+        }
+    });
+    
+    // Connect Alpha Min controls
+    connect(ui.spinAlphaMin, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int value) {
+        for (auto& viewer : _viewers) {
+            if (viewer->surfName() == "segmentation") {
+                viewer->setCompositeAlphaMin(value);
+                break;
+            }
+        }
+    });
+    
+    // Connect Alpha Max controls
+    connect(ui.spinAlphaMax, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int value) {
+        for (auto& viewer : _viewers) {
+            if (viewer->surfName() == "segmentation") {
+                viewer->setCompositeAlphaMax(value);
+                break;
+            }
+        }
+    });
+    
+    // Connect Alpha Threshold controls
+    connect(ui.spinAlphaThreshold, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int value) {
+        for (auto& viewer : _viewers) {
+            if (viewer->surfName() == "segmentation") {
+                viewer->setCompositeAlphaThreshold(value);
+                break;
+            }
+        }
+    });
+    
+    // Connect Material controls
+    connect(ui.spinMaterial, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int value) {
+        for (auto& viewer : _viewers) {
+            if (viewer->surfName() == "segmentation") {
+                viewer->setCompositeMaterial(value);
+                break;
+            }
+        }
+    });
+    
+    // Connect Reverse Direction control
+    connect(ui.chkReverseDirection, &QCheckBox::toggled, this, [this](bool checked) {
+        for (auto& viewer : _viewers) {
+            if (viewer->surfName() == "segmentation") {
+                viewer->setCompositeReverseDirection(checked);
                 break;
             }
         }

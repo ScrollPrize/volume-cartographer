@@ -213,26 +213,39 @@ void CVolumeViewer::onZoom(int steps, QPointF scene_loc, Qt::KeyboardModifiers m
         // 1) compute our zoom factor
         float zoom = pow(ZOOM_FACTOR, steps);
 
-        // 2) remember the current center in scene-coords
-        QPointF sceneCenter = visible_center(fGraphicsView);
+        // 2) Store the mouse position in view coordinates before zooming
+        QPointF mouseViewPos = fGraphicsView->mapFromScene(scene_loc);
+        
+        // 3) Store the mouse position in scene coordinates before zooming
+        QPointF mouseScenePos = scene_loc;
 
-        // 3) actually apply it to the view’s transform
-        fGraphicsView->setTransformationAnchor(QGraphicsView::AnchorUnderMouse);
+        // 4) Apply the zoom transformation
+        fGraphicsView->setTransformationAnchor(QGraphicsView::NoAnchor);
         fGraphicsView->scale(zoom, zoom);
+        
+        // 5) Calculate where the mouse scene position is now in view coordinates after zoom
+        QPointF newMouseViewPos = fGraphicsView->mapFromScene(mouseScenePos);
+        
+        // 6) Calculate the difference and adjust the view to keep mouse position fixed
+        QPointF delta = mouseViewPos - newMouseViewPos;
+        QScrollBar *hBar = fGraphicsView->horizontalScrollBar();
+        QScrollBar *vBar = fGraphicsView->verticalScrollBar();
+        hBar->setValue(hBar->value() - delta.x());
+        vBar->setValue(vBar->value() - delta.y());
+        
         // force a repaint so drawForeground() runs immediately
         fGraphicsView->viewport()->update();
 
-        // 4) update your internal “resolution” scale and re-render at new detail
+        // 7) update your internal "resolution" scale and re-render at new detail
         _scale *= zoom;
         round_scale(_scale);
         recalcScales();
 
         curr_img_area = {0,0,0,0};
-        // 5) re-center on the same scene point
+        // 8) Update scene rect
         //FIXME get correct size for slice!
         int max_size = 100000; //std::max(volume->sliceWidth(), std::max(volume->numSlices(), volume->sliceHeight()))*_ds_scale + 512;
         fGraphicsView->setSceneRect(-max_size/2, -max_size/2, max_size, max_size);
-        fGraphicsView->centerOn(sceneCenter);
         renderVisible();
     }
 
@@ -535,24 +548,26 @@ cv::Mat CVolumeViewer::render_area(const cv::Rect &roi)
     cv::Mat_<uint8_t> img;
 
     // Check if we should use composite rendering
-    if (_surf_name == "segmentation" && _composite_enabled && _composite_layers > 1) {
+    if (_surf_name == "segmentation" && _composite_enabled && (_composite_layers_front > 0 || _composite_layers_behind > 0)) {
         // Composite rendering for segmentation view
         cv::Mat_<float> accumulator;
         int count = 0;
-        
-        int half_range = (_composite_layers - 1) / 2;
         
         // Alpha composition state for each pixel
         cv::Mat_<float> alpha_accumulator;
         cv::Mat_<float> value_accumulator;
         
-        // Alpha composition parameters (could be made configurable later)
-        const float alpha_min = 0.0f;
-        const float alpha_max = 1.0f;
-        const float alpha_opacity = 1.0f;
-        const float alpha_cutoff = 0.95f;
+        // Alpha composition parameters using the new settings
+        const float alpha_min = _composite_alpha_min / 255.0f;
+        const float alpha_max = _composite_alpha_max / 255.0f;
+        const float alpha_opacity = _composite_material / 255.0f;
+        const float alpha_cutoff = _composite_alpha_threshold / 10000.0f;
         
-        for (int z = -half_range; z <= half_range; z++) {
+        // Determine the z range based on front and behind layers
+        int z_start = _composite_reverse_direction ? -_composite_layers_behind : -_composite_layers_front;
+        int z_end = _composite_reverse_direction ? _composite_layers_front : _composite_layers_behind;
+        
+        for (int z = z_start; z <= z_end; z++) {
             cv::Mat_<cv::Vec3f> slice_coords;
             cv::Mat_<uint8_t> slice_img;
             
@@ -1251,6 +1266,76 @@ void CVolumeViewer::setCompositeLayers(int layers)
             method[0] = method[0].toUpper();
             status += QString(" | Composite: %1(%2)").arg(method).arg(_composite_layers);
             _lbl->setText(status);
+        }
+    }
+}
+
+void CVolumeViewer::setCompositeLayersInFront(int layers)
+{
+    if (layers >= 0 && layers <= 21 && layers != _composite_layers_front) {
+        _composite_layers_front = layers;
+        if (_composite_enabled) {
+            renderVisible(true);
+        }
+    }
+}
+
+void CVolumeViewer::setCompositeLayersBehind(int layers)
+{
+    if (layers >= 0 && layers <= 21 && layers != _composite_layers_behind) {
+        _composite_layers_behind = layers;
+        if (_composite_enabled) {
+            renderVisible(true);
+        }
+    }
+}
+
+void CVolumeViewer::setCompositeAlphaMin(int value)
+{
+    if (value >= 0 && value <= 255 && value != _composite_alpha_min) {
+        _composite_alpha_min = value;
+        if (_composite_enabled && _composite_method == "alpha") {
+            renderVisible(true);
+        }
+    }
+}
+
+void CVolumeViewer::setCompositeAlphaMax(int value)
+{
+    if (value >= 0 && value <= 255 && value != _composite_alpha_max) {
+        _composite_alpha_max = value;
+        if (_composite_enabled && _composite_method == "alpha") {
+            renderVisible(true);
+        }
+    }
+}
+
+void CVolumeViewer::setCompositeAlphaThreshold(int value)
+{
+    if (value >= 0 && value <= 10000 && value != _composite_alpha_threshold) {
+        _composite_alpha_threshold = value;
+        if (_composite_enabled && _composite_method == "alpha") {
+            renderVisible(true);
+        }
+    }
+}
+
+void CVolumeViewer::setCompositeMaterial(int value)
+{
+    if (value >= 0 && value <= 255 && value != _composite_material) {
+        _composite_material = value;
+        if (_composite_enabled && _composite_method == "alpha") {
+            renderVisible(true);
+        }
+    }
+}
+
+void CVolumeViewer::setCompositeReverseDirection(bool reverse)
+{
+    if (reverse != _composite_reverse_direction) {
+        _composite_reverse_direction = reverse;
+        if (_composite_enabled) {
+            renderVisible(true);
         }
     }
 }
