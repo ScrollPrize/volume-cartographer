@@ -413,10 +413,23 @@ void CWindow::CreateWidgets(void)
     // Set up the status bar
     statusBar = ui.statusBar;
 
-    // Location input elements
+    // Location input elements (now QLineEdit for manual entry)
     lblLoc[0] = ui.sliceX;
     lblLoc[1] = ui.sliceY;
     lblLoc[2] = ui.sliceZ;
+    
+    // Set up validators for location inputs
+    for (int i = 0; i < 3; i++) {
+        lblLoc[i]->setValidator(new QIntValidator(0, 999999, this));
+        connect(lblLoc[i], &QLineEdit::editingFinished, this, &CWindow::onManualLocationChanged);
+    }
+    
+    // Zoom buttons
+    btnZoomIn = ui.btnZoomIn;
+    btnZoomOut = ui.btnZoomOut;
+    
+    connect(btnZoomIn, &QPushButton::clicked, this, &CWindow::onZoomIn);
+    connect(btnZoomOut, &QPushButton::clicked, this, &CWindow::onZoomOut);
     
     spNorm[0] = ui.dspNX;
     spNorm[1] = ui.dspNY;
@@ -479,6 +492,7 @@ void CWindow::CreateWidgets(void)
             case 0: method = "max"; break;
             case 1: method = "mean"; break;
             case 2: method = "min"; break;
+            case 3: method = "alpha"; break;
         }
         
         for (auto& viewer : _viewers) {
@@ -2236,4 +2250,94 @@ void CWindow::onVoxelizePaths()
                 .arg(volumeInfo.depth));
         }
     });
+}
+
+void CWindow::onManualLocationChanged()
+{
+    // Check if we have a valid volume loaded
+    if (!currentVolume) {
+        return;
+    }
+    
+    // Get the current text from the line edits
+    bool ok[3];
+    int x = lblLoc[0]->text().toInt(&ok[0]);
+    int y = lblLoc[1]->text().toInt(&ok[1]);
+    int z = lblLoc[2]->text().toInt(&ok[2]);
+    
+    // Validate the input
+    if (!ok[0] || !ok[1] || !ok[2]) {
+        // Invalid input - restore the previous values
+        POI* poi = _surf_col->poi("focus");
+        if (poi) {
+            lblLoc[0]->setText(QString::number(static_cast<int>(poi->p[0])));
+            lblLoc[1]->setText(QString::number(static_cast<int>(poi->p[1])));
+            lblLoc[2]->setText(QString::number(static_cast<int>(poi->p[2])));
+        }
+        return;
+    }
+    
+    // Clamp values to volume bounds
+    int w = currentVolume->sliceWidth();
+    int h = currentVolume->sliceHeight();
+    int d = currentVolume->numSlices();
+    
+    x = std::max(0, std::min(x, w - 1));
+    y = std::max(0, std::min(y, h - 1));
+    z = std::max(0, std::min(z, d - 1));
+    
+    // Update the line edits with clamped values
+    lblLoc[0]->setText(QString::number(x));
+    lblLoc[1]->setText(QString::number(y));
+    lblLoc[2]->setText(QString::number(z));
+    
+    // Update the focus POI
+    POI* poi = _surf_col->poi("focus");
+    if (!poi) {
+        poi = new POI;
+    }
+    
+    poi->p = cv::Vec3f(x, y, z);
+    poi->n = cv::Vec3f(0, 0, 1); // Default normal for XY plane
+    
+    _surf_col->setPOI("focus", poi);
+    
+    // Force an update of the filter
+    onSegFilterChanged(0);
+}
+
+void CWindow::onZoomIn()
+{
+    // Get the active sub-window
+    QMdiSubWindow* activeWindow = mdiArea->activeSubWindow();
+    if (!activeWindow) return;
+    
+    // Get the viewer from the active window
+    CVolumeViewer* viewer = qobject_cast<CVolumeViewer*>(activeWindow->widget());
+    if (!viewer) return;
+    
+    // Get the center of the current view as the zoom point
+    QPointF center = viewer->fGraphicsView->mapToScene(
+        viewer->fGraphicsView->viewport()->rect().center());
+    
+    // Trigger zoom in (positive steps)
+    viewer->onZoom(3, center, Qt::NoModifier);
+}
+
+void CWindow::onZoomOut()
+{
+    // Get the active sub-window
+    QMdiSubWindow* activeWindow = mdiArea->activeSubWindow();
+    if (!activeWindow) return;
+    
+    // Get the viewer from the active window
+    CVolumeViewer* viewer = qobject_cast<CVolumeViewer*>(activeWindow->widget());
+    if (!viewer) return;
+    
+    // Get the center of the current view as the zoom point
+    QPointF center = viewer->fGraphicsView->mapToScene(
+        viewer->fGraphicsView->viewport()->rect().center());
+    
+    // Trigger zoom out (negative steps)
+    viewer->onZoom(-3, center, Qt::NoModifier);
 }

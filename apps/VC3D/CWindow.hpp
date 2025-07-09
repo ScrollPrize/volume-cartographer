@@ -150,6 +150,9 @@ private slots:
     void onEditMaskPressed();
     void onRefreshSurfaces();
     void onGenerateReviewReport();
+    void onManualLocationChanged();
+    void onZoomIn();
+    void onZoomOut();
 
 private:
     bool appInitComplete{false};
@@ -216,8 +219,10 @@ private:
     QPushButton *btnReloadSurfaces;
     
     //TODO abstract these into separate QWidget class?
-    QLabel* lblLoc[3];
+    QLineEdit* lblLoc[3];
     QDoubleSpinBox* spNorm[3];
+    QPushButton* btnZoomIn;
+    QPushButton* btnZoomOut;
 
 
     Ui_VCMainWindow ui;
