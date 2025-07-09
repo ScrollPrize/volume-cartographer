@@ -2308,26 +2308,36 @@ void CWindow::onManualLocationChanged()
 
 void CWindow::onZoomIn()
 {
-    // Zoom in on all viewers
-    for (auto& viewer : _viewers) {
-        // Get the center of the current view as the zoom point
-        QPointF center = viewer->fGraphicsView->mapToScene(
-            viewer->fGraphicsView->viewport()->rect().center());
-        
-        // Trigger zoom in (positive steps)
-        viewer->onZoom(3, center, Qt::NoModifier);
-    }
+    // Get the active sub-window
+    QMdiSubWindow* activeWindow = mdiArea->activeSubWindow();
+    if (!activeWindow) return;
+    
+    // Get the viewer from the active window
+    CVolumeViewer* viewer = qobject_cast<CVolumeViewer*>(activeWindow->widget());
+    if (!viewer) return;
+    
+    // Get the center of the current view as the zoom point
+    QPointF center = viewer->fGraphicsView->mapToScene(
+        viewer->fGraphicsView->viewport()->rect().center());
+    
+    // Trigger zoom in (positive steps)
+    viewer->onZoom(3, center, Qt::NoModifier);
 }
 
 void CWindow::onZoomOut()
 {
-    // Zoom out on all viewers
-    for (auto& viewer : _viewers) {
-        // Get the center of the current view as the zoom point
-        QPointF center = viewer->fGraphicsView->mapToScene(
-            viewer->fGraphicsView->viewport()->rect().center());
-        
-        // Trigger zoom out (negative steps)
-        viewer->onZoom(-3, center, Qt::NoModifier);
-    }
+    // Get the active sub-window
+    QMdiSubWindow* activeWindow = mdiArea->activeSubWindow();
+    if (!activeWindow) return;
+    
+    // Get the viewer from the active window
+    CVolumeViewer* viewer = qobject_cast<CVolumeViewer*>(activeWindow->widget());
+    if (!viewer) return;
+    
+    // Get the center of the current view as the zoom point
+    QPointF center = viewer->fGraphicsView->mapToScene(
+        viewer->fGraphicsView->viewport()->rect().center());
+    
+    // Trigger zoom out (negative steps)
+    viewer->onZoom(-3, center, Qt::NoModifier);
 }
