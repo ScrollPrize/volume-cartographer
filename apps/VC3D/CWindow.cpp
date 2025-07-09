@@ -494,18 +494,7 @@ void CWindow::CreateWidgets(void)
     });
     
     // Connect Layers In Front controls
-    connect(ui.sliderLayersInFront, &QSlider::valueChanged, this, [this](int value) {
-        ui.spinLayersInFront->setValue(value);
-        for (auto& viewer : _viewers) {
-            if (viewer->surfName() == "segmentation") {
-                viewer->setCompositeLayersInFront(value);
-                break;
-            }
-        }
-    });
-    
     connect(ui.spinLayersInFront, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int value) {
-        ui.sliderLayersInFront->setValue(value);
         for (auto& viewer : _viewers) {
             if (viewer->surfName() == "segmentation") {
                 viewer->setCompositeLayersInFront(value);
@@ -515,18 +504,7 @@ void CWindow::CreateWidgets(void)
     });
     
     // Connect Layers Behind controls
-    connect(ui.sliderLayersBehind, &QSlider::valueChanged, this, [this](int value) {
-        ui.spinLayersBehind->setValue(value);
-        for (auto& viewer : _viewers) {
-            if (viewer->surfName() == "segmentation") {
-                viewer->setCompositeLayersBehind(value);
-                break;
-            }
-        }
-    });
-    
     connect(ui.spinLayersBehind, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int value) {
-        ui.sliderLayersBehind->setValue(value);
         for (auto& viewer : _viewers) {
             if (viewer->surfName() == "segmentation") {
                 viewer->setCompositeLayersBehind(value);
@@ -536,18 +514,7 @@ void CWindow::CreateWidgets(void)
     });
     
     // Connect Alpha Min controls
-    connect(ui.sliderAlphaMin, &QSlider::valueChanged, this, [this](int value) {
-        ui.spinAlphaMin->setValue(value);
-        for (auto& viewer : _viewers) {
-            if (viewer->surfName() == "segmentation") {
-                viewer->setCompositeAlphaMin(value);
-                break;
-            }
-        }
-    });
-    
     connect(ui.spinAlphaMin, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int value) {
-        ui.sliderAlphaMin->setValue(value);
         for (auto& viewer : _viewers) {
             if (viewer->surfName() == "segmentation") {
                 viewer->setCompositeAlphaMin(value);
@@ -557,18 +524,7 @@ void CWindow::CreateWidgets(void)
     });
     
     // Connect Alpha Max controls
-    connect(ui.sliderAlphaMax, &QSlider::valueChanged, this, [this](int value) {
-        ui.spinAlphaMax->setValue(value);
-        for (auto& viewer : _viewers) {
-            if (viewer->surfName() == "segmentation") {
-                viewer->setCompositeAlphaMax(value);
-                break;
-            }
-        }
-    });
-    
     connect(ui.spinAlphaMax, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int value) {
-        ui.sliderAlphaMax->setValue(value);
         for (auto& viewer : _viewers) {
             if (viewer->surfName() == "segmentation") {
                 viewer->setCompositeAlphaMax(value);
@@ -578,18 +534,7 @@ void CWindow::CreateWidgets(void)
     });
     
     // Connect Alpha Threshold controls
-    connect(ui.sliderAlphaThreshold, &QSlider::valueChanged, this, [this](int value) {
-        ui.spinAlphaThreshold->setValue(value);
-        for (auto& viewer : _viewers) {
-            if (viewer->surfName() == "segmentation") {
-                viewer->setCompositeAlphaThreshold(value);
-                break;
-            }
-        }
-    });
-    
     connect(ui.spinAlphaThreshold, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int value) {
-        ui.sliderAlphaThreshold->setValue(value);
         for (auto& viewer : _viewers) {
             if (viewer->surfName() == "segmentation") {
                 viewer->setCompositeAlphaThreshold(value);
@@ -599,18 +544,7 @@ void CWindow::CreateWidgets(void)
     });
     
     // Connect Material controls
-    connect(ui.sliderMaterial, &QSlider::valueChanged, this, [this](int value) {
-        ui.spinMaterial->setValue(value);
-        for (auto& viewer : _viewers) {
-            if (viewer->surfName() == "segmentation") {
-                viewer->setCompositeMaterial(value);
-                break;
-            }
-        }
-    });
-    
     connect(ui.spinMaterial, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int value) {
-        ui.sliderMaterial->setValue(value);
         for (auto& viewer : _viewers) {
             if (viewer->surfName() == "segmentation") {
                 viewer->setCompositeMaterial(value);
