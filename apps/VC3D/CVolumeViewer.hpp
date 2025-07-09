@@ -53,7 +53,14 @@ public:
     // Composite view methods
     void setCompositeEnabled(bool enabled);
     void setCompositeLayers(int layers);
+    void setCompositeLayersInFront(int layers);
+    void setCompositeLayersBehind(int layers);
     void setCompositeMethod(const std::string& method);
+    void setCompositeAlphaMin(int value);
+    void setCompositeAlphaMax(int value);
+    void setCompositeAlphaThreshold(int value);
+    void setCompositeMaterial(int value);
+    void setCompositeReverseDirection(bool reverse);
     bool isCompositeEnabled() const { return _composite_enabled; }
     
     // Get current scale for coordinate transformation
@@ -134,7 +141,14 @@ protected:
     // Composite view settings
     bool _composite_enabled = false;
     int _composite_layers = 7;
+    int _composite_layers_front = 8;
+    int _composite_layers_behind = 0;
     std::string _composite_method = "max";
+    int _composite_alpha_min = 170;
+    int _composite_alpha_max = 220;
+    int _composite_alpha_threshold = 9950;
+    int _composite_material = 230;
+    bool _composite_reverse_direction = false;
     
     QGraphicsItem *_center_marker = nullptr;
     QGraphicsItem *_cursor = nullptr;

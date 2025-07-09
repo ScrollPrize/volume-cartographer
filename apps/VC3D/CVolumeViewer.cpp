@@ -535,24 +535,26 @@ cv::Mat CVolumeViewer::render_area(const cv::Rect &roi)
     cv::Mat_<uint8_t> img;
 
     // Check if we should use composite rendering
-    if (_surf_name == "segmentation" && _composite_enabled && _composite_layers > 1) {
+    if (_surf_name == "segmentation" && _composite_enabled && (_composite_layers_front > 0 || _composite_layers_behind > 0)) {
         // Composite rendering for segmentation view
         cv::Mat_<float> accumulator;
         int count = 0;
-        
-        int half_range = (_composite_layers - 1) / 2;
         
         // Alpha composition state for each pixel
         cv::Mat_<float> alpha_accumulator;
         cv::Mat_<float> value_accumulator;
         
-        // Alpha composition parameters (could be made configurable later)
-        const float alpha_min = 0.0f;
-        const float alpha_max = 1.0f;
-        const float alpha_opacity = 1.0f;
-        const float alpha_cutoff = 0.95f;
+        // Alpha composition parameters using the new settings
+        const float alpha_min = _composite_alpha_min / 255.0f;
+        const float alpha_max = _composite_alpha_max / 255.0f;
+        const float alpha_opacity = _composite_material / 255.0f;
+        const float alpha_cutoff = _composite_alpha_threshold / 10000.0f;
         
-        for (int z = -half_range; z <= half_range; z++) {
+        // Determine the z range based on front and behind layers
+        int z_start = _composite_reverse_direction ? -_composite_layers_behind : -_composite_layers_front;
+        int z_end = _composite_reverse_direction ? _composite_layers_front : _composite_layers_behind;
+        
+        for (int z = z_start; z <= z_end; z++) {
             cv::Mat_<cv::Vec3f> slice_coords;
             cv::Mat_<uint8_t> slice_img;
             
@@ -1251,6 +1253,76 @@ void CVolumeViewer::setCompositeLayers(int layers)
             method[0] = method[0].toUpper();
             status += QString(" | Composite: %1(%2)").arg(method).arg(_composite_layers);
             _lbl->setText(status);
+        }
+    }
+}
+
+void CVolumeViewer::setCompositeLayersInFront(int layers)
+{
+    if (layers >= 0 && layers <= 21 && layers != _composite_layers_front) {
+        _composite_layers_front = layers;
+        if (_composite_enabled) {
+            renderVisible(true);
+        }
+    }
+}
+
+void CVolumeViewer::setCompositeLayersBehind(int layers)
+{
+    if (layers >= 0 && layers <= 21 && layers != _composite_layers_behind) {
+        _composite_layers_behind = layers;
+        if (_composite_enabled) {
+            renderVisible(true);
+        }
+    }
+}
+
+void CVolumeViewer::setCompositeAlphaMin(int value)
+{
+    if (value >= 0 && value <= 255 && value != _composite_alpha_min) {
+        _composite_alpha_min = value;
+        if (_composite_enabled && _composite_method == "alpha") {
+            renderVisible(true);
+        }
+    }
+}
+
+void CVolumeViewer::setCompositeAlphaMax(int value)
+{
+    if (value >= 0 && value <= 255 && value != _composite_alpha_max) {
+        _composite_alpha_max = value;
+        if (_composite_enabled && _composite_method == "alpha") {
+            renderVisible(true);
+        }
+    }
+}
+
+void CVolumeViewer::setCompositeAlphaThreshold(int value)
+{
+    if (value >= 0 && value <= 10000 && value != _composite_alpha_threshold) {
+        _composite_alpha_threshold = value;
+        if (_composite_enabled && _composite_method == "alpha") {
+            renderVisible(true);
+        }
+    }
+}
+
+void CVolumeViewer::setCompositeMaterial(int value)
+{
+    if (value >= 0 && value <= 255 && value != _composite_material) {
+        _composite_material = value;
+        if (_composite_enabled && _composite_method == "alpha") {
+            renderVisible(true);
+        }
+    }
+}
+
+void CVolumeViewer::setCompositeReverseDirection(bool reverse)
+{
+    if (reverse != _composite_reverse_direction) {
+        _composite_reverse_direction = reverse;
+        if (_composite_enabled) {
+            renderVisible(true);
         }
     }
 }

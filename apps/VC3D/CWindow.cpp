@@ -475,17 +475,7 @@ void CWindow::CreateWidgets(void)
         }
     });
     
-    connect(ui.spinCompositeLayers, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int value) {
-        // Find the segmentation viewer and update its composite layers
-        for (auto& viewer : _viewers) {
-            if (viewer->surfName() == "segmentation") {
-                viewer->setCompositeLayers(value);
-                break;
-            }
-        }
-    });
-    
-    connect(ui.cmbCompositeMethod, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int index) {
+    connect(ui.cmbCompositeMode, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int index) {
         // Find the segmentation viewer and update its composite method
         std::string method = "max";
         switch (index) {
@@ -498,6 +488,142 @@ void CWindow::CreateWidgets(void)
         for (auto& viewer : _viewers) {
             if (viewer->surfName() == "segmentation") {
                 viewer->setCompositeMethod(method);
+                break;
+            }
+        }
+    });
+    
+    // Connect Layers In Front controls
+    connect(ui.sliderLayersInFront, &QSlider::valueChanged, this, [this](int value) {
+        ui.spinLayersInFront->setValue(value);
+        for (auto& viewer : _viewers) {
+            if (viewer->surfName() == "segmentation") {
+                viewer->setCompositeLayersInFront(value);
+                break;
+            }
+        }
+    });
+    
+    connect(ui.spinLayersInFront, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int value) {
+        ui.sliderLayersInFront->setValue(value);
+        for (auto& viewer : _viewers) {
+            if (viewer->surfName() == "segmentation") {
+                viewer->setCompositeLayersInFront(value);
+                break;
+            }
+        }
+    });
+    
+    // Connect Layers Behind controls
+    connect(ui.sliderLayersBehind, &QSlider::valueChanged, this, [this](int value) {
+        ui.spinLayersBehind->setValue(value);
+        for (auto& viewer : _viewers) {
+            if (viewer->surfName() == "segmentation") {
+                viewer->setCompositeLayersBehind(value);
+                break;
+            }
+        }
+    });
+    
+    connect(ui.spinLayersBehind, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int value) {
+        ui.sliderLayersBehind->setValue(value);
+        for (auto& viewer : _viewers) {
+            if (viewer->surfName() == "segmentation") {
+                viewer->setCompositeLayersBehind(value);
+                break;
+            }
+        }
+    });
+    
+    // Connect Alpha Min controls
+    connect(ui.sliderAlphaMin, &QSlider::valueChanged, this, [this](int value) {
+        ui.spinAlphaMin->setValue(value);
+        for (auto& viewer : _viewers) {
+            if (viewer->surfName() == "segmentation") {
+                viewer->setCompositeAlphaMin(value);
+                break;
+            }
+        }
+    });
+    
+    connect(ui.spinAlphaMin, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int value) {
+        ui.sliderAlphaMin->setValue(value);
+        for (auto& viewer : _viewers) {
+            if (viewer->surfName() == "segmentation") {
+                viewer->setCompositeAlphaMin(value);
+                break;
+            }
+        }
+    });
+    
+    // Connect Alpha Max controls
+    connect(ui.sliderAlphaMax, &QSlider::valueChanged, this, [this](int value) {
+        ui.spinAlphaMax->setValue(value);
+        for (auto& viewer : _viewers) {
+            if (viewer->surfName() == "segmentation") {
+                viewer->setCompositeAlphaMax(value);
+                break;
+            }
+        }
+    });
+    
+    connect(ui.spinAlphaMax, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int value) {
+        ui.sliderAlphaMax->setValue(value);
+        for (auto& viewer : _viewers) {
+            if (viewer->surfName() == "segmentation") {
+                viewer->setCompositeAlphaMax(value);
+                break;
+            }
+        }
+    });
+    
+    // Connect Alpha Threshold controls
+    connect(ui.sliderAlphaThreshold, &QSlider::valueChanged, this, [this](int value) {
+        ui.spinAlphaThreshold->setValue(value);
+        for (auto& viewer : _viewers) {
+            if (viewer->surfName() == "segmentation") {
+                viewer->setCompositeAlphaThreshold(value);
+                break;
+            }
+        }
+    });
+    
+    connect(ui.spinAlphaThreshold, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int value) {
+        ui.sliderAlphaThreshold->setValue(value);
+        for (auto& viewer : _viewers) {
+            if (viewer->surfName() == "segmentation") {
+                viewer->setCompositeAlphaThreshold(value);
+                break;
+            }
+        }
+    });
+    
+    // Connect Material controls
+    connect(ui.sliderMaterial, &QSlider::valueChanged, this, [this](int value) {
+        ui.spinMaterial->setValue(value);
+        for (auto& viewer : _viewers) {
+            if (viewer->surfName() == "segmentation") {
+                viewer->setCompositeMaterial(value);
+                break;
+            }
+        }
+    });
+    
+    connect(ui.spinMaterial, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int value) {
+        ui.sliderMaterial->setValue(value);
+        for (auto& viewer : _viewers) {
+            if (viewer->surfName() == "segmentation") {
+                viewer->setCompositeMaterial(value);
+                break;
+            }
+        }
+    });
+    
+    // Connect Reverse Direction control
+    connect(ui.chkReverseDirection, &QCheckBox::toggled, this, [this](bool checked) {
+        for (auto& viewer : _viewers) {
+            if (viewer->surfName() == "segmentation") {
+                viewer->setCompositeReverseDirection(checked);
                 break;
             }
         }
