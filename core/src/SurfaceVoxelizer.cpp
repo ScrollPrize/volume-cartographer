@@ -13,7 +13,6 @@
 #include <iomanip>
 #include <sstream>
 #include <omp.h>
-#include <immintrin.h>
 #include <unordered_set>
 
 // Thread-local memory pools
@@ -21,10 +20,6 @@ thread_local std::vector<cv::Vec3f> quadPointsBuffer;
 thread_local std::vector<std::tuple<int, int, int>> voxelBuffer;
 thread_local std::vector<float> interpolationWeights;
 
-// SIMD helper functions
-inline __m256 fast_interpolate_avx2(const __m256& a, const __m256& b, const __m256& t) {
-    return _mm256_fmadd_ps(t, _mm256_sub_ps(b, a), a);
-}
 
 using namespace volcart;
 
