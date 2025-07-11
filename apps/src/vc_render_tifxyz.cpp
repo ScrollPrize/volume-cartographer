@@ -6,6 +6,7 @@
 #include <nlohmann/json.hpp>
 
 #include <opencv2/highgui.hpp>
+#include <opencv2/imgproc.hpp>
 
 namespace fs = std::filesystem;
 
@@ -101,6 +102,62 @@ void applyNormalOrientation(cv::Mat_<cv::Vec3f>& normals, bool shouldFlip)
     }
 }
 
+/**
+ * @brief Apply rotation to an image
+ * 
+ * @param img Image to rotate (modified in-place)
+ * @param angleDegrees Rotation angle in degrees (counterclockwise)
+ */
+void rotateImage(cv::Mat& img, double angleDegrees)
+{
+    if (std::abs(angleDegrees) < 1e-6) {
+        return; // No rotation needed
+    }
+    
+    // Get the center of the image
+    cv::Point2f center(img.cols / 2.0f, img.rows / 2.0f);
+    
+    // Get the rotation matrix
+    cv::Mat rotMatrix = cv::getRotationMatrix2D(center, angleDegrees, 1.0);
+    
+    // Calculate the new image bounds
+    cv::Rect2f bbox = cv::RotatedRect(cv::Point2f(), img.size(), angleDegrees).boundingRect2f();
+    
+    // Adjust transformation matrix to account for translation
+    rotMatrix.at<double>(0, 2) += bbox.width / 2.0 - img.cols / 2.0;
+    rotMatrix.at<double>(1, 2) += bbox.height / 2.0 - img.rows / 2.0;
+    
+    // Apply the rotation
+    cv::Mat rotated;
+    cv::warpAffine(img, rotated, rotMatrix, bbox.size(), cv::INTER_LINEAR, cv::BORDER_CONSTANT, cv::Scalar(0));
+    
+    img = rotated;
+}
+
+/**
+ * @brief Apply flip transformation to an image
+ * 
+ * @param img Image to flip (modified in-place)
+ * @param flipType Flip type: 0=Vertical, 1=Horizontal, 2=Both
+ */
+void flipImage(cv::Mat& img, int flipType)
+{
+    if (flipType < 0 || flipType > 2) {
+        return; // Invalid flip type
+    }
+    
+    if (flipType == 0) {
+        // Vertical flip (flip around horizontal axis)
+        cv::flip(img, img, 0);
+    } else if (flipType == 1) {
+        // Horizontal flip (flip around vertical axis)
+        cv::flip(img, img, 1);
+    } else if (flipType == 2) {
+        // Both (flip around both axes)
+        cv::flip(img, img, -1);
+    }
+}
+
 std::ostream& operator<< (std::ostream& out, const xt::svector<size_t> &v) {
     if ( !v.empty() ) {
         out << '[';
@@ -111,15 +168,24 @@ std::ostream& operator<< (std::ostream& out, const xt::svector<size_t> &v) {
     return out;
 }
 
+void printUsage(const char* programName)
+{
+    std::cout << "Usage: " << programName << " <ome-zarr-volume> <output> <seg-path> <tgt-scale> <ome-zarr-group-idx> [options]" << std::endl;
+    std::cout << "Options:" << std::endl;
+    std::cout << "  <num-slices>                    Number of slices to render (default: 1)" << std::endl;
+    std::cout << "  <crop-x> <crop-y> <crop-w> <crop-h>  Crop parameters" << std::endl;
+    std::cout << "  --rotate <degrees>              Rotate output image by angle in degrees (counterclockwise)" << std::endl;
+    std::cout << "  --flip <axis>                   Flip output image. Axis: 0=Vertical, 1=Horizontal, 2=Both" << std::endl;
+}
+
 int main(int argc, char *argv[])
 {
-    if (argc != 6 && argc != 7 && argc != 11) {
-        std::cout << "usage: " << argv[0] << " <ome-arr-volume> <output> <seg-path> <tgt-scale> <ome-zarr-group-idx>" << std::endl;
-        std::cout << "or: " << argv[0] << " <ome-zarr-volume> <ptn> <seg-path> <tgt-scale> <ome-zarr-group-idx> <num-slices>" << std::endl;
-        std::cout << "or: " << argv[0] << " <ome-zarr-volume> <ptn> <seg-path> <tgt-scale> <ome-zarr-group-idx> <num-slices> <crop-x> <crop-y> <crop-w> <crop-h>" << std::endl;
-        return EXIT_SUCCESS;
+    if (argc < 6) {
+        printUsage(argv[0]);
+        return EXIT_FAILURE;
     }
-
+    
+    // Parse basic arguments
     fs::path vol_path = argv[1];
     const char *tgt_ptn = argv[2];
     fs::path seg_path = argv[3];
@@ -127,8 +193,45 @@ int main(int argc, char *argv[])
     int group_idx = atoi(argv[5]);
     
     int num_slices = 1;
-    if (argc == 7 || argc == 11)
-        num_slices = atoi(argv[6]);
+    int arg_idx = 6;
+    
+    // Check if we have num_slices
+    if (argc > arg_idx && std::string(argv[arg_idx]).find("--") != 0) {
+        num_slices = atoi(argv[arg_idx]);
+        arg_idx++;
+    }
+    
+    // Check for crop parameters
+    cv::Rect crop;
+    bool has_crop = false;
+    if (argc > arg_idx + 3 && 
+        std::string(argv[arg_idx]).find("--") != 0 &&
+        std::string(argv[arg_idx+1]).find("--") != 0 &&
+        std::string(argv[arg_idx+2]).find("--") != 0 &&
+        std::string(argv[arg_idx+3]).find("--") != 0) {
+        crop = {atoi(argv[arg_idx]), atoi(argv[arg_idx+1]), atoi(argv[arg_idx+2]), atoi(argv[arg_idx+3])};
+        has_crop = true;
+        arg_idx += 4;
+    }
+    
+    // Parse optional transformation parameters
+    double rotate_angle = 0.0;
+    int flip_axis = -1;
+    
+    while (arg_idx < argc) {
+        std::string arg(argv[arg_idx]);
+        if (arg == "--rotate" && arg_idx + 1 < argc) {
+            rotate_angle = atof(argv[arg_idx + 1]);
+            arg_idx += 2;
+        } else if (arg == "--flip" && arg_idx + 1 < argc) {
+            flip_axis = atoi(argv[arg_idx + 1]);
+            arg_idx += 2;
+        } else {
+            std::cerr << "Unknown option: " << arg << std::endl;
+            printUsage(argv[0]);
+            return EXIT_FAILURE;
+        }
+    }
 
     z5::filesystem::handle::Group group(vol_path, z5::FileMode::FileMode::r);
     z5::filesystem::handle::Dataset ds_handle(group, std::to_string(group_idx), json::parse(std::ifstream(vol_path/std::to_string(group_idx)/".zarray")).value<std::string>("dimension_separator","."));
@@ -137,6 +240,14 @@ int main(int argc, char *argv[])
     std::cout << "zarr dataset size for scale group " << group_idx << ds->shape() << std::endl;
     std::cout << "chunk shape shape " << ds->chunking().blockShape() << std::endl;
     std::cout << "saving output to " << tgt_ptn << std::endl;
+    
+    if (std::abs(rotate_angle) > 1e-6) {
+        std::cout << "Rotation: " << rotate_angle << " degrees" << std::endl;
+    }
+    if (flip_axis >= 0) {
+        std::cout << "Flip: " << (flip_axis == 0 ? "Vertical" : flip_axis == 1 ? "Horizontal" : "Both") << std::endl;
+    }
+    
     fs::path output_path(tgt_ptn);
     fs::create_directories(output_path.parent_path());
     
@@ -162,12 +273,10 @@ int main(int argc, char *argv[])
     full_size.height *= tgt_scale/surf->_scale[1];
     
     cv::Size tgt_size = full_size;
-    cv::Rect crop = {0,0,tgt_size.width, tgt_size.height};
-    
-    if (argc == 11) {
-        crop = {atoi(argv[7]),atoi(argv[8]),atoi(argv[9]),atoi(argv[10])};
-        tgt_size = crop.size();
-    }        
+    if (!has_crop) {
+        crop = {0, 0, tgt_size.width, tgt_size.height};
+    }
+    tgt_size = crop.size();
     
     std::cout << "rendering size " << tgt_size << " at scale " << tgt_scale << " crop " << crop << std::endl;
     
@@ -209,6 +318,15 @@ int main(int argc, char *argv[])
 
     if (num_slices == 1) {
         readInterpolated3D(img, ds.get(), points, &chunk_cache);
+        
+        // Apply transformations
+        if (std::abs(rotate_angle) > 1e-6) {
+            rotateImage(img, rotate_angle);
+        }
+        if (flip_axis >= 0) {
+            flipImage(img, flip_axis);
+        }
+        
         cv::imwrite(tgt_ptn, img);
     }
     else {
@@ -248,6 +366,15 @@ int main(int argc, char *argv[])
             else {
                 readInterpolated3D(img, ds.get(), points+off*ds_scale*normals, &chunk_cache);
             }
+            
+            // Apply transformations
+            if (std::abs(rotate_angle) > 1e-6) {
+                rotateImage(img, rotate_angle);
+            }
+            if (flip_axis >= 0) {
+                flipImage(img, flip_axis);
+            }
+            
             snprintf(buf, 1024, tgt_ptn, i);
             cv::imwrite(buf, img);
         }
