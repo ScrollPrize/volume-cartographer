@@ -12,29 +12,45 @@ namespace fs = std::filesystem;
 using json = nlohmann::json;
 
 /**
- * @brief Orient normals to point outward from a reference point
+ * @brief Calculate the centroid of valid 3D points in the mesh
  * 
  * @param points Matrix of 3D points (cv::Mat_<cv::Vec3f>)
- * @param normals Matrix of normal vectors to reorient (modified in-place)
- * @param referencePoint Optional external reference point (default: compute centroid)
- * @param usePointsForCentroid Whether to compute centroid from points or use referencePoint
- * @return bool True if normals were flipped, false otherwise
+ * @return cv::Vec3f The centroid of all valid points
  */
-bool orientNormals(
-    const cv::Mat_<cv::Vec3f>& points, 
-    cv::Mat_<cv::Vec3f>& normals,
-    const cv::Vec3f& referencePoint = cv::Vec3f(0,0,0),
-    bool usePointsForCentroid = true)
+cv::Vec3f calculateMeshCentroid(const cv::Mat_<cv::Vec3f>& points)
 {
-    cv::Vec3f refPt = referencePoint;
-    if (usePointsForCentroid) {
-        // Calculate centroid based on shape dimensions (middle of y,z)
-        // For a shape with dimensions (rows, cols), the center would be (rows/2, cols/2)
-        refPt = cv::Vec3f(static_cast<float>(points.cols) / 2.0f, 
-                          static_cast<float>(points.rows) / 2.0f, 
-                          0.0f);
+    cv::Vec3f centroid(0, 0, 0);
+    int count = 0;
+    
+    for (int y = 0; y < points.rows; y++) {
+        for (int x = 0; x < points.cols; x++) {
+            const cv::Vec3f& pt = points(y, x);
+            if (!std::isnan(pt[0]) && !std::isnan(pt[1]) && !std::isnan(pt[2])) {
+                centroid += pt;
+                count++;
+            }
+        }
     }
+    
+    if (count > 0) {
+        centroid /= static_cast<float>(count);
+    }
+    return centroid;
+}
 
+/**
+ * @brief Determine if normals should be flipped based on a reference point
+ * 
+ * @param points Matrix of 3D points (cv::Mat_<cv::Vec3f>)
+ * @param normals Matrix of normal vectors
+ * @param referencePoint The reference point to orient normals towards/away from
+ * @return bool True if normals should be flipped, false otherwise
+ */
+bool shouldFlipNormals(
+    const cv::Mat_<cv::Vec3f>& points, 
+    const cv::Mat_<cv::Vec3f>& normals,
+    const cv::Vec3f& referencePoint)
+{
     size_t pointingToward = 0;
     size_t pointingAway = 0;
     
@@ -48,16 +64,11 @@ bool orientNormals(
                 continue;
             }
             
-            cv::Vec3f direction = refPt - pt;
-            float distance = cv::norm(direction);
+            // Calculate direction from point to reference
+            cv::Vec3f toRef = referencePoint - pt;
             
-            if (distance < 1e-6) {
-                continue;
-            }
-            
-            direction /= distance;
-            
-            float dotProduct = direction.dot(n);
+            // Check if normal points toward or away from reference
+            float dotProduct = toRef.dot(n);
             if (dotProduct > 0) {
                 pointingToward++;
             } else {
@@ -66,21 +77,28 @@ bool orientNormals(
         }
     }
     
-    bool shouldFlip = pointingAway > pointingToward;
-    
+    // Flip if majority point away from reference
+    return pointingAway > pointingToward;
+}
+
+/**
+ * @brief Apply normal flipping decision to a set of normals
+ * 
+ * @param normals Matrix of normal vectors to potentially flip (modified in-place)
+ * @param shouldFlip Whether to flip the normals
+ */
+void applyNormalOrientation(cv::Mat_<cv::Vec3f>& normals, bool shouldFlip)
+{
     if (shouldFlip) {
         for (int y = 0; y < normals.rows; y++) {
             for (int x = 0; x < normals.cols; x++) {
                 cv::Vec3f& n = normals(y, x);
-                if (std::isnan(n[0]) || std::isnan(n[1]) || std::isnan(n[2])) {
-                    continue;
+                if (!std::isnan(n[0]) && !std::isnan(n[1]) && !std::isnan(n[2])) {
+                    n = -n;
                 }
-                n = -n;
             }
         }
     }
-    
-    return shouldFlip;
 }
 
 std::ostream& operator<< (std::ostream& out, const xt::svector<size_t> &v) {
@@ -157,14 +175,28 @@ int main(int argc, char *argv[])
     
     bool slice_gen = false;
     
+    // Global normal orientation decision (for consistency across chunks)
+    bool globalFlipDecision = false;
+    bool orientationDetermined = false;
+    cv::Vec3f meshCentroid;
+    
     if (tgt_size.width >= 10000 && num_slices > 1)
         slice_gen = true;
     else {
         surf->gen(&points, &normals, tgt_size, nullptr, tgt_scale, {-full_size.width/2+crop.x,-full_size.height/2+crop.y,0});
         
-        bool flipped = orientNormals(points, normals);
-        if (flipped) {
-            std::cout << "Flipping normals" << std::endl;
+        // Calculate the actual mesh centroid
+        meshCentroid = calculateMeshCentroid(points);
+        globalFlipDecision = shouldFlipNormals(points, normals, meshCentroid);
+        orientationDetermined = true;
+        
+        // Apply the orientation
+        applyNormalOrientation(normals, globalFlipDecision);
+        
+        if (globalFlipDecision) {
+            std::cout << "Orienting normals to point consistently (flipped)" << std::endl;
+        } else {
+            std::cout << "Orienting normals to point consistently (not flipped)" << std::endl;
         }
     }
 
@@ -185,19 +217,28 @@ int main(int argc, char *argv[])
             float off = i-num_slices/2;
             if (slice_gen) {
                 img.create(tgt_size);
-                // Calculate consistent reference point for all chunks based on full target size
-                cv::Vec3f consistentRefPt = cv::Vec3f(static_cast<float>(tgt_size.width) / 2.0f, 
-                                                      static_cast<float>(tgt_size.height) / 2.0f, 
-                                                      0.0f);
                 
+                // For chunked processing, we need to determine orientation from the first chunk
+                // or a representative sample to ensure consistency
                 for(int x=crop.x;x<crop.x+crop.width;x+=1024) {
                     int w = std::min(tgt_size.width+crop.x-x, 1024);
                     surf->gen(&points, &normals, {w,crop.height}, nullptr, tgt_scale, {-full_size.width/2+x,-full_size.height/2+crop.y,0});
                     
-                    // Use consistent reference point for all chunks, adjust for chunk position
-                    cv::Vec3f chunkRefPt = consistentRefPt;
-                    chunkRefPt[0] -= (x - crop.x); // Adjust x coordinate for chunk position
-                    orientNormals(points, normals, chunkRefPt, false);
+                    // Determine orientation from first chunk if not yet determined
+                    if (!orientationDetermined) {
+                        meshCentroid = calculateMeshCentroid(points);
+                        globalFlipDecision = shouldFlipNormals(points, normals, meshCentroid);
+                        orientationDetermined = true;
+                        
+                        if (globalFlipDecision) {
+                            std::cout << "Orienting normals to point consistently (flipped) - determined from first chunk" << std::endl;
+                        } else {
+                            std::cout << "Orienting normals to point consistently (not flipped) - determined from first chunk" << std::endl;
+                        }
+                    }
+                    
+                    // Apply the consistent orientation decision to all chunks
+                    applyNormalOrientation(normals, globalFlipDecision);
                     
                     cv::Mat_<uint8_t> slice;
                     readInterpolated3D(slice, ds.get(), points*ds_scale+off*normals*ds_scale, &chunk_cache);
