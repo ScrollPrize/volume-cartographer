@@ -86,8 +86,9 @@ int main(int argc, char *argv[])
     cv::Mat_<cv::Vec3f> points, normals;
     
     bool slice_gen = false;
+    bool should_flip_normals = false;
     
-    if (tgt_size.width >= 10000 && num_slices > 1)
+    if (tgt_size.width >= 10000 && num_slices > 1) {
         slice_gen = true;
     else
         surf->gen(&points, &normals, tgt_size, nullptr, tgt_scale, {-full_size.width/2+crop.x,-full_size.height/2+crop.y,0});

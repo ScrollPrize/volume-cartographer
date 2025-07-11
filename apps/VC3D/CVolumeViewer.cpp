@@ -99,9 +99,19 @@ void scene2vol(cv::Vec3f &p, cv::Vec3f &n, Surface *_surf, const std::string &_s
         cv::Vec3f surf_loc = {scene_loc.x()/_ds_scale, scene_loc.y()/_ds_scale,0};
         
         SurfacePointer *ptr = _surf->pointer();
-        
-        n = _surf->normal(ptr, surf_loc);
-        p = _surf->coord(ptr, surf_loc);
+        if (ptr) {
+            try {
+                n = _surf->normal(ptr, surf_loc);
+                p = _surf->coord(ptr, surf_loc);
+            } catch (...) {
+                // Fallback to default values if coordinate transformation fails
+                p = cv::Vec3f(0, 0, 0);
+                n = cv::Vec3f(0, 0, 1);
+            }
+        } else {
+            p = cv::Vec3f(0, 0, 0);
+            n = cv::Vec3f(0, 0, 1);
+        }
 //     }
 //     //FIXME quite some assumptions ...
 //     else if (_surf_name == "segmentation") {
