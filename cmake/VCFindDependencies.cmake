@@ -55,7 +55,7 @@ if(CMAKE_GENERATOR MATCHES "Ninja|.*Makefiles.*" AND "${CMAKE_BUILD_TYPE}" MATCH
 endif()
 
 ### libigl ###
-find_package(BuildIGL)
+include(BuildIGL)
 
 ### OpenCV ###
 find_package(OpenCV 3 QUIET)
