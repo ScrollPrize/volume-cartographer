@@ -41,7 +41,7 @@ Rect3D expand_rect(const Rect3D &a, const cv::Vec3f &p);
 QuadSurface *load_quad_from_vcps(const std::string &path);
 QuadSurface *load_quad_from_obj(const std::string &path);
 QuadSurface *load_quad_from_tifxyz(const std::string &path);
-QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *cache, cv::Vec3f origin, int generations = 100, float step = 10, const std::string &cache_root = "");
+QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *cache, cv::Vec3f origin, int generations = 100, float step = 10, const std::string &cache_root = "", float voxelsize = 1.0);
 QuadSurface *regularized_local_quad(QuadSurface *src, SurfacePointer *ptr, int w, int h, int step_search = 100, int step_out = 5);
 QuadSurface *smooth_vc_segmentation(QuadSurface *src);
 

@@ -1032,7 +1032,7 @@ struct thresholdedDistance
 
 float dist_th = 1.5;
 
-QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *cache, cv::Vec3f origin, int stop_gen, float step, const std::string &cache_root)
+QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *cache, cv::Vec3f origin, int stop_gen, float step, const std::string &cache_root, float voxelsize)
 {
     ALifeTime f_timer("empty space tracing\n");
     DSReader reader = {ds,scale,cache};
@@ -1474,7 +1474,9 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *c
         gen_avg_cost.push_back(avg_cost/cost_count);
         gen_max_cost.push_back(max_cost);
 
-        printf("-> total done %d/ fringe: %ld surf: %fM vx^2\n", succ, (long)fringe.size(), double(succ)*step*step/1e9);
+        float const current_area_vx2 = double(succ)*step*step;
+        float const current_area_cm2 = current_area_vx2 * voxelsize * voxelsize / 1e8;
+        printf("-> total done %d/ fringe: %ld surf: %fG vx^2 (%f cm^2)\n", succ, (long)fringe.size(), current_area_vx2/1e9, current_area_cm2);
 
         timer_gen.unit = succ_gen*step*step;
         timer_gen.unit_string = "vx^2";
@@ -1501,12 +1503,15 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *c
         }
     avg_cost /= count;
 
-    printf("generated approximate surface %fvx^2\n", succ*step*step);
+    float const area_est_vx2 = succ*step*step;
+    float const area_est_cm2 = area_est_vx2 * voxelsize * voxelsize / 1e8;
+    printf("generated approximate surface %f vx^2 (%f cm^2)\n", area_est_vx2, area_est_cm2);
 
     QuadSurface *surf = new QuadSurface(locs, {1/T, 1/T});
 
     surf->meta = new nlohmann::json;
-    (*surf->meta)["area_vx2"] = succ*step*step;
+    (*surf->meta)["area_vx2"] = area_est_vx2;
+    (*surf->meta)["area_cm2"] = area_est_cm2;
     (*surf->meta)["max_cost"] = max_cost;
     (*surf->meta)["avg_cost"] = avg_cost;
     (*surf->meta)["max_gen"] = generation;
