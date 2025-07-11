@@ -94,6 +94,13 @@ target_link_libraries(vc_tiffxyz_upscale_grounding
     ceres
 )
 
+add_executable(vc_flatobj src/vc_flatobj.cpp)
+target_link_libraries(vc_flatobj
+    igl::core      # readOBJ, writeOBJ, etc.
+    igl::slim      # SLIM optimiser
+    Eigen3::Eigen  # header-only; comes transitively but explicit is fine
+)
+
 ## experiements for flattening ##
 # add_executable(vc_zarralphacomp src/ZarrAlphaComp.cpp)
 # target_link_libraries(vc_zarralphacomp
@@ -116,6 +123,7 @@ install(
         vc_tifxyz2obj
         vc_tifxyz_winding
         vc_fill_quadmesh
+        vc_flatobj
         ${extra_apps}
     RUNTIME DESTINATION bin
     COMPONENT Programs

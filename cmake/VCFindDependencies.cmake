@@ -54,6 +54,9 @@ if(CMAKE_GENERATOR MATCHES "Ninja|.*Makefiles.*" AND "${CMAKE_BUILD_TYPE}" MATCH
     consider setting CMAKE_BUILD_TYPE to RelWithDebInfo. Otherwise, set to Release to maximize performance.")
 endif()
 
+### libigl ###
+find_package(BuildIGL)
+
 ### OpenCV ###
 find_package(OpenCV 3 QUIET)
 if(NOT OpenCV_FOUND)
