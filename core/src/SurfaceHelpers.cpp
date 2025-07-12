@@ -2559,7 +2559,7 @@ void optimize_surface_mapping(SurfTrackerData &data, cv::Mat_<uint8_t> &state, c
     dbg_counter++;
 }
 
-QuadSurface *grow_surf_from_surfs(SurfaceMeta *seed, const std::vector<SurfaceMeta*> &surfs_v, const nlohmann::json &params)
+QuadSurface *grow_surf_from_surfs(SurfaceMeta *seed, const std::vector<SurfaceMeta*> &surfs_v, const nlohmann::json &params, float voxelsize)
 {
     bool flip_x = params.value("flip_x", 0);
     int global_steps_per_window = params.value("global_steps_per_window", 0);
@@ -3123,9 +3123,11 @@ QuadSurface *grow_surf_from_surfs(SurfaceMeta *seed, const std::vector<SurfaceMe
             }
         }
 
-        printf("gen %d processing %lu fringe cands (total done %d fringe: %lu) area %f vx^2 best th: %d\n", 
+        float const current_area_vx2 = loc_valid_count*src_step*src_step*step*step;
+        float const current_area_cm2 = current_area_vx2 * voxelsize * voxelsize / 1e8;
+        printf("gen %d processing %lu fringe cands (total done %d fringe: %lu) area %.0f vx^2 (%f cm^2) best th: %d\n", 
                generation, static_cast<unsigned long>(cands.size()), succ, static_cast<unsigned long>(fringe.size()), 
-               loc_valid_count*src_step*src_step*step*step, best_inliers_gen);
+               current_area_vx2, current_area_cm2, best_inliers_gen);
         
         //continue expansion
         if (!fringe.size() && w < max_width/step)
@@ -3174,7 +3176,9 @@ QuadSurface *grow_surf_from_surfs(SurfaceMeta *seed, const std::vector<SurfaceMe
             break;
     }
     
-    std::cout << "area est: " << loc_valid_count*src_step*src_step*step*step << "vx^2" << std::endl;
+    float const area_est_vx2 = loc_valid_count*src_step*src_step*step*step;
+    float const area_est_cm2 = area_est_vx2 * voxelsize * voxelsize / 1e8;
+    std::cout << "area est: " << area_est_vx2 << " vx^2 (" << area_est_cm2 << " cm^2)" << std::endl;
 
     cv::Mat_<cv::Vec3d> points_hr = surftrack_genpoints_hr(data, state, points, used_area, step, src_step);
 

@@ -118,6 +118,8 @@ int main(int argc, char *argv[])
     std::cout << "zarr dataset size for scale group 0 " << ds->shape() << std::endl;
     std::cout << "chunk shape shape " << ds->chunking().blockShape() << std::endl;
 
+    float voxelsize = json::parse(std::ifstream(vol_path/"meta.json"))["voxelsize"];
+
     std::string name_prefix = "auto_grown_";
     std::vector<SurfaceMeta*> surfaces;
 
@@ -168,7 +170,7 @@ int main(int argc, char *argv[])
             surfaces.push_back(sm);
         }
 
-    QuadSurface *surf = grow_surf_from_surfs(src, surfaces, params);
+    QuadSurface *surf = grow_surf_from_surfs(src, surfaces, params, voxelsize);
 
     if (!surf)
         return EXIT_SUCCESS;
