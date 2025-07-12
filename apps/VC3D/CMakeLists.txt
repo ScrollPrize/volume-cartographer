@@ -36,6 +36,10 @@ set(srcs
     CommandLineToolRunner.hpp
     ConsoleOutputWidget.cpp
     ConsoleOutputWidget.hpp
+    COverlayManager.cpp
+    COverlayManager.hpp
+    COverlayItem.cpp
+    COverlayItem.hpp
 )
 
 set(MACOSX_BUNDLE_ICON logo.icns)

@@ -26,6 +26,7 @@ class CSurfaceCollection;
 class POI;
 class Intersection;
 class SeedingWidget;
+class COverlayManager;
 
 class CVolumeViewer : public QWidget
 {
@@ -173,6 +174,16 @@ protected:
     bool _drawingModeActive = false;
     float _brushSize = 3.0f;
     bool _brushIsSquare = false;
+    
+    // Overlay manager
+    std::unique_ptr<COverlayManager> _overlayManager;
+    
+public:
+    // Overlay management methods
+    COverlayManager* overlayManager() { return _overlayManager.get(); }
+    const COverlayManager* overlayManager() const { return _overlayManager.get(); }
+    void renderOverlays();
+    
 };  // class CVolumeViewer
 
 }  // namespace ChaoVis

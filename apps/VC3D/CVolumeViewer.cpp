@@ -9,6 +9,7 @@
 
 #include "CVolumeViewerView.hpp"
 #include "CSurfaceCollection.hpp"
+#include "COverlayManager.hpp"
 
 #include "vc/core/types/VolumePkg.hpp"
 #include "vc/core/util/Surface.hpp"
@@ -37,6 +38,7 @@ CVolumeViewer::CVolumeViewer(CSurfaceCollection *col, QWidget* parent)
     , fGraphicsView(nullptr)
     , fBaseImageItem(nullptr)
     , _surf_col(col)
+    , _overlayManager(std::make_unique<COverlayManager>(this))
 {
     // Create graphics view
     fGraphicsView = new CVolumeViewerView(this);
@@ -98,7 +100,7 @@ QPointF visible_center(QGraphicsView *view)
 }
 
 
-void scene2vol(cv::Vec3f &p, cv::Vec3f &n, Surface *_surf, const std::string &_surf_name, CSurfaceCollection *_surf_col, const QPointF &scene_loc, const cv::Vec2f &_vis_center, float _ds_scale)
+void scene2vol(cv::Vec3f &p, cv::Vec3f &n, Surface *_surf, const std::string &_surf_name, ChaoVis::CSurfaceCollection *_surf_col, const QPointF &scene_loc, const cv::Vec2f &_vis_center, float _ds_scale)
 {
     // Safety check for null surface
     if (!_surf) {
@@ -711,6 +713,7 @@ void CVolumeViewer::renderVisible(bool force)
     
     renderPoints();
     renderPaths();
+    renderOverlays();
     
     curr_img_area = {bbox.left()-128,bbox.top()-128, bbox.width()+256, bbox.height()+256};
     
@@ -1135,6 +1138,14 @@ void CVolumeViewer::renderPaths()
         auto item = fScene->addPath(painterPath, pen);
         item->setZValue(26); // Slightly higher than regular paths
         _path_items.push_back(item);
+    }
+}
+
+void CVolumeViewer::renderOverlays()
+{
+    // Forward the rendering request to the overlay manager
+    if (_overlayManager && _surf) {
+        _overlayManager->renderOverlays(fScene, _surf, _vis_center, _scale, _z_off);
     }
 }
 
