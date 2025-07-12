@@ -3185,6 +3185,8 @@ QuadSurface *grow_surf_from_surfs(SurfaceMeta *seed, const std::vector<SurfaceMe
     QuadSurface *surf = new QuadSurface(points_hr(used_area_hr), {1/src_step,1/src_step});
 
     surf->meta = new nlohmann::json;
+    (*surf->meta)["area_vx2"] = area_est_vx2;
+    (*surf->meta)["area_cm2"] = area_est_cm2;
 
     return surf;
 }
