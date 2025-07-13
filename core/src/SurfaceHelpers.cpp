@@ -1032,7 +1032,7 @@ struct thresholdedDistance
 
 float dist_th = 1.5;
 
-QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *cache, cv::Vec3f origin, int stop_gen, float step, const std::string &cache_root)
+QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *cache, cv::Vec3f origin, int stop_gen, float step, const std::string &cache_root, float voxelsize)
 {
     ALifeTime f_timer("empty space tracing\n");
     DSReader reader = {ds,scale,cache};
@@ -1474,7 +1474,9 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *c
         gen_avg_cost.push_back(avg_cost/cost_count);
         gen_max_cost.push_back(max_cost);
 
-        printf("-> total done %d/ fringe: %ld surf: %fM vx^2\n", succ, (long)fringe.size(), double(succ)*step*step/1e9);
+        float const current_area_vx2 = double(succ)*step*step;
+        float const current_area_cm2 = current_area_vx2 * voxelsize * voxelsize / 1e8;
+        printf("-> total done %d/ fringe: %ld surf: %fG vx^2 (%f cm^2)\n", succ, (long)fringe.size(), current_area_vx2/1e9, current_area_cm2);
 
         timer_gen.unit = succ_gen*step*step;
         timer_gen.unit_string = "vx^2";
@@ -1501,12 +1503,15 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *c
         }
     avg_cost /= count;
 
-    printf("generated approximate surface %fvx^2\n", succ*step*step);
+    float const area_est_vx2 = succ*step*step;
+    float const area_est_cm2 = area_est_vx2 * voxelsize * voxelsize / 1e8;
+    printf("generated approximate surface %f vx^2 (%f cm^2)\n", area_est_vx2, area_est_cm2);
 
     QuadSurface *surf = new QuadSurface(locs, {1/T, 1/T});
 
     surf->meta = new nlohmann::json;
-    (*surf->meta)["area_vx2"] = succ*step*step;
+    (*surf->meta)["area_vx2"] = area_est_vx2;
+    (*surf->meta)["area_cm2"] = area_est_cm2;
     (*surf->meta)["max_cost"] = max_cost;
     (*surf->meta)["avg_cost"] = avg_cost;
     (*surf->meta)["max_gen"] = generation;
@@ -2554,7 +2559,7 @@ void optimize_surface_mapping(SurfTrackerData &data, cv::Mat_<uint8_t> &state, c
     dbg_counter++;
 }
 
-QuadSurface *grow_surf_from_surfs(SurfaceMeta *seed, const std::vector<SurfaceMeta*> &surfs_v, const nlohmann::json &params)
+QuadSurface *grow_surf_from_surfs(SurfaceMeta *seed, const std::vector<SurfaceMeta*> &surfs_v, const nlohmann::json &params, float voxelsize)
 {
     bool flip_x = params.value("flip_x", 0);
     int global_steps_per_window = params.value("global_steps_per_window", 0);
@@ -3118,9 +3123,11 @@ QuadSurface *grow_surf_from_surfs(SurfaceMeta *seed, const std::vector<SurfaceMe
             }
         }
 
-        printf("gen %d processing %lu fringe cands (total done %d fringe: %lu) area %f vx^2 best th: %d\n", 
+        float const current_area_vx2 = loc_valid_count*src_step*src_step*step*step;
+        float const current_area_cm2 = current_area_vx2 * voxelsize * voxelsize / 1e8;
+        printf("gen %d processing %lu fringe cands (total done %d fringe: %lu) area %.0f vx^2 (%f cm^2) best th: %d\n", 
                generation, static_cast<unsigned long>(cands.size()), succ, static_cast<unsigned long>(fringe.size()), 
-               loc_valid_count*src_step*src_step*step*step, best_inliers_gen);
+               current_area_vx2, current_area_cm2, best_inliers_gen);
         
         //continue expansion
         if (!fringe.size() && w < max_width/step)
@@ -3169,13 +3176,17 @@ QuadSurface *grow_surf_from_surfs(SurfaceMeta *seed, const std::vector<SurfaceMe
             break;
     }
     
-    std::cout << "area est: " << loc_valid_count*src_step*src_step*step*step << "vx^2" << std::endl;
+    float const area_est_vx2 = loc_valid_count*src_step*src_step*step*step;
+    float const area_est_cm2 = area_est_vx2 * voxelsize * voxelsize / 1e8;
+    std::cout << "area est: " << area_est_vx2 << " vx^2 (" << area_est_cm2 << " cm^2)" << std::endl;
 
     cv::Mat_<cv::Vec3d> points_hr = surftrack_genpoints_hr(data, state, points, used_area, step, src_step);
 
     QuadSurface *surf = new QuadSurface(points_hr(used_area_hr), {1/src_step,1/src_step});
 
     surf->meta = new nlohmann::json;
+    (*surf->meta)["area_vx2"] = area_est_vx2;
+    (*surf->meta)["area_cm2"] = area_est_cm2;
 
     return surf;
 }
