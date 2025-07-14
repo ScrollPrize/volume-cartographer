@@ -4,7 +4,7 @@ if(VC_BUILD_Z5)
   FetchContent_Declare(
       z5
       GIT_REPOSITORY https://github.com/constantinpape/z5.git
-      GIT_TAG 7df1d21cf3e2ebee8f33f81f67096a71a97d33cd
+      GIT_TAG ee2081bb974fe0d0d702538400c31c38b09f1629
   )
 
   # Populate the project but exclude from all
