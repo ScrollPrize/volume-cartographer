@@ -202,7 +202,7 @@ void FastLayerTexture::processChunk(
         double offset = (static_cast<double>(layer) - numLayers / 2.0) * interval;
         if ((direction == Direction::Positive && offset >= 0) ||
             (direction == Direction::Negative && offset <= 0) ||
-            (direction == Direction::Omni)) {
+            (direction == Direction::Bidirectional)) {
             coordsPerPixel++;
         }
     }
