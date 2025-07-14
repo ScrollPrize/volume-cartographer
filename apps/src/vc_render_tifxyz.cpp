@@ -176,6 +176,7 @@ void printUsage(const char* programName)
     std::cout << "  <crop-x> <crop-y> <crop-w> <crop-h>  Crop parameters" << std::endl;
     std::cout << "  --rotate <degrees>              Rotate output image by angle in degrees (counterclockwise)" << std::endl;
     std::cout << "  --flip <axis>                   Flip output image. Axis: 0=Vertical, 1=Horizontal, 2=Both" << std::endl;
+    std::cout << "  --resume                        Resume rendering, skip existing files" << std::endl;
 }
 
 int main(int argc, char *argv[])
@@ -217,6 +218,7 @@ int main(int argc, char *argv[])
     // Parse optional transformation parameters
     double rotate_angle = 0.0;
     int flip_axis = -1;
+    bool resume_mode = false;
     
     while (arg_idx < argc) {
         std::string arg(argv[arg_idx]);
@@ -226,6 +228,9 @@ int main(int argc, char *argv[])
         } else if (arg == "--flip" && arg_idx + 1 < argc) {
             flip_axis = atoi(argv[arg_idx + 1]);
             arg_idx += 2;
+        } else if (arg == "--resume") {
+            resume_mode = true;
+            arg_idx++;
         } else {
             std::cerr << "Unknown option: " << arg << std::endl;
             printUsage(argv[0]);
@@ -246,6 +251,9 @@ int main(int argc, char *argv[])
     }
     if (flip_axis >= 0) {
         std::cout << "Flip: " << (flip_axis == 0 ? "Vertical" : flip_axis == 1 ? "Horizontal" : "Both") << std::endl;
+    }
+    if (resume_mode) {
+        std::cout << "Resume mode: enabled (will skip existing files)" << std::endl;
     }
     
     fs::path output_path(tgt_ptn);
@@ -331,7 +339,46 @@ int main(int argc, char *argv[])
     }
     else {
         char buf[1024];
+        
+        // In resume mode, check which files already exist
+        if (resume_mode) {
+            std::vector<int> missing_slices;
+            int existing_count = 0;
+            
+            for (int i = 0; i < num_slices; i++) {
+                snprintf(buf, 1024, tgt_ptn, i);
+                if (fs::exists(buf)) {
+                    existing_count++;
+                } else {
+                    missing_slices.push_back(i);
+                }
+            }
+            
+            if (missing_slices.empty()) {
+                std::cout << "All " << num_slices << " files already exist. Nothing to render." << std::endl;
+                delete surf;
+                return EXIT_SUCCESS;
+            }
+            
+            std::cout << "Found " << existing_count << " existing files, will render " << missing_slices.size() << " missing files: ";
+            for (size_t j = 0; j < missing_slices.size(); j++) {
+                std::cout << missing_slices[j];
+                if (j < missing_slices.size() - 1) std::cout << ", ";
+            }
+            std::cout << std::endl;
+        }
+        
         for(int i=0;i<num_slices;i++) {
+            // Check if we should skip this file in resume mode
+            if (resume_mode) {
+                snprintf(buf, 1024, tgt_ptn, i);
+                if (fs::exists(buf)) {
+                    std::cout << "Skipping existing file: " << buf << std::endl;
+                    continue;
+                }
+                std::cout << "Rendering file " << i << " of " << num_slices << ": " << buf << std::endl;
+            }
+            
             float off = i-num_slices/2;
             if (slice_gen) {
                 img.create(tgt_size);
