@@ -83,7 +83,7 @@ target_link_libraries(vc_fill_quadmesh
     opencv_highgui
     VC::slicing
     VC::surface
-    ceres
+    Ceres::ceres
 )
 
 add_executable(vc_tiffxyz_upscale_grounding src/vc_tiffxyz_upscale_grounding.cpp)
@@ -91,7 +91,7 @@ target_link_libraries(vc_tiffxyz_upscale_grounding
     opencv_highgui
     VC::slicing
     VC::surface
-    ceres
+    Ceres::ceres
 )
 
 ## experiements for flattening ##
