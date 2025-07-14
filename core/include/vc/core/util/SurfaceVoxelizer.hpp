@@ -3,7 +3,8 @@
 #include <string>
 #include <map>
 #include <opencv2/core.hpp>
-#include <xtensor/containers/xarray.hpp>
+#include "vc/core/util/xtensor_include.hpp"
+#include XTENSORINCLUDE(containers, xarray.hpp)
 #include "vc/core/util/Surface.hpp"
 
 namespace z5 {

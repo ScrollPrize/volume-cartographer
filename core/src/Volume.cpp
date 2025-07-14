@@ -18,7 +18,8 @@
 #include "z5/factory.hxx"
 #include "z5/multiarray/xtensor_access.hxx"
 
-#include "xtensor/containers/xarray.hpp"
+#include "vc/core/util/xtensor_include.hpp"
+#include XTENSORINCLUDE(containers, xarray.hpp)
 
 namespace fs = volcart::filesystem;
 
