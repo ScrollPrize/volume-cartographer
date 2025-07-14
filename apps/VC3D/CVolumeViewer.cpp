@@ -210,39 +210,30 @@ void CVolumeViewer::onZoom(int steps, QPointF scene_loc, Qt::KeyboardModifiers m
         renderVisible(true);
     }
     else {
-        // 1) compute our zoom factor
         float zoom = pow(ZOOM_FACTOR, steps);
 
-        // 2) Store the mouse position in view coordinates before zooming
-        QPointF mouseViewPos = fGraphicsView->mapFromScene(scene_loc);
-        
-        // 3) Store the mouse position in scene coordinates before zooming
-        QPointF mouseScenePos = scene_loc;
-
-        // 4) Apply the zoom transformation
-        fGraphicsView->setTransformationAnchor(QGraphicsView::NoAnchor);
-        fGraphicsView->scale(zoom, zoom);
-        
-        // 5) Calculate where the mouse scene position is now in view coordinates after zoom
-        QPointF newMouseViewPos = fGraphicsView->mapFromScene(mouseScenePos);
-        
-        // 6) Calculate the difference and adjust the view to keep mouse position fixed
-        QPointF delta = mouseViewPos - newMouseViewPos;
-        QScrollBar *hBar = fGraphicsView->horizontalScrollBar();
-        QScrollBar *vBar = fGraphicsView->verticalScrollBar();
-        hBar->setValue(hBar->value() - delta.x());
-        vBar->setValue(vBar->value() - delta.y());
-        
-        // force a repaint so drawForeground() runs immediately
-        fGraphicsView->viewport()->update();
-
-        // 7) update your internal "resolution" scale and re-render at new detail
+        // update the scale used when projecting voxels to scene space
         _scale *= zoom;
         round_scale(_scale);
         recalcScales();
 
+        // Cache the view-space mouse position; used later for cursor update
+        QPoint pointViewportBefore = fGraphicsView->mapFromScene(scene_loc);
+
+        // The above scale is *not* part of Qt's scene-to-view transform, but part of the voxel-to-scene transform
+        // implemented in PlaneSurface::project; it causes a zoom around the surface origin
+        // Translations are represented in the Qt scene-to-view transform; these move the surface origin within the viewpoint
+        // To zoom centered on the mouse, we adjust the scene-to-view translation appropriately
+        // If the mouse were at the plane/surface origin, this adjustment should be zero
+        // If the mouse were right of the plane origin, should translate to the left so that point ends up where it was
+        fGraphicsView->translate(scene_loc.x() * (1 - zoom), scene_loc.y() * (1 - zoom));
+
+        // Update the cursor (which lives in scene space) to still lie under the mouse even after the above translation
+        QPointF pointSceneAfter = fGraphicsView->mapToScene(pointViewportBefore);
+        onCursorMove(pointSceneAfter);
+
         curr_img_area = {0,0,0,0};
-        // 8) Update scene rect
+        // Update scene rect
         //FIXME get correct size for slice!
         int max_size = 100000; //std::max(volume->sliceWidth(), std::max(volume->numSlices(), volume->sliceHeight()))*_ds_scale + 512;
         fGraphicsView->setSceneRect(-max_size/2, -max_size/2, max_size, max_size);
