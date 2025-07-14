@@ -3,9 +3,11 @@
 /** @file */
 
 #include <cstdint>
+#include <memory>
 
 #include "vc/core/neighborhood/NeighborhoodGenerator.hpp"
 #include "vc/texturing/TexturingAlgorithm.hpp"
+#include "vc/core/util/Slicing.hpp"
 
 namespace volcart::texturing
 {
@@ -232,6 +234,16 @@ private:
 
     /** Apply the expo diff weights to a neighborhood */
     auto apply_expodiff_weights_(NDArray<double>& n) const -> NDArray<double>;
+    
+    /** ChunkCache for efficient zarr access */
+    std::unique_ptr<ChunkCache> chunkCache_;
+    
+    /** Cache size for zarr operations */
+    std::size_t cacheSize_{2'000'000'000};
+    
+public:
+    /** Set cache size for zarr operations */
+    void setCacheSize(std::size_t bytes) { cacheSize_ = bytes; }
 };
 
 }  // namespace volcart::texturing

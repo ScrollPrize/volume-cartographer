@@ -2,7 +2,10 @@
 
 /** @file */
 
+#include <memory>
+
 #include "vc/texturing/TexturingAlgorithm.hpp"
+#include "vc/core/util/Slicing.hpp"
 
 namespace volcart::texturing
 {
@@ -84,5 +87,15 @@ private:
 
     /** Filter method */
     Filter filter_{Filter::Maximum};
+    
+    /** ChunkCache for efficient zarr access */
+    std::unique_ptr<ChunkCache> chunkCache_;
+    
+    /** Cache size for zarr operations */
+    std::size_t cacheSize_{2'000'000'000};
+    
+public:
+    /** Set cache size for zarr operations */
+    void setCacheSize(std::size_t bytes) { cacheSize_ = bytes; }
 };
 }  // namespace volcart::texturing

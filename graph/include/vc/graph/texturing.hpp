@@ -21,6 +21,7 @@
 #include "vc/texturing/IntegralTexture.hpp"
 #include "vc/texturing/IntersectionTexture.hpp"
 #include "vc/texturing/LayerTexture.hpp"
+#include "vc/texturing/FastLayerTexture.hpp"
 #include "vc/texturing/OrthographicProjectionFlattening.hpp"
 #include "vc/texturing/PPMGenerator.hpp"
 #include "vc/texturing/ThicknessTexture.hpp"
@@ -361,6 +362,8 @@ private:
     TAlgo textureGen_;
     /** Composite filter */
     TAlgo::Filter filter_{TAlgo::Filter::Maximum};
+    /** Input volume */
+    Volume::Pointer volume_;
     /** Output image */
     cv::Mat texture_;
 
@@ -404,6 +407,8 @@ private:
     using TAlgo = texturing::IntersectionTexture;
     /** Texturing algorithm */
     TAlgo textureGen_;
+    /** Input volume */
+    Volume::Pointer volume_;
     /** Output image */
     cv::Mat texture_;
 
@@ -442,6 +447,8 @@ private:
     using Generator = NeighborhoodGenerator::Pointer;
     /** Texturing algorithm */
     TAlgo textureGen_;
+    /** Input volume */
+    Volume::Pointer volume_;
     /** Output image */
     cv::Mat texture_;
 
@@ -558,6 +565,8 @@ private:
     using Generator = NeighborhoodGenerator::Pointer;
     /** Texturing algorithm */
     TAlgo textureGen_;
+    /** Input volume */
+    Volume::Pointer volume_;
     /** Output layer images */
     ImageList texture_;
 
@@ -578,6 +587,59 @@ public:
 
     /** Constructor */
     LayerTextureNode();
+
+private:
+    /** smgl custom serialization */
+    auto serialize_(bool useCache, const filesystem::path& cacheDir)
+        -> smgl::Metadata override;
+
+    /** smgl custom deserialization */
+    void deserialize_(
+        const smgl::Metadata& meta, const filesystem::path& cacheDir) override;
+};
+
+/**
+ * @copybrief texturing::FastLayerTexture
+ * @see texturing::FastLayerTexture
+ * @ingroup Graph
+ */
+class FastLayerTextureNode : public smgl::Node
+{
+private:
+    /** Image list type */
+    using ImageList = std::vector<cv::Mat>;
+    /** Algorithm class type */
+    using TAlgo = texturing::FastLayerTexture;
+    /** Generator class type */
+    using Generator = NeighborhoodGenerator::Pointer;
+    /** Texturing algorithm */
+    TAlgo textureGen_;
+    /** Input volume */
+    Volume::Pointer volume_;
+    /** Output layer images */
+    ImageList texture_;
+
+public:
+    /** @brief Input PerPixelMap */
+    smgl::InputPort<PerPixelMap::Pointer> ppm;
+    /** @brief Input Volume */
+    smgl::InputPort<Volume::Pointer> volume;
+    /**
+     * @brief Neighborhood generator
+     *
+     * @throws std::runtime_error If the provided generator is not a
+     * LineGenerator.
+     */
+    smgl::InputPort<Generator> generator;
+    /** @brief Cache size for zarr chunk reading */
+    smgl::InputPort<std::size_t> cacheSize;
+    /** @brief Processing chunk size */
+    smgl::InputPort<int> chunkSize;
+    /** @brief Generated texture images */
+    smgl::OutputPort<ImageList> texture;
+
+    /** Constructor */
+    FastLayerTextureNode();
 
 private:
     /** smgl custom serialization */

@@ -66,8 +66,11 @@ find_package(xtensor REQUIRED)
 
 find_package(OpenMP REQUIRED)
 
+### fmt ###
+include(BuildFmt)
+
 ### spdlog ###
-find_package(spdlog 1.4.2 CONFIG REQUIRED)
+include(BuildSpdlog)
 
 ### Modern JSON ###
 include(BuildJSON)
@@ -80,3 +83,24 @@ if(VC_BUILD_APPS OR VC_BUILD_UTILS)
     find_package(Boost 1.58 REQUIRED COMPONENTS system program_options)
     include(BuildIndicators)
 endif()
+
+### smgl (for graph library) ###
+include(Buildsmgl)
+
+### VTK (for meshing and texturing) ###
+find_package(VTK REQUIRED)
+
+### ITK (for mesh types) ###
+find_package(ITK REQUIRED)
+
+### ACVD (for meshing) ###
+include(BuildACVD)
+
+### BVH (for texturing) ###
+include(Buildbvh)
+
+### OpenABF (for texturing) ###
+include(BuildOpenABF)
+
+### TIFF (for image I/O) ###
+find_package(TIFF REQUIRED)

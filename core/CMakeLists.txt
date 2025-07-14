@@ -6,6 +6,36 @@ set(type_srcs
     src/Segmentation.cpp
     src/Volume.cpp
     src/VolumePkg.cpp
+    src/PerPixelMap.cpp
+    src/UVMap.cpp
+    src/VolumetricMask.cpp
+    src/Transforms.cpp
+    src/ITKMesh.cpp
+)
+
+set(io_srcs
+    src/ImageIO.cpp
+    src/MeshIO.cpp
+    src/OBJReader.cpp
+    src/OBJWriter.cpp
+    src/PLYReader.cpp
+    src/PLYWriter.cpp
+    src/UVMapIO.cpp
+    src/TIFFIO.cpp
+)
+
+set(util_srcs
+    src/BarycentricCoordinates.cpp
+    src/ColorMaps.cpp
+    src/ApplyLUT.cpp
+    src/MemorySizeStringParser.cpp
+    src/MeshMath.cpp
+    src/ImageConversion.cpp
+)
+
+set(neighborhood_srcs
+    src/LineGenerator.cpp
+    src/CuboidGenerator.cpp
 )
 
 set(logging_srcs
@@ -64,6 +94,9 @@ configure_file(src/Version.cpp.in Version.cpp)
 
 add_library(vc_core
     ${type_srcs}
+    ${io_srcs}
+    ${util_srcs}
+    ${neighborhood_srcs}
     ${logging_srcs}
     ${CMAKE_CURRENT_BINARY_DIR}/Version.cpp
 )
@@ -72,17 +105,22 @@ target_include_directories(vc_core
     PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
         $<INSTALL_INTERFACE:include>
+        ${ITK_INCLUDE_DIRS}
 )
+
 target_link_libraries(vc_core
     PUBLIC
         ${VC_FS_LIB}
         opencv_core
         opencv_imgproc
         opencv_imgcodecs
+        fmt::fmt
         spdlog::spdlog
         nlohmann_json::nlohmann_json
         z5
         CURL::libcurl
+        ${ITK_LIBRARIES}
+        TIFF::TIFF
     PRIVATE
         OpenMP::OpenMP_CXX
 )

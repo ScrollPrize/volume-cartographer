@@ -42,6 +42,9 @@ include(VCConstants)
 # Look for external dependencies.
 include(VCFindDependencies)
 
+# Define SPDLOG_COMPILED_LIB globally since Ubuntu's spdlog is compiled
+add_compile_definitions(SPDLOG_COMPILED_LIB)
+
 # XXX Hack to get ninja output colorized for all source files.
 if (CMAKE_GENERATOR MATCHES "Ninja")
     add_compile_options(-fdiagnostics-color=always)
@@ -64,6 +67,11 @@ if(VC_DEVELOPER_WARNINGS)
 endif()
 
 add_subdirectory(core)
+add_subdirectory(segmentation)
+add_subdirectory(meshing)
+add_subdirectory(texturing)
+add_subdirectory(graph)
+
 if (VC_BUILD_TESTS)
     add_subdirectory(testing)
 endif()

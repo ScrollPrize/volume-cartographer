@@ -91,6 +91,15 @@ public:
      * Derived classes are not guaranteed to make use of this functionality
      */
     void setAutoGenAxes(bool b) { autoGenAxes_ = b; }
+    
+    /** @brief Get the sampling radius */
+    cv::Vec3d samplingRadius() const { return radius_; }
+    
+    /** @brief Get the sampling interval */
+    double samplingInterval() const { return interval_; }
+    
+    /** @brief Get the sampling direction */
+    Direction samplingDirection() const { return direction_; }
     /**@}*/
 
     /**@{*/

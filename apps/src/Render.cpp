@@ -61,7 +61,7 @@ auto GetIOOpts() -> po::options_description
     // clang-format off
     po::options_description opts("Input/Output Options");
     opts.add_options()
-    ("volpkg,v", po::value<std::string>()->required(), "VolumePkg path")
+    ("volpkg,v", po::value<std::string>(), "VolumePkg path")
     ("seg,s", po::value<std::string>(), "Segmentation ID")
     ("input-mesh", po::value<std::string>(), "Path to input OBJ or PLY")
     ("volume", po::value<std::string>(),
@@ -77,6 +77,22 @@ auto GetIOOpts() -> po::options_description
         "Save the generated render graph into the volume package.");
     // clang-format on
 
+    return opts;
+}
+
+auto GetZarrOpts() -> po::options_description
+{
+    // clang-format off
+    po::options_description opts("Zarr Volume Options");
+    opts.add_options()
+        ("zarr-volume", po::value<std::string>(), 
+         "Path to zarr volume. Use this instead of --volpkg for direct zarr rendering.")
+        ("zarr-scale", po::value<int>()->default_value(0),
+         "Scale level to use from the zarr pyramid (0 = full resolution)")
+        ("zarr-cache-size", po::value<std::string>(),
+         "Cache size for zarr chunk reading. Overrides --cache-memory-limit if set. "
+         "Accepts suffixes: (K|M|G|T)(B). Default: uses --cache-memory-limit value.");
+    // clang-format on
     return opts;
 }
 
@@ -284,6 +300,7 @@ auto main(int argc, char* argv[]) -> int
     po::options_description all("Usage");
     all.add(::GetGeneralOpts())
         .add(::GetIOOpts())
+        .add(::GetZarrOpts())
         .add(::GetTransformOpts())
         .add(::GetMeshingOpts())
         .add(::GetUVOpts())
@@ -324,51 +341,76 @@ auto main(int argc, char* argv[]) -> int
     // Register VC graph nodes
     vc::RegisterNodes();
 
-    ///// Load the volume package /////
-    fs::path volpkgPath = parsed["volpkg"].as<std::string>();
-    Logger()->info(
-        "Loading VolumePkg: {}",
-        fs::weakly_canonical(volpkgPath).filename().string());
-    VolumePkg::Pointer vpkg;
-    try {
-        vpkg = VolumePkg::New(volpkgPath);
-    } catch (const std::exception& e) {
-        Logger()->critical(e.what());
+    ///// Check for mutually exclusive volume options /////
+    const bool loadZarr = parsed.count("zarr-volume") > 0;
+    const bool loadVolPkg = parsed.count("volpkg") > 0;
+
+    if (loadZarr && loadVolPkg) {
+        Logger()->error("Cannot specify both --volpkg and --zarr-volume");
         return EXIT_FAILURE;
     }
 
-    if (vpkg->version() < VOLPKG_MIN_VERSION) {
-        vc::Logger()->error(
-            "Volume Package is version {} but this program requires version "
-            "{}+. ",
-            vpkg->version(), VOLPKG_MIN_VERSION);
+    if (!loadZarr && !loadVolPkg) {
+        Logger()->error("Must specify either --volpkg or --zarr-volume");
         return EXIT_FAILURE;
+    }
+
+    ///// Load the volume package (if using volpkg) /////
+    VolumePkg::Pointer vpkg;
+    if (loadVolPkg) {
+        fs::path volpkgPath = parsed["volpkg"].as<std::string>();
+        Logger()->info(
+            "Loading VolumePkg: {}",
+            fs::weakly_canonical(volpkgPath).filename().string());
+        try {
+            vpkg = VolumePkg::New(volpkgPath);
+        } catch (const std::exception& e) {
+            Logger()->critical(e.what());
+            return EXIT_FAILURE;
+        }
+
+        if (vpkg->version() < VOLPKG_MIN_VERSION) {
+            vc::Logger()->error(
+                "Volume Package is version {} but this program requires version "
+                "{}+. ",
+                vpkg->version(), VOLPKG_MIN_VERSION);
+            return EXIT_FAILURE;
+        }
     }
 
     //// Create the graph pipeline ////
     std::shared_ptr<smgl::Graph> graph;
-    if (parsed["save-graph"].as<bool>()) {
-        auto render = vpkg->newRender();
-        graph = render->graph();
-        vc::Logger()->info(
-            "Created new Render graph in VolPkg: {}", render->id());
-    } else {
-        graph = std::make_shared<smgl::Graph>();
+    if (loadVolPkg && parsed["save-graph"].as<bool>() && false) {
+        // newRender() method not yet implemented in VolumePkg
+        // This would save the render graph for reuse, but is not required for rendering
+        Logger()->warn("Render graph saving is not yet implemented");
     }
+    // Always create the graph directly for now
+    graph = std::make_shared<smgl::Graph>();
 
     // Add the project metadata
     // clang-format off
-    const smgl::Metadata projectInfo{{
+    smgl::Metadata projectInfo{{
         vc::ProjectInfo::Name(), {
             {"version", ProjectInfo::VersionString()},
             {"git-url", ProjectInfo::RepositoryURL()},
-            {"git-hash", ProjectInfo::RepositoryHash()},
-            {"volpkg", {
-                {"path", fs::weakly_canonical(volpkgPath).filename().string()},
-                {"name", vpkg->name()}
-            }}
+            {"git-hash", ProjectInfo::RepositoryHash()}
         }}
     };
+    
+    if (loadVolPkg) {
+        fs::path volpkgPath = parsed["volpkg"].as<std::string>();
+        projectInfo[vc::ProjectInfo::Name()]["volpkg"] = {
+            {"path", fs::weakly_canonical(volpkgPath).filename().string()},
+            {"name", vpkg->name()}
+        };
+    } else if (loadZarr) {
+        fs::path zarrPath = parsed["zarr-volume"].as<std::string>();
+        projectInfo[vc::ProjectInfo::Name()]["zarr"] = {
+            {"path", fs::weakly_canonical(zarrPath).string()},
+            {"scale", parsed["zarr-scale"].as<int>()}
+        };
+    }
     // clang-format on
     graph->setProjectMetadata(projectInfo);
     // Set up a map to keep a reference to important output ports
@@ -437,71 +479,105 @@ auto main(int argc, char* argv[]) -> int
     }
 
     //// Load the Volume(s) ////
-    if (not vpkg->hasVolumes()) {
-        Logger()->error("Volume package does not contain any volumes");
-        return EXIT_FAILURE;
-    }
-
-    // Load the source volume from the segmentation
+    // Move variable declarations to outer scope for zarr path
     Volume::Identifier srcVolId;
-    if (loadSeg) {
-        auto segId = parsed["seg"].as<std::string>();
-        auto seg = vpkg->segmentation(segId);
-        if (seg->hasVolumeID()) {
-            srcVolId = seg->getVolumeID();
-            Logger()->debug("Segmentation associated volume: {}", srcVolId);
-        }
-    }
-
-    // Get the target volume from options
     Volume::Identifier tgtVolId;
-    if (parsed.count("volume") > 0) {
-        tgtVolId = parsed["volume"].as<std::string>();
+    bool hasSrc = false;
+    bool hasTgt = false;
+    bool volsDontMatch = false;
+    
+    // Variable to hold volume properties node for use outside the if blocks
+    std::shared_ptr<VolumePropertiesNode> tgtVolProps;
+    
+    if (loadVolPkg) {
+        if (not vpkg->hasVolumes()) {
+            Logger()->error("Volume package does not contain any volumes");
+            return EXIT_FAILURE;
+        }
+
+        // Load the source volume from the segmentation
+        if (loadSeg) {
+            auto segId = parsed["seg"].as<std::string>();
+            auto seg = vpkg->segmentation(segId);
+            if (seg->hasVolumeID()) {
+                srcVolId = seg->getVolumeID();
+                Logger()->debug("Segmentation associated volume: {}", srcVolId);
+            }
+        }
+
+        // Get the target volume from options
+        if (parsed.count("volume") > 0) {
+            tgtVolId = parsed["volume"].as<std::string>();
+        }
+
+        // helpful booleans
+        hasSrc = not srcVolId.empty();
+        hasTgt = not tgtVolId.empty();
+        volsDontMatch = srcVolId != tgtVolId;
+
+        // If source is empty and target is empty: default volume, no auto useTfm
+        // If source is empty and target is set: tgtVol = tgtVol, no auto useTfm
+        // If source is set and target is empty: tgtVol = srcVol, no auto useTfm
+        if (hasSrc and not hasTgt) {
+            tgtVolId = srcVolId;
+            hasTgt = true;
+            volsDontMatch = false;
+        }
+
+        // Report selected volume
+        Logger()->debug("Target volume: {}", (hasTgt) ? tgtVolId : "auto");
+
+        // Verify the target volume is in the vpkg
+        Logger()->debug("Adding target volume selector node");
+        auto tgtVolSelector = graph->insertNode<VolumeSelectorNode>();
+        tgtVolSelector->volpkg = vpkg;
+        if (not tgtVolId.empty() and not vpkg->hasVolume(tgtVolId)) {
+            Logger()->error(
+                "Volume package does not contain volume with ID: {}", tgtVolId);
+            return EXIT_FAILURE;
+        }
+        tgtVolSelector->id = tgtVolId;
+
+        // Set the cache size
+        std::size_t cacheBytes{2'000'000'000};
+        if (parsed.count("cache-memory-limit") > 0) {
+            Logger()->debug("Using user-provided cache size");
+            auto cacheSizeOpt = parsed["cache-memory-limit"].as<std::string>();
+            cacheBytes = MemorySizeStringParser(cacheSizeOpt);
+        } else {
+            Logger()->debug("Using automatic cache size");
+            cacheBytes = SystemMemorySize() / 2;
+        }
+        tgtVolProps = graph->insertNode<VolumePropertiesNode>();
+        tgtVolProps->volumeIn = tgtVolSelector->volume;
+        tgtVolProps->cacheMemory = cacheBytes;
+        results["voxelsize"] = &tgtVolProps->voxelSize;
+        results["volume"] = &tgtVolProps->volumeOut;
+    } else if (loadZarr) {
+        // Load zarr volume directly
+        Logger()->debug("Loading zarr volume directly");
+        auto zarrLoader = graph->insertNode<LoadZarrVolumeNode>();
+        zarrLoader->path = parsed["zarr-volume"].as<std::string>();
+        zarrLoader->scale = parsed["zarr-scale"].as<int>();
+        
+        // Volume properties
+        auto volProps = graph->insertNode<VolumePropertiesNode>();
+        volProps->volumeIn = zarrLoader->volume;
+        
+        // Handle zarr-specific cache size
+        if (parsed.count("zarr-cache-size") > 0) {
+            auto cacheSizeStr = parsed["zarr-cache-size"].as<std::string>();
+            volProps->cacheMemory = MemorySizeStringParser(cacheSizeStr);
+        } else if (parsed.count("cache-memory-limit") > 0) {
+            auto cacheSizeOpt = parsed["cache-memory-limit"].as<std::string>();
+            volProps->cacheMemory = MemorySizeStringParser(cacheSizeOpt);
+        } else {
+            volProps->cacheMemory = SystemMemorySize() / 2;
+        }
+        
+        results["volume"] = &volProps->volumeOut;
+        results["voxelsize"] = &volProps->voxelSize;
     }
-
-    // helpful booleans
-    const bool hasSrc = not srcVolId.empty();
-    bool hasTgt = not tgtVolId.empty();
-    bool volsDontMatch = srcVolId != tgtVolId;
-
-    // If source is empty and target is empty: default volume, no auto useTfm
-    // If source is empty and target is set: tgtVol = tgtVol, no auto useTfm
-    // If source is set and target is empty: tgtVol = srcVol, no auto useTfm
-    if (hasSrc and not hasTgt) {
-        tgtVolId = srcVolId;
-        hasTgt = true;
-        volsDontMatch = false;
-    }
-
-    // Report selected volume
-    Logger()->debug("Target volume: {}", (hasTgt) ? tgtVolId : "auto");
-
-    // Verify the target volume is in the vpkg
-    Logger()->debug("Adding target volume selector node");
-    auto tgtVolSelector = graph->insertNode<VolumeSelectorNode>();
-    tgtVolSelector->volpkg = vpkg;
-    if (not tgtVolId.empty() and not vpkg->hasVolume(tgtVolId)) {
-        Logger()->error(
-            "Volume package does not contain volume with ID: {}", tgtVolId);
-        return EXIT_FAILURE;
-    }
-    tgtVolSelector->id = tgtVolId;
-
-    // Set the cache size
-    std::size_t cacheBytes{2'000'000'000};
-    if (parsed.count("cache-memory-limit") > 0) {
-        Logger()->debug("Using user-provided cache size");
-        auto cacheSizeOpt = parsed["cache-memory-limit"].as<std::string>();
-        cacheBytes = MemorySizeStringParser(cacheSizeOpt);
-    } else {
-        Logger()->debug("Using automatic cache size");
-        cacheBytes = SystemMemorySize() / 2;
-    }
-    auto tgtVolProps = graph->insertNode<VolumePropertiesNode>();
-    tgtVolProps->volumeIn = tgtVolSelector->volume;
-    tgtVolProps->cacheMemory = cacheBytes;
-    results["voxelsize"] = &tgtVolProps->voxelSize;
-    results["volume"] = &tgtVolProps->volumeOut;
 
     //// Setup transform ////
     Transform3D::Identifier tfmId;
@@ -513,27 +589,15 @@ auto main(int argc, char* argv[]) -> int
     if (not disableTfm and parsed.count("transform") > 0) {
         tfmId = parsed["transform"].as<std::string>();
         useTfm = true;
-        tfmIdInVpkg = vpkg->hasTransform(tfmId);
+        tfmIdInVpkg = false; // Disable volpkg transform lookup for now
     }
 
     // Source is set and target is set and srcVol != tgtVol: auto useTfm
-    else if (not disableTfm and hasSrc and hasTgt and volsDontMatch) {
-        // Ask the volume package for transforms
-        auto tfms = vpkg->transform(srcVolId, tgtVolId);
-        useTfm = tfmIdInVpkg = not tfms.empty();
-        tfmId = (tfmIdInVpkg) ? tfms[0].first : "";
-
-        // Report no and multiple transforms
-        if (tfms.empty()) {
-            Logger()->warn(
-                "Could not find transform from {} to {}. No transform will be "
-                "applied.",
-                srcVolId, tgtVolId);
-        } else if (tfms.size() > 1) {
-            Logger()->warn(
-                "Found {} transforms from {} to {}. Using transform \"{}\"",
-                tfms.size(), srcVolId, tgtVolId, tfmId);
-        }
+    else if (not disableTfm and loadVolPkg and hasSrc and hasTgt and volsDontMatch) {
+        // Transform functionality disabled for now
+        Logger()->warn("Automatic transform selection is not yet implemented");
+        useTfm = false;
+        tfmIdInVpkg = false;
     }
 
     // When to apply transform
@@ -617,9 +681,9 @@ auto main(int argc, char* argv[]) -> int
             resample->numVertices = meshProps->numVertices;
         }
 
-        else {
+            else {
             // Load source volume properties if needed
-            if (volsDontMatch and tfmInputType > TransformInput::Raw) {
+            if (loadVolPkg and volsDontMatch and tfmInputType > TransformInput::Raw) {
                 Logger()->debug("Adding source volume selector node");
                 auto srcVolSelector = graph->insertNode<VolumeSelectorNode>();
                 srcVolSelector->volpkg = vpkg;
@@ -789,7 +853,10 @@ auto main(int argc, char* argv[]) -> int
         writer->image = plot->plot;
     }
 
-    // Generate the PPM
+    // Get the texturing method early for fast path detection
+    const Method method = static_cast<Method>(parsed["method"].as<int>());
+    
+    // Always generate PPM
     Logger()->debug("Adding PPM generator node");
     using Shading = PPMGeneratorNode::Shading;
     auto ppmGen = graph->insertNode<PPMGeneratorNode>();
@@ -807,11 +874,18 @@ auto main(int argc, char* argv[]) -> int
         results["ppm"] = &tfmNode->output;
     }
 
-    // Save the PPM
+    // Save the PPM - either to user-specified path or alongside output
     if (parsed.count("output-ppm") > 0) {
         Logger()->debug("Adding PPM writer node");
         auto writer = graph->insertNode<WritePPMNode>();
         writer->path = parsed["output-ppm"].as<std::string>();
+        writer->ppm = *results["ppm"];
+    } else {
+        // Auto-save PPM alongside output file
+        Logger()->debug("Adding auto PPM writer node");
+        auto ppmPath = outputPath.parent_path() / (outputPath.stem().string() + ".ppm");
+        auto writer = graph->insertNode<WritePPMNode>();
+        writer->path = ppmPath;
         writer->ppm = *results["ppm"];
     }
 
@@ -854,8 +928,15 @@ auto main(int argc, char* argv[]) -> int
         writerLInf->image = plotErr->lInfPlot;
     }
 
+    // Check if we can use the fast path for layer rendering
+    bool useFastPath = loadZarr && method == Method::Layers && 
+                       vc::IsFileType(outputPath, {"tiff", "tif"});
+    
+    if (useFastPath) {
+        Logger()->info("Using fast layer rendering path with PPM");
+    }
+
     // Neighborhood generator
-    const Method method = static_cast<Method>(parsed["method"].as<int>());
     if (method != Method::Intersection and method != Method::Thickness) {
         Logger()->debug("Adding neighborhood generator node");
         auto neighborGen = graph->insertNode<NeighborhoodGeneratorNode>();
@@ -891,8 +972,20 @@ auto main(int argc, char* argv[]) -> int
         } else {
             auto radiusCalc =
                 graph->insertNode<CalculateNeighborhoodRadiusNode>();
-            radiusCalc->thickness = vpkg->materialThickness();
-            radiusCalc->voxelSize = tgtVolProps->voxelSize;
+            // Default material thickness in microns if not using volpkg
+            double materialThickness = 50.0;
+            if (loadVolPkg) {
+                materialThickness = vpkg->materialThickness();
+            }
+            radiusCalc->thickness = materialThickness;
+            
+            // Get voxel size from results map
+            if (results.count("voxelsize") > 0) {
+                radiusCalc->voxelSize = *results["voxelsize"];
+            } else {
+                Logger()->error("Voxel size not available for radius calculation");
+                return EXIT_FAILURE;
+            }
             neighborGen->radius = radiusCalc->radius;
         }
 
@@ -902,22 +995,49 @@ auto main(int argc, char* argv[]) -> int
     // Setup texturing method
     smgl::Node::Pointer texturing;
     bool textureIsSeq = false;
-    if (method == Method::Intersection) {
+    
+    if (useFastPath && method == Method::Layers) {
+        // Fast path for layer texturing with zarr
+        Logger()->debug("Adding fast layer texture node");
+        auto t = graph->insertNode<FastLayerTextureNode>();
+        t->ppm = *results["ppm"];
+        t->volume = *results["volume"];
+        t->generator = *results["generator"];
+        
+        // Set cache size
+        std::size_t cacheBytes{2'000'000'000};
+        if (parsed.count("zarr-cache-size") > 0) {
+            auto cacheSizeStr = parsed["zarr-cache-size"].as<std::string>();
+            cacheBytes = MemorySizeStringParser(cacheSizeStr);
+        } else if (parsed.count("cache-memory-limit") > 0) {
+            auto cacheSizeOpt = parsed["cache-memory-limit"].as<std::string>();
+            cacheBytes = MemorySizeStringParser(cacheSizeOpt);
+        } else {
+            cacheBytes = SystemMemorySize() / 2;
+        }
+        t->cacheSize = cacheBytes;
+        
+        results["texture"] = &t->texture;
+        textureIsSeq = true;
+    }
+    else if (method == Method::Intersection) {
         Logger()->debug("Adding intersection texture node");
         auto t = graph->insertNode<IntersectionTextureNode>();
-        texturing = t;
+        t->ppm = *results["ppm"];
+        t->volume = *results["volume"];
+        results["texture"] = &t->texture;
     }
-
     else if (method == Method::Composite) {
         Logger()->debug("Adding composite texture node");
         using Filter = CompositeTextureNode::Filter;
         auto filter = static_cast<Filter>(parsed["filter"].as<int>());
         auto t = graph->insertNode<CompositeTextureNode>();
+        t->ppm = *results["ppm"];
+        t->volume = *results["volume"];
         t->generator = *results["generator"];
         t->filter = filter;
-        texturing = t;
+        results["texture"] = &t->texture;
     }
-
     else if (method == Method::Integral) {
         Logger()->debug("Adding integral texture node");
         using WeightMethod = IntegralTextureNode::WeightMethod;
@@ -934,6 +1054,8 @@ auto main(int argc, char* argv[]) -> int
         auto clampToMax = parsed.count("clamp-to-max") > 0;
 
         auto t = graph->insertNode<IntegralTextureNode>();
+        t->ppm = *results["ppm"];
+        t->volume = *results["volume"];
         t->generator = *results["generator"];
         t->weightMethod = wType;
         t->linearWeightDirection = wDir;
@@ -944,9 +1066,8 @@ auto main(int argc, char* argv[]) -> int
         if (clampToMax) {
             t->clampMax = parsed["clamp-to-max"].as<std::uint16_t>();
         }
-        texturing = t;
+        results["texture"] = &t->texture;
     }
-
     else if (method == Method::Thickness) {
         // Load mask
         if (parsed.count("volume-mask") == 0) {
@@ -962,24 +1083,22 @@ auto main(int argc, char* argv[]) -> int
 
         Logger()->debug("Adding thickness texture node");
         auto t = graph->insertNode<ThicknessTextureNode>();
+        t->ppm = *results["ppm"];
+        t->volume = *results["volume"];
         t->volumetricMask = reader->volumetricMask;
         t->normalizeOutput = parsed["normalize-output"].as<bool>();
         t->samplingInterval = parsed["interval"].as<double>();
-        texturing = t;
+        results["texture"] = &t->texture;
     }
-
     else if (method == Method::Layers) {
         Logger()->debug("Adding layer texture node");
         auto t = graph->insertNode<LayerTextureNode>();
+        t->ppm = *results["ppm"];
+        t->volume = *results["volume"];
         t->generator = *results["generator"];
-        texturing = t;
+        results["texture"] = &t->texture;
         textureIsSeq = true;
     }
-
-    // Set/get generic parameters
-    texturing->getInputPort("ppm") = *results["ppm"];
-    texturing->getInputPort("volume") = *results["volume"];
-    results["texture"] = &texturing->getOutputPort("texture");
 
     // If we're generating an image sequence and using the default output file
     // change the name to a sequence

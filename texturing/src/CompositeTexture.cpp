@@ -80,6 +80,8 @@ auto ApplyFilter(const Neighborhood& n, Filter filter) -> std::uint16_t
         case Filter::MedianAverage:
             return FilterMedianMean(n, MEDIAN_MEAN_PERCENT_RANGE);
     }
+    // Should never reach here, but compiler needs a return
+    return 0;
 }
 
 }  // namespace
@@ -107,6 +109,11 @@ auto CompositeTexture::compute() -> Texture
     auto height = static_cast<int>(ppm_->height());
     auto width = static_cast<int>(ppm_->width());
 
+    // Create cache if volume is zarr
+    if (vol_->isZarr && !chunkCache_) {
+        chunkCache_ = std::make_unique<ChunkCache>(cacheSize_);
+    }
+
     // Output image
     cv::Mat image = cv::Mat::zeros(height, width, CV_16UC1);
 
@@ -120,25 +127,96 @@ auto CompositeTexture::compute() -> Texture
             return (*ppm_)(lhs.y, lhs.x)[2] < (*ppm_)(rhs.y, rhs.x)[2];
         });
 
-    // Iterate through the mappings
-    progressStarted();
+    // First pass: collect all neighborhood coordinates
+    std::vector<cv::Vec3f> allCoordinates;
+    std::vector<std::tuple<std::size_t, std::size_t, std::size_t>> coordMapping; // mapping_idx, start_idx, count
+    
+    // Get generator parameters for position calculation
+    auto radius = gen_->samplingRadius()[0];
+    auto interval = gen_->samplingInterval();
+    auto direction = gen_->samplingDirection();
+    auto dim = gen_->dim();
+    auto extent = gen_->extents();
+    
     for (const auto [idx, coord] : enumerate(mappings)) {
-        progressUpdated(idx);
-
-        // Generate the neighborhood
         const auto [y, x] = coord;
         const auto& m = ppm_->getMapping(y, x);
         const cv::Vec3d pos{m[0], m[1], m[2]};
         const cv::Vec3d normal{m[3], m[4], m[5]};
-        auto neighborhood = gen_->compute(vol_, pos, {normal});
-        Neighborhood::Flatten(neighborhood, 1);
+        
+        // Calculate positions based on generator dimension
+        if (dim == 1) {
+            // LineGenerator logic
+            double min, max;
+            switch (direction) {
+                case Direction::Bidirectional:
+                    min = -radius;
+                    max = radius;
+                    break;
+                case Direction::Positive:
+                    min = 0;
+                    max = radius;
+                    break;
+                case Direction::Negative:
+                    min = -radius;
+                    max = 0;
+                    break;
+            }
+            
+            auto count = static_cast<std::size_t>(std::floor((max - min) / interval) + 1);
+            for (std::size_t it = 0; it < count; it++) {
+                auto offset = min + (it * interval);
+                cv::Vec3d samplePos = pos + (normal * offset);
+                allCoordinates.push_back(cv::Vec3f(
+                    static_cast<float>(samplePos[0]),
+                    static_cast<float>(samplePos[1]),
+                    static_cast<float>(samplePos[2])
+                ));
+            }
+            coordMapping.push_back({idx, allCoordinates.size() - count, count});
+        } else {
+            // For higher dimensions, fall back to regular computation
+            auto neighborhood = gen_->compute(vol_, pos, {normal});
+            Neighborhood::Flatten(neighborhood, 1);
 
-        // Assign the intensity value at the UV position
-        const auto v = static_cast<int>(y);
-        const auto u = static_cast<int>(x);
-        image.at<std::uint16_t>(v, u) = ::ApplyFilter(neighborhood, filter_);
+            // Assign the intensity value at the UV position
+            const auto v = static_cast<int>(y);
+            const auto u = static_cast<int>(x);
+            image.at<std::uint16_t>(v, u) = ::ApplyFilter(neighborhood, filter_);
+        }
     }
-    progressComplete();
+    
+    // Batch interpolate all coordinates if we have any
+    if (!allCoordinates.empty()) {
+        cv::Mat_<cv::Vec3f> coordMat(static_cast<int>(allCoordinates.size()), 1);
+        for (size_t i = 0; i < allCoordinates.size(); i++) {
+            coordMat(static_cast<int>(i), 0) = allCoordinates[i];
+        }
+        
+        cv::Mat intensities = vol_->batchInterpolateAt(coordMat, chunkCache_.get());
+        
+        // Second pass: process neighborhoods with interpolated values
+        progressStarted();
+        for (const auto& [idx, startIdx, count] : coordMapping) {
+            progressUpdated(idx);
+
+            const auto& coord = mappings[idx];
+            const auto [y, x] = coord;
+            
+            // Reconstruct neighborhood from batch results
+            Neighborhood n(1, {count});
+            
+            for (std::size_t nIdx = 0; nIdx < count; nIdx++) {
+                n(nIdx) = intensities.at<std::uint16_t>(static_cast<int>(startIdx + nIdx), 0);
+            }
+
+            // Assign the intensity value at the UV position
+            const auto v = static_cast<int>(y);
+            const auto u = static_cast<int>(x);
+            image.at<std::uint16_t>(v, u) = ::ApplyFilter(n, filter_);
+        }
+        progressComplete();
+    }
 
     // Set output
     result_.push_back(image);

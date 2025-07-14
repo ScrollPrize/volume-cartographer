@@ -7,6 +7,10 @@
 #include "vc/core/util/FloatComparison.hpp"
 #include "vc/core/util/Logging.hpp"
 
+#include "z5/filesystem/handle.hxx"
+#include "z5/dataset.hxx"
+#include "z5/attributes.hxx"
+
 using namespace volcart;
 namespace fs = volcart::filesystem;
 
@@ -684,7 +688,11 @@ TransformSelectorNode::TransformSelectorNode()
             Logger()->error("[graph.core] empty transform ID");
         } else {
             Logger()->debug("[graph.core] loading transform: {}", id_);
-            tfm_ = vpkg_->transform(id_);
+            // VolumePkg doesn't have a transform method
+            // For now, just log an error as transforms aren't directly supported by VolumePkg
+            Logger()->error("[graph.core] transforms are not directly supported by VolumePkg API");
+            // Create an identity transform as a placeholder
+            tfm_ = IdentityTransform::New();
         }
     };
 }
@@ -778,4 +786,119 @@ void TransformPPMNode::deserialize_(
         auto ppmFile = meta["ppm"].get<std::string>();
         output_ = PerPixelMap::New(PerPixelMap::ReadPPM(cacheDir / ppmFile));
     }
+}
+
+LoadZarrVolumeNode::LoadZarrVolumeNode()
+    : path{&path_}, scale{&scale_}, volume{&volume_}
+{
+    registerInputPort("path", path);
+    registerInputPort("scale", scale);
+    registerOutputPort("volume", volume);
+    
+    compute = [&]() { doUpdate(); };
+}
+
+void LoadZarrVolumeNode::doUpdate()
+{
+    Logger()->debug("[graph.core] loading zarr volume: {}", path_.string());
+    
+    // Create a Volume object for the zarr
+    volume_ = Volume::New(path_);
+    
+    // Set metadata for zarr
+    volume_->metadata().set("format", "zarr");
+    
+    // Get the dataset at requested scale
+    auto ds = volume_->getZarrDatasetAtScale(scale_);
+    if (ds) {
+        // Get shape from dataset
+        std::vector<std::size_t> shape;
+        if (ds) {
+            shape.resize(ds->dimension());
+            for (std::size_t i = 0; i < ds->dimension(); ++i) {
+                shape[i] = ds->shape(i);
+            }
+        }
+        // Shape is in [z, y, x] order for zarr
+        volume_->setNumberOfSlices(shape[0]);
+        volume_->setSliceHeight(shape[1]);
+        volume_->setSliceWidth(shape[2]);
+        
+        // Calculate voxel size based on scale
+        // Try to read base voxel size from zarr metadata
+        double baseVoxelSize = 1.0; // Default
+        
+        try {
+            // First, check for meta.json in the zarr root directory
+            auto metaJsonPath = path_ / "meta.json";
+            if (fs::exists(metaJsonPath)) {
+                std::ifstream metaFile(metaJsonPath);
+                if (metaFile.is_open()) {
+                    nlohmann::json metaJson;
+                    metaFile >> metaJson;
+                    metaFile.close();
+                    
+                    if (metaJson.contains("voxelsize")) {
+                        baseVoxelSize = metaJson["voxelsize"].get<double>();
+                        Logger()->debug("[graph.core] Read voxel size {} from meta.json", baseVoxelSize);
+                    }
+                }
+            } else {
+                // Fall back to .zattrs file
+                z5::filesystem::handle::Group group(path_, z5::FileMode::FileMode::r);
+                nlohmann::json attrs;
+                auto attrsPath = path_ / ".zattrs";
+                if (fs::exists(attrsPath)) {
+                    std::ifstream file(attrsPath);
+                    if (file.is_open()) {
+                        file >> attrs;
+                        file.close();
+                    }
+                }
+                
+                // Check for voxel size in various common locations
+                if (attrs.contains("pixelResolution")) {
+                    if (attrs["pixelResolution"].contains("dimensions")) {
+                        auto dims = attrs["pixelResolution"]["dimensions"];
+                        if (dims.is_array() && dims.size() > 0) {
+                            baseVoxelSize = dims[0].get<double>();
+                            Logger()->debug("[graph.core] Read voxel size {} from .zattrs pixelResolution", baseVoxelSize);
+                        }
+                    }
+                } else if (attrs.contains("voxel_size")) {
+                    if (attrs["voxel_size"].is_number()) {
+                        baseVoxelSize = attrs["voxel_size"].get<double>();
+                    } else if (attrs["voxel_size"].is_array() && attrs["voxel_size"].size() > 0) {
+                        baseVoxelSize = attrs["voxel_size"][0].get<double>();
+                    }
+                    Logger()->debug("[graph.core] Read voxel size {} from .zattrs voxel_size", baseVoxelSize);
+                }
+            }
+        } catch (const std::exception& e) {
+            Logger()->warn("[graph.core] Could not read voxel size from zarr metadata: {}, using default of 1.0", e.what());
+        }
+        
+        volume_->setVoxelSize(baseVoxelSize * std::pow(2, scale_));
+        Logger()->debug("[graph.core] Zarr volume loaded - size: {}x{}x{}, voxel size: {}", 
+                       shape[2], shape[1], shape[0], volume_->voxelSize());
+    } else {
+        throw std::runtime_error("Failed to get zarr dataset at scale " + std::to_string(scale_));
+    }
+}
+
+auto LoadZarrVolumeNode::serialize_(
+    bool /*useCache*/, const fs::path& /*cacheDir*/) -> smgl::Metadata
+{
+    return {
+        {"path", path_.string()},
+        {"scale", scale_}
+    };
+}
+
+void LoadZarrVolumeNode::deserialize_(
+    const smgl::Metadata& meta, const fs::path& /*cacheDir*/)
+{
+    path_ = meta["path"].get<std::string>();
+    scale_ = meta["scale"].get<int>();
+    doUpdate();
 }

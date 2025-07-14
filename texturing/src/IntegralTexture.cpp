@@ -22,6 +22,11 @@ auto IntegralTexture::compute() -> Texture
     auto height = static_cast<int>(ppm_->height());
     auto width = static_cast<int>(ppm_->width());
 
+    // Create cache if volume is zarr
+    if (vol_->isZarr && !chunkCache_) {
+        chunkCache_ = std::make_unique<ChunkCache>(cacheSize_);
+    }
+
     // Set up the weights
     setup_weights_();
 
@@ -38,39 +43,131 @@ auto IntegralTexture::compute() -> Texture
             return (*ppm_)(lhs.y, lhs.x)[2] < (*ppm_)(rhs.y, rhs.x)[2];
         });
 
-    // Iterate through the mappings
-    progressStarted();
+    // First pass: collect all neighborhood coordinates
+    std::vector<cv::Vec3f> allCoordinates;
+    std::vector<std::tuple<std::size_t, std::size_t, std::size_t>> coordMapping; // mapping_idx, flat_idx, neighbor_size
+    
+    // Get generator parameters for position calculation
+    auto radius = gen_->samplingRadius()[0];
+    auto interval = gen_->samplingInterval();
+    auto direction = gen_->samplingDirection();
+    auto dim = gen_->dim();
+    auto extent = gen_->extents();
+    
     for (const auto [idx, coord] : enumerate(mappings)) {
-        progressUpdated(idx);
-
-        // Generate the neighborhood
         const auto [y, x] = coord;
         const auto& m = ppm_->getMapping(y, x);
         const cv::Vec3d pos{m[0], m[1], m[2]};
         const cv::Vec3d normal{m[3], m[4], m[5]};
-        auto n = gen_->compute(vol_, pos, {normal});
+        
+        // Calculate positions based on generator dimension
+        if (dim == 1) {
+            // LineGenerator logic
+            double min, max;
+            switch (direction) {
+                case Direction::Bidirectional:
+                    min = -radius;
+                    max = radius;
+                    break;
+                case Direction::Positive:
+                    min = 0;
+                    max = radius;
+                    break;
+                case Direction::Negative:
+                    min = -radius;
+                    max = 0;
+                    break;
+            }
+            
+            auto count = static_cast<std::size_t>(std::floor((max - min) / interval) + 1);
+            for (std::size_t it = 0; it < count; it++) {
+                auto offset = min + (it * interval);
+                cv::Vec3d samplePos = pos + (normal * offset);
+                allCoordinates.push_back(cv::Vec3f(
+                    static_cast<float>(samplePos[0]),
+                    static_cast<float>(samplePos[1]),
+                    static_cast<float>(samplePos[2])
+                ));
+            }
+            coordMapping.push_back({idx, allCoordinates.size() - count, count});
+        } else if (dim == 3) {
+            // CuboidGenerator logic - needs full axes computation
+            // For now, fall back to regular computation for cuboid
+            // TODO: Implement full batch support for CuboidGenerator
+            auto n = gen_->compute(vol_, pos, {normal});
+            
+            // Clamp values
+            if (clampToMax_) {
+                std::replace_if(
+                    n.begin(), n.end(),
+                    [this](std::uint16_t v) { return v > clampMax_; }, clampMax_);
+            }
 
-        // Clamp values
-        if (clampToMax_) {
-            std::replace_if(
-                n.begin(), n.end(),
-                [this](std::uint16_t v) { return v > clampMax_; }, clampMax_);
+            // Convert to double and weight the neighborhood
+            NDArray<double> neighborhoodD(
+                n.dims(), n.extents(), n.begin(), n.end());
+            auto weighted = apply_weights_(neighborhoodD);
+
+            // Sum the neighborhood
+            auto value = std::accumulate(weighted.begin(), weighted.end(), 0.0);
+
+            // Assign the intensity value at the UV position
+            const auto v = static_cast<int>(y);
+            const auto u = static_cast<int>(x);
+            image.at<float>(v, u) = static_cast<float>(value);
+            continue;
         }
-
-        // Convert to double and weight the neighborhood
-        NDArray<double> neighborhoodD(
-            n.dims(), n.extents(), n.begin(), n.end());
-        auto weighted = apply_weights_(neighborhoodD);
-
-        // Sum the neighborhood
-        auto value = std::accumulate(weighted.begin(), weighted.end(), 0.0);
-
-        // Assign the intensity value at the UV position
-        const auto v = static_cast<int>(y);
-        const auto u = static_cast<int>(x);
-        image.at<float>(v, u) = static_cast<float>(value);
     }
-    progressComplete();
+    
+    // Batch interpolate all coordinates if we have any
+    if (!allCoordinates.empty()) {
+        cv::Mat_<cv::Vec3f> coordMat(static_cast<int>(allCoordinates.size()), 1);
+        for (size_t i = 0; i < allCoordinates.size(); i++) {
+            coordMat(static_cast<int>(i), 0) = allCoordinates[i];
+        }
+        
+        cv::Mat intensities = vol_->batchInterpolateAt(coordMat, chunkCache_.get());
+        
+        // Second pass: process neighborhoods with interpolated values
+        progressStarted();
+        for (const auto& [idx, startIdx, count] : coordMapping) {
+            progressUpdated(idx);
+
+            const auto& coord = mappings[idx];
+            const auto [y, x] = coord;
+            
+            // Reconstruct neighborhood from batch results
+            std::vector<std::uint16_t> neighborhoodValues;
+            neighborhoodValues.reserve(count);
+            
+            for (std::size_t nIdx = 0; nIdx < count; nIdx++) {
+                neighborhoodValues.push_back(intensities.at<std::uint16_t>(static_cast<int>(startIdx + nIdx), 0));
+            }
+            
+            NDArray<std::uint16_t> n(dim, extent, neighborhoodValues.begin(), neighborhoodValues.end());
+
+            // Clamp values
+            if (clampToMax_) {
+                std::replace_if(
+                    n.begin(), n.end(),
+                    [this](std::uint16_t v) { return v > clampMax_; }, clampMax_);
+            }
+
+            // Convert to double and weight the neighborhood
+            NDArray<double> neighborhoodD(
+                n.dims(), n.extents(), n.begin(), n.end());
+            auto weighted = apply_weights_(neighborhoodD);
+
+            // Sum the neighborhood
+            auto value = std::accumulate(weighted.begin(), weighted.end(), 0.0);
+
+            // Assign the intensity value at the UV position
+            const auto v = static_cast<int>(y);
+            const auto u = static_cast<int>(x);
+            image.at<float>(v, u) = static_cast<float>(value);
+        }
+        progressComplete();
+    }
 
     cv::normalize(image, image, 0.0, 1.0, cv::NORM_MINMAX);
 
@@ -103,6 +200,8 @@ auto IntegralTexture::apply_weights_(NDArray<double>& n) -> NDArray<double>
         case WeightMethod::ExpoDiff:
             return apply_expodiff_weights_(n);
     }
+    // Should never reach here, but compiler needs a return
+    return n;
 }
 
 ///// Linear weighting /////
@@ -162,11 +261,29 @@ void IntegralTexture::setup_expodiff_weights_()
 
 auto IntegralTexture::expodiff_intersection_pts_() -> std::vector<std::uint16_t>
 {
-    // Get all the intensity values
-    std::vector<std::uint16_t> values;
-    for (const auto [y, x] : ppm_->getMappingCoords()) {
+    // Get all the mapping coordinates
+    auto mappings = ppm_->getMappingCoords();
+    
+    // Collect coordinates for batch processing
+    cv::Mat_<cv::Vec3f> coordMat(static_cast<int>(mappings.size()), 1);
+    for (const auto [idx, coord] : enumerate(mappings)) {
+        const auto [y, x] = coord;
         const auto& m = ppm_->getMapping(y, x);
-        values.emplace_back(vol_->interpolateAt({m[0], m[1], m[2]}));
+        coordMat(static_cast<int>(idx), 0) = cv::Vec3f(
+            static_cast<float>(m[0]),
+            static_cast<float>(m[1]), 
+            static_cast<float>(m[2])
+        );
+    }
+    
+    // Batch interpolate
+    cv::Mat intensities = vol_->batchInterpolateAt(coordMat, chunkCache_.get());
+    
+    // Convert to vector
+    std::vector<std::uint16_t> values;
+    values.reserve(mappings.size());
+    for (int i = 0; i < intensities.rows; i++) {
+        values.push_back(intensities.at<std::uint16_t>(i, 0));
     }
 
     return values;

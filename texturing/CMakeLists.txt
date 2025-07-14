@@ -8,6 +8,7 @@ set(srcs
     src/IntersectionTexture.cpp
     src/IntegralTexture.cpp
     src/LayerTexture.cpp
+    src/FastLayerTexture.cpp
     src/FlatteningAlgorithm.cpp
     src/ScaleMarkerGenerator.cpp
     src/OrthographicProjectionFlattening.cpp

@@ -5,6 +5,20 @@ if(VC_BUILD_GUI)
 add_subdirectory(VC3D)
 endif()
 
+####################
+# Graph-based Apps #
+####################
+if(TARGET vc_graph)
+    add_executable(vc_render src/Render.cpp)
+    target_link_libraries(vc_render
+        vc_graph
+        VC::slicing
+        app_support
+        Boost::program_options
+        TIFF::TIFF
+    )
+endif()
+
 #################
 # CMD Line Apps #
 #################
@@ -105,8 +119,7 @@ target_link_libraries(vc_tiffxyz_upscale_grounding
 
 # Install targets
 if(VC_INSTALL_APPS)
-install(
-    TARGETS
+    set(install_targets
         vc_render_video
         vc_render_tifxyz
         vc_objrefine
@@ -117,7 +130,15 @@ install(
         vc_tifxyz_winding
         vc_fill_quadmesh
         ${extra_apps}
-    RUNTIME DESTINATION bin
-    COMPONENT Programs
-)
+    )
+    
+    if(TARGET vc_render)
+        list(APPEND install_targets vc_render)
+    endif()
+    
+    install(
+        TARGETS ${install_targets}
+        RUNTIME DESTINATION bin
+        COMPONENT Programs
+    )
 endif()

@@ -4,7 +4,9 @@
 
 #include "vc/texturing/TexturingAlgorithm.hpp"
 
+#include <memory>
 #include "vc/core/neighborhood/LineGenerator.hpp"
+#include "vc/core/util/Slicing.hpp"
 
 namespace volcart::texturing
 {
@@ -59,6 +61,16 @@ public:
 private:
     /** Neighborhood Generator */
     LineGenerator::Pointer gen_;
+    
+    /** ChunkCache for efficient zarr access */
+    std::unique_ptr<ChunkCache> chunkCache_;
+    
+    /** Cache size for zarr operations */
+    std::size_t cacheSize_{2'000'000'000};
+    
+public:
+    /** Set cache size for zarr operations */
+    void setCacheSize(std::size_t bytes) { cacheSize_ = bytes; }
 };
 
 }  // namespace volcart::texturing

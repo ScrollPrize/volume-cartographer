@@ -2,6 +2,7 @@
 
 /** @file */
 
+#include <memory>
 #include "vc/texturing/TexturingAlgorithm.hpp"
 
 namespace volcart::texturing
@@ -18,6 +19,12 @@ namespace volcart::texturing
  */
 class IntersectionTexture : public TexturingAlgorithm
 {
+private:
+    /** Chunk cache for zarr operations */
+    void* chunkCache_{nullptr};
+    /** Cache size in bytes */
+    std::size_t cacheSize_{2'000'000'000};
+    
 public:
     /** Pointer type */
     using Pointer = std::shared_ptr<IntersectionTexture>;
@@ -28,7 +35,7 @@ public:
     /** Default constructor */
     IntersectionTexture() = default;
     /** Default destructor */
-    ~IntersectionTexture() override = default;
+    ~IntersectionTexture() override;
     /** Default copy constructor */
     IntersectionTexture(IntersectionTexture&) = default;
     /** Default move constructor */
@@ -40,6 +47,9 @@ public:
     auto operator=(IntersectionTexture&&) -> IntersectionTexture& = default;
 
     /**@{*/
+    /** @brief Set cache size for zarr operations */
+    void setCacheSize(std::size_t bytes) { cacheSize_ = bytes; }
+    
     /** @brief Compute the Texture */
     auto compute() -> Texture override;
     /**@}*/

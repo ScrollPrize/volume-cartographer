@@ -247,8 +247,23 @@ public:
     void cachePurge() const;
     /**@}*/
 
+    /**
+     * @brief Get interpolated intensity values at multiple subvoxel positions
+     * 
+     * For zarr volumes, uses efficient batch reading with chunk caching.
+     * For regular volumes, falls back to individual interpolateAt calls.
+     * 
+     * @param coordinates Matrix of 3D coordinates (CV_32FC3)
+     * @param cache Optional ChunkCache for zarr volumes
+     * @return Matrix of interpolated intensity values (CV_16UC1)
+     */
+    cv::Mat batchInterpolateAt(const cv::Mat_<cv::Vec3f>& coordinates, void* cache = nullptr) const;
+
     z5::Dataset *zarrDataset(int level = 0);
     size_t numScales();
+    
+    /** @brief Get zarr dataset at specific scale level */
+    z5::Dataset* getZarrDatasetAtScale(int scale = 0) const;
     
 protected:
     /** Slice width */

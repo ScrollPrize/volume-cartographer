@@ -404,7 +404,7 @@ void NeighborhoodGeneratorNode::deserialize_(
 CompositeTextureNode::CompositeTextureNode()
     : Node{true}
     , ppm{&textureGen_, &TAlgo::setPerPixelMap}
-    , volume{&textureGen_, &TAlgo::setVolume}
+    , volume{&volume_}
     , generator{&textureGen_, &TAlgo::setGenerator}
     , filter{[&](const auto& f) {
         filter_ = f;
@@ -419,6 +419,18 @@ CompositeTextureNode::CompositeTextureNode()
     registerOutputPort("texture", texture);
     compute = [&]() {
         Logger()->debug("[graph.texturing] generating composite texture");
+        
+        // Set the volume on the texture generator
+        textureGen_.setVolume(volume_);
+        
+        // Set cache size for zarr volumes
+        if (volume_ && volume_->isZarr) {
+            // Use volume's cache capacity converted to bytes
+            auto cacheBytes = volume_->getCacheCapacity() * 
+                             volume_->sliceWidth() * volume_->sliceHeight() * 2;
+            textureGen_.setCacheSize(cacheBytes);
+        }
+        
         texture_ = textureGen_.compute().at(0);
     };
 }
@@ -449,7 +461,7 @@ void CompositeTextureNode::deserialize_(
 IntersectionTextureNode::IntersectionTextureNode()
     : Node{true}
     , ppm{&textureGen_, &TAlgo::setPerPixelMap}
-    , volume{&textureGen_, &TAlgo::setVolume}
+    , volume{&volume_}
     , texture{&texture_}
 {
     registerInputPort("ppm", ppm);
@@ -457,6 +469,18 @@ IntersectionTextureNode::IntersectionTextureNode()
     registerOutputPort("texture", texture);
     compute = [&]() {
         Logger()->debug("[graph.texturing] generating intersection texture");
+        
+        // Set the volume on the texture generator
+        textureGen_.setVolume(volume_);
+        
+        // Set cache size for zarr volumes
+        if (volume_ && volume_->isZarr) {
+            // Use volume's cache capacity converted to bytes
+            auto cacheBytes = volume_->getCacheCapacity() * 
+                             volume_->sliceWidth() * volume_->sliceHeight() * 2;
+            textureGen_.setCacheSize(cacheBytes);
+        }
+        
         texture_ = textureGen_.compute().at(0);
     };
 }
@@ -484,7 +508,7 @@ void IntersectionTextureNode::deserialize_(
 IntegralTextureNode::IntegralTextureNode()
     : Node{true}
     , ppm{&textureGen_, &TAlgo::setPerPixelMap}
-    , volume{&textureGen_, &TAlgo::setVolume}
+    , volume{&volume_}
     , generator{&textureGen_, &TAlgo::setGenerator}
     , clampValuesToMax{&textureGen_, &TAlgo::setClampValuesToMax}
     , clampMax{&textureGen_, &TAlgo::setClampMax}
@@ -512,6 +536,18 @@ IntegralTextureNode::IntegralTextureNode()
 
     compute = [&]() {
         Logger()->debug("[graph.texturing] generating integral texture");
+        
+        // Set the volume on the texture generator
+        textureGen_.setVolume(volume_);
+        
+        // Set cache size for zarr volumes
+        if (volume_ && volume_->isZarr) {
+            // Use volume's cache capacity converted to bytes
+            auto cacheBytes = volume_->getCacheCapacity() * 
+                             volume_->sliceWidth() * volume_->sliceHeight() * 2;
+            textureGen_.setCacheSize(cacheBytes);
+        }
+        
         texture_ = textureGen_.compute().at(0);
     };
 }
@@ -616,7 +652,7 @@ LayerTextureNode::LayerTextureNode()
         }
         textureGen_.setGenerator(derived);
     }}
-    , volume{&textureGen_, &TAlgo::setVolume}
+    , volume{&volume_}
     , texture{&texture_}
 {
     registerInputPort("ppm", ppm);
@@ -626,6 +662,18 @@ LayerTextureNode::LayerTextureNode()
 
     compute = [&]() {
         Logger()->debug("[graph.texturing] generating layers");
+        
+        // Set the volume on the texture generator
+        textureGen_.setVolume(volume_);
+        
+        // Set cache size for zarr volumes
+        if (volume_ && volume_->isZarr) {
+            // Use volume's cache capacity converted to bytes
+            auto cacheBytes = volume_->getCacheCapacity() * 
+                             volume_->sliceWidth() * volume_->sliceHeight() * 2;
+            textureGen_.setCacheSize(cacheBytes);
+        }
+        
         texture_ = textureGen_.compute();
         Logger()->debug("[graph.texturing] done");
     };
@@ -645,6 +693,71 @@ auto LayerTextureNode::serialize_(bool useCache, const fs::path& cacheDir)
 void LayerTextureNode::deserialize_(
     const smgl::Metadata& meta, const fs::path& cacheDir)
 {
+    // TODO: Load textures
+    if (meta.contains("texture")) {
+        auto imgFile = meta["texture"].get<std::string>();
+        // texture_ = ReadImage(cacheDir / imgFile);
+    }
+}
+
+FastLayerTextureNode::FastLayerTextureNode()
+    : Node{true}
+    , ppm{[&](const auto& p) { textureGen_.setPerPixelMap(p); }}
+    , volume{&volume_}
+    , generator{[&](auto ptr) {
+        auto derived = std::dynamic_pointer_cast<LineGenerator>(ptr);
+        if (not derived) {
+            throw std::runtime_error("Generator is not a LineGenerator");
+        }
+        textureGen_.setGenerator(derived);
+    }}
+    , cacheSize{[&](const auto& size) { textureGen_.setCacheSize(size); }}
+    , chunkSize{[&](const auto& size) { textureGen_.setChunkSize(size); }}
+    , texture{&texture_}
+{
+    registerInputPort("ppm", ppm);
+    registerInputPort("volume", volume);
+    registerInputPort("generator", generator);
+    registerInputPort("cacheSize", cacheSize);
+    registerInputPort("chunkSize", chunkSize);
+    registerOutputPort("texture", texture);
+
+    compute = [&]() {
+        Logger()->debug("[graph.texturing] generating fast layers");
+        
+        // Set the volume on the texture generator
+        textureGen_.setVolume(volume_);
+        
+        // Compute the texture
+        texture_ = textureGen_.compute();
+        Logger()->debug("[graph.texturing] fast layers done");
+    };
+}
+
+auto FastLayerTextureNode::serialize_(bool useCache, const fs::path& cacheDir)
+    -> smgl::Metadata
+{
+    smgl::Metadata meta;
+    meta["orientNormals"] = textureGen_.getOrientNormals();
+    meta["chunkSize"] = textureGen_.getChunkSize();
+    
+    if (useCache and not texture_.empty()) {
+        WriteImageSequence(cacheDir / "fast_layers_{}.tif", texture_);
+        meta["texture"] = "fast_layers_{}.tif";
+    }
+    return meta;
+}
+
+void FastLayerTextureNode::deserialize_(
+    const smgl::Metadata& meta, const fs::path& cacheDir)
+{
+    if (meta.contains("orientNormals")) {
+        textureGen_.setOrientNormals(meta["orientNormals"].get<bool>());
+    }
+    if (meta.contains("chunkSize")) {
+        textureGen_.setChunkSize(meta["chunkSize"].get<int>());
+    }
+    
     // TODO: Load textures
     if (meta.contains("texture")) {
         auto imgFile = meta["texture"].get<std::string>();

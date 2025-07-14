@@ -94,7 +94,8 @@ target_link_libraries(${target}
     ${SDL2_LIBRARIES}
     ${GSL_LIBRARIES}
     z5
-    OpenMP::OpenMP_CXX
+    spdlog::spdlog
+    fmt::fmt
 )
 
 if (${VC_INSTALL_APPS})

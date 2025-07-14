@@ -163,6 +163,48 @@ private:
 };
 
 /**
+ * @brief Load a zarr volume directly from disk
+ *
+ * Creates a Volume object from a zarr directory without requiring a VolumePkg.
+ * 
+ * @ingroup Graph
+ */
+class LoadZarrVolumeNode : public smgl::Node
+{
+private:
+    /** Path to zarr volume */
+    filesystem::path path_{};
+    /** Scale level to use */
+    int scale_{0};
+    /** Loaded volume */
+    Volume::Pointer volume_{nullptr};
+
+public:
+    /** @brief Zarr volume path */
+    smgl::InputPort<filesystem::path> path;
+    /** @brief Scale level (0 = full resolution) */
+    smgl::InputPort<int> scale;
+    /** @brief Loaded Volume */
+    smgl::OutputPort<Volume::Pointer> volume;
+
+    /** Constructor */
+    LoadZarrVolumeNode();
+
+private:
+    /** Update implementation */
+    void doUpdate();
+    
+    /** smgl custom serialization */
+    auto serialize_(bool useCache, const filesystem::path& cacheDir)
+        -> smgl::Metadata override;
+
+    /** smgl custom deserialization */
+    void deserialize_(
+        const smgl::Metadata& meta,
+        const filesystem::path& cacheDir) override;
+};
+
+/**
  * @copydoc VolumePkg::segmentation(const Segmentation::Identifier&) const
  *
  * @ingroup Graph
