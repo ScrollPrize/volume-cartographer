@@ -182,81 +182,67 @@ void FastLayerTexture::processChunk(
     auto direction = gen_->samplingDirection();
     std::size_t numLayers = gen_->extents()[0];
     
-    // First pass: count valid pixels in this chunk
-    int validPixels = 0;
-    for (int y = chunk.y; y < chunk.y + chunk.height; ++y) {
-        for (int x = chunk.x; x < chunk.x + chunk.width; ++x) {
-            if (cachedValidMask_(y, x)) {
-                validPixels++;
+    // Extract chunk of positions and normals
+    cv::Mat_<cv::Vec3f> chunkPositions(chunk.height, chunk.width);
+    cv::Mat_<cv::Vec3f> chunkNormals(chunk.height, chunk.width);
+    
+    // Copy valid pixels to chunk matrices
+    for (int y = 0; y < chunk.height; ++y) {
+        for (int x = 0; x < chunk.width; ++x) {
+            int srcY = chunk.y + y;
+            int srcX = chunk.x + x;
+            
+            if (cachedValidMask_(srcY, srcX)) {
+                const cv::Vec3d& pos = cachedPositions_(srcY, srcX);
+                const cv::Vec3d& normal = cachedNormals_(srcY, srcX);
+                chunkPositions(y, x) = cv::Vec3f(
+                    static_cast<float>(pos[0]),
+                    static_cast<float>(pos[1]),
+                    static_cast<float>(pos[2])
+                );
+                chunkNormals(y, x) = cv::Vec3f(
+                    static_cast<float>(normal[0]),
+                    static_cast<float>(normal[1]),
+                    static_cast<float>(normal[2])
+                );
+            } else {
+                chunkPositions(y, x) = cv::Vec3f(NAN, NAN, NAN);
+                chunkNormals(y, x) = cv::Vec3f(NAN, NAN, NAN);
             }
         }
     }
     
-    if (validPixels == 0) {
-        return; // No valid pixels in this chunk
-    }
-    
-    // Calculate actual number of coordinates based on direction
-    int coordsPerPixel = 0;
+    // Process each layer with a single readInterpolated3D call per layer
     for (std::size_t layer = 0; layer < numLayers; ++layer) {
+        // Calculate offset for this layer
         double offset = (static_cast<double>(layer) - numLayers / 2.0) * interval;
-        if ((direction == Direction::Positive && offset >= 0) ||
-            (direction == Direction::Negative && offset <= 0) ||
-            (direction == Direction::Bidirectional)) {
-            coordsPerPixel++;
+        
+        // Apply direction constraint
+        if (direction == Direction::Positive && offset < 0) continue;
+        if (direction == Direction::Negative && offset > 0) continue;
+        
+        // Create offset positions for entire chunk
+        cv::Mat_<cv::Vec3f> offsetPositions = chunkPositions + 
+            static_cast<float>(offset * scaleCoordinates) * chunkNormals;
+        
+        // Apply coordinate scaling
+        if (scaleCoordinates != 1.0f) {
+            offsetPositions *= scaleCoordinates;
         }
-    }
-    
-    int totalCoords = validPixels * coordsPerPixel;
-    
-    // Pre-allocate coordinate matrix
-    cv::Mat_<cv::Vec3f> coordMat(totalCoords, 1);
-    
-    // Pre-allocate mapping vector
-    std::vector<std::tuple<int, int, std::size_t>> mapping;
-    mapping.reserve(totalCoords);
-    
-    // Fill coordinates directly in the matrix
-    int coordIdx = 0;
-    for (int y = chunk.y; y < chunk.y + chunk.height; ++y) {
-        for (int x = chunk.x; x < chunk.x + chunk.width; ++x) {
-            if (cachedValidMask_(y, x)) {
-                const cv::Vec3d& pos = cachedPositions_(y, x);
-                const cv::Vec3d& normal = cachedNormals_(y, x);
-                
-                // Generate positions along the normal
-                for (std::size_t layer = 0; layer < numLayers; ++layer) {
-                    // Calculate offset for this layer
-                    double offset = (static_cast<double>(layer) - numLayers / 2.0) * interval;
-                    
-                    // Apply direction constraint
-                    if (direction == Direction::Positive && offset < 0) continue;
-                    if (direction == Direction::Negative && offset > 0) continue;
-                    
-                    cv::Vec3d samplePos = pos + offset * normal;
-                    
-                    // Apply scale factor for zarr coordinates
-                    coordMat(coordIdx, 0) = cv::Vec3f(
-                        static_cast<float>(samplePos[0] * scaleCoordinates),
-                        static_cast<float>(samplePos[1] * scaleCoordinates),
-                        static_cast<float>(samplePos[2] * scaleCoordinates)
-                    );
-                    
-                    mapping.push_back({x, y, layer});
-                    coordIdx++;
+        
+        // Read interpolated values for entire chunk
+        cv::Mat_<uint8_t> intensities;
+        readInterpolated3D(intensities, dataset, offsetPositions, cache);
+        
+        // Copy intensities to output
+        for (int y = 0; y < chunk.height; ++y) {
+            for (int x = 0; x < chunk.width; ++x) {
+                if (cachedValidMask_(chunk.y + y, chunk.x + x)) {
+                    outputs[layer].at<uint8_t>(chunk.y + y, chunk.x + x) = 
+                        intensities(y, x);
                 }
             }
         }
-    }
-    
-    // Batch interpolate all coordinates
-    cv::Mat_<uint8_t> intensities;
-    readInterpolated3D(intensities, dataset, coordMat, cache);
-    
-    // Assign intensities to layer images
-    for (size_t i = 0; i < mapping.size(); i++) {
-        auto [x, y, layer] = mapping[i];
-        outputs[layer].at<std::uint8_t>(y, x) = intensities.at<std::uint8_t>(static_cast<int>(i), 0);
     }
 }
 
