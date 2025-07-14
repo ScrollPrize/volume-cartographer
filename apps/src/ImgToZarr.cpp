@@ -7,12 +7,12 @@
 #include <jxl/resizable_parallel_runner_cxx.h>
 #include <jxl/types.h>
 
-#include <xtensor/xadapt.hpp>
-#include <xtensor/xview.hpp>
-#include <xtensor/xarray.hpp>
-#include <xtensor/xaxis_slice_iterator.hpp>
-#include <xtensor/xio.hpp>
-#include <xtensor/xbuilder.hpp>
+#include <xtensor/containers/xadapt.hpp>
+#include <xtensor/views/xview.hpp>
+#include <xtensor/containers/xarray.hpp>
+#include <xtensor/views/xaxis_slice_iterator.hpp>
+#include <xtensor/io/xio.hpp>
+#include <xtensor/generators/xbuilder.hpp>
 
 #include "z5/factory.hxx"
 #include "z5/filesystem/handle.hxx"

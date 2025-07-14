@@ -1,6 +1,6 @@
 #pragma once
 
-#include <xtensor/xarray.hpp>
+#include <xtensor/containers/xarray.hpp>
 #include <opencv2/core.hpp>
 
 #include <shared_mutex>

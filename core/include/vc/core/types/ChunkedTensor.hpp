@@ -5,9 +5,9 @@
 #include <opencv2/core.hpp>
 #include "z5/dataset.hxx"
 
-#include <xtensor/xtensor.hpp>
-#include <xtensor/xadapt.hpp>
-#include <xtensor/xview.hpp>
+#include <xtensor/containers/xtensor.hpp>
+#include <xtensor/containers/xadapt.hpp>
+#include <xtensor/views/xview.hpp>
 
 #include "z5/multiarray/xtensor_access.hxx"
 
