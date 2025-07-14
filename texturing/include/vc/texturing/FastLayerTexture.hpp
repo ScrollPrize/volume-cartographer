@@ -113,6 +113,16 @@ private:
     /** Result texture layers */
     Texture result_;
     
+    // Cached PPM data
+    cv::Mat_<cv::Vec3d> cachedPositions_;
+    cv::Mat_<cv::Vec3d> cachedNormals_;
+    cv::Mat_<uint8_t> cachedValidMask_;
+    
+    /**
+     * @brief Cache PPM data for faster access
+     */
+    void cachePPMData();
+    
     /**
      * @brief Process a single chunk of the output image
      */

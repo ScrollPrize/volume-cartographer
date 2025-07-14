@@ -22,6 +22,31 @@ auto FastLayerTexture::New() -> Pointer
     return std::make_shared<FastLayerTexture>();
 }
 
+void FastLayerTexture::cachePPMData()
+{
+    auto height = static_cast<int>(ppm_->height());
+    auto width = static_cast<int>(ppm_->width());
+    
+    // Initialize cached matrices
+    cachedPositions_ = cv::Mat_<cv::Vec3d>(height, width);
+    cachedNormals_ = cv::Mat_<cv::Vec3d>(height, width);
+    cachedValidMask_ = cv::Mat_<uint8_t>(height, width, static_cast<uint8_t>(0));
+    
+    // Cache PPM data
+    for (int y = 0; y < height; ++y) {
+        for (int x = 0; x < width; ++x) {
+            if (ppm_->hasMapping(y, x)) {
+                const auto& m = ppm_->getMapping(y, x);
+                cachedPositions_(y, x) = cv::Vec3d(m[0], m[1], m[2]);
+                cachedNormals_(y, x) = cv::Vec3d(m[3], m[4], m[5]);
+                cachedValidMask_(y, x) = 255;
+            }
+        }
+    }
+    
+    Logger()->debug("FastLayerTexture: Cached PPM data for {}x{} pixels", width, height);
+}
+
 auto FastLayerTexture::compute() -> Texture
 {
     // Validate inputs
@@ -55,6 +80,9 @@ auto FastLayerTexture::compute() -> Texture
     auto width = static_cast<int>(ppm_->width());
     cv::Size outputSize(width, height);
     
+    // Cache PPM data for faster access
+    cachePPMData();
+    
     // Setup output images
     result_.clear();
     result_.reserve(numLayers);
@@ -84,6 +112,27 @@ auto FastLayerTexture::compute() -> Texture
     
     z5::filesystem::handle::Dataset ds_handle(group, std::to_string(scale), dim_separator);
     std::unique_ptr<z5::Dataset> dataset = z5::filesystem::openDataset(ds_handle);
+    
+    // Get zarr chunk shape for optimal processing
+    auto zarrChunkShape = dataset->chunking().blockShape();
+    Logger()->debug("FastLayerTexture: Zarr chunk shape is {}x{}x{}", 
+                    zarrChunkShape[0], zarrChunkShape[1], zarrChunkShape[2]);
+    
+    // Align processing chunk size with zarr chunks if possible
+    // For 2D access patterns, we care about the X and Y dimensions
+    if (zarrChunkShape.size() >= 3) {
+        // Try to use a multiple of zarr chunk dimensions for better alignment
+        int zarrChunkY = static_cast<int>(zarrChunkShape[1]);
+        int zarrChunkX = static_cast<int>(zarrChunkShape[2]);
+        
+        // Use zarr chunk size or a multiple that's close to our target chunk size
+        if (zarrChunkX > 0 && zarrChunkY > 0) {
+            int multipleX = std::max(1, chunkSize_ / zarrChunkX);
+            int multipleY = std::max(1, chunkSize_ / zarrChunkY);
+            chunkSize_ = std::max(zarrChunkX * multipleX, zarrChunkY * multipleY);
+            Logger()->debug("FastLayerTexture: Adjusted chunk size to {} for better zarr alignment", chunkSize_);
+        }
+    }
     
     // Calculate scale factor for coordinates
     float ds_scale = 1.0f;
@@ -133,17 +182,47 @@ void FastLayerTexture::processChunk(
     auto direction = gen_->samplingDirection();
     std::size_t numLayers = gen_->extents()[0];
     
-    // Collect all 3D coordinates for this chunk
-    std::vector<cv::Vec3f> coordinates;
-    std::vector<std::tuple<int, int, std::size_t>> mapping; // x, y, layer
-    
+    // First pass: count valid pixels in this chunk
+    int validPixels = 0;
     for (int y = chunk.y; y < chunk.y + chunk.height; ++y) {
         for (int x = chunk.x; x < chunk.x + chunk.width; ++x) {
-            // Check if this pixel has valid mapping
-            if (ppm_->hasMapping(y, x)) {
-                const auto& m = ppm_->getMapping(y, x);
-                const cv::Vec3d pos{m[0], m[1], m[2]};
-                const cv::Vec3d normal{m[3], m[4], m[5]};
+            if (cachedValidMask_(y, x)) {
+                validPixels++;
+            }
+        }
+    }
+    
+    if (validPixels == 0) {
+        return; // No valid pixels in this chunk
+    }
+    
+    // Calculate actual number of coordinates based on direction
+    int coordsPerPixel = 0;
+    for (std::size_t layer = 0; layer < numLayers; ++layer) {
+        double offset = (static_cast<double>(layer) - numLayers / 2.0) * interval;
+        if ((direction == Direction::Positive && offset >= 0) ||
+            (direction == Direction::Negative && offset <= 0) ||
+            (direction == Direction::Omni)) {
+            coordsPerPixel++;
+        }
+    }
+    
+    int totalCoords = validPixels * coordsPerPixel;
+    
+    // Pre-allocate coordinate matrix
+    cv::Mat_<cv::Vec3f> coordMat(totalCoords, 1);
+    
+    // Pre-allocate mapping vector
+    std::vector<std::tuple<int, int, std::size_t>> mapping;
+    mapping.reserve(totalCoords);
+    
+    // Fill coordinates directly in the matrix
+    int coordIdx = 0;
+    for (int y = chunk.y; y < chunk.y + chunk.height; ++y) {
+        for (int x = chunk.x; x < chunk.x + chunk.width; ++x) {
+            if (cachedValidMask_(y, x)) {
+                const cv::Vec3d& pos = cachedPositions_(y, x);
+                const cv::Vec3d& normal = cachedNormals_(y, x);
                 
                 // Generate positions along the normal
                 for (std::size_t layer = 0; layer < numLayers; ++layer) {
@@ -157,35 +236,27 @@ void FastLayerTexture::processChunk(
                     cv::Vec3d samplePos = pos + offset * normal;
                     
                     // Apply scale factor for zarr coordinates
-                    samplePos *= scaleCoordinates;
+                    coordMat(coordIdx, 0) = cv::Vec3f(
+                        static_cast<float>(samplePos[0] * scaleCoordinates),
+                        static_cast<float>(samplePos[1] * scaleCoordinates),
+                        static_cast<float>(samplePos[2] * scaleCoordinates)
+                    );
                     
-                    coordinates.push_back(cv::Vec3f(
-                        static_cast<float>(samplePos[0]),
-                        static_cast<float>(samplePos[1]),
-                        static_cast<float>(samplePos[2])
-                    ));
                     mapping.push_back({x, y, layer});
+                    coordIdx++;
                 }
             }
         }
     }
     
     // Batch interpolate all coordinates
-    if (!coordinates.empty()) {
-        cv::Mat_<cv::Vec3f> coordMat(static_cast<int>(coordinates.size()), 1);
-        for (size_t i = 0; i < coordinates.size(); i++) {
-            coordMat(static_cast<int>(i), 0) = coordinates[i];
-        }
-        
-        cv::Mat_<uint8_t> intensities;
-        readInterpolated3D(intensities, dataset, coordMat, cache);
-        
-        // Assign intensities to layer images
-        for (size_t i = 0; i < mapping.size(); i++) {
-            auto [x, y, layer] = mapping[i];
-            // Store 8-bit value
-            outputs[layer].at<std::uint8_t>(y, x) = intensities.at<std::uint8_t>(static_cast<int>(i), 0);
-        }
+    cv::Mat_<uint8_t> intensities;
+    readInterpolated3D(intensities, dataset, coordMat, cache);
+    
+    // Assign intensities to layer images
+    for (size_t i = 0; i < mapping.size(); i++) {
+        auto [x, y, layer] = mapping[i];
+        outputs[layer].at<std::uint8_t>(y, x) = intensities.at<std::uint8_t>(static_cast<int>(i), 0);
     }
 }
 

@@ -881,9 +881,9 @@ auto main(int argc, char* argv[]) -> int
         writer->path = parsed["output-ppm"].as<std::string>();
         writer->ppm = *results["ppm"];
     } else {
-        // Auto-save PPM alongside output file
+        // Auto-save PPM to parent directory of output path
         Logger()->debug("Adding auto PPM writer node");
-        auto ppmPath = outputPath.parent_path() / (outputPath.stem().string() + ".ppm");
+        auto ppmPath = outputPath.parent_path().parent_path() / (outputPath.stem().string() + ".ppm");
         auto writer = graph->insertNode<WritePPMNode>();
         writer->path = ppmPath;
         writer->ppm = *results["ppm"];
