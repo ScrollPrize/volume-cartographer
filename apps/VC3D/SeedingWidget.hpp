@@ -28,17 +28,18 @@ class ChunkCache;
 
 namespace ChaoVis {
 
+class CSurfaceCollection;
+
 class SeedingWidget : public QWidget {
     Q_OBJECT
     
 public:
-    explicit SeedingWidget(QWidget* parent = nullptr);
+    explicit SeedingWidget(VCCollection* point_collection, CSurfaceCollection* surface_collection, QWidget* parent = nullptr);
     ~SeedingWidget();
     
     void setVolumePkg(std::shared_ptr<volcart::VolumePkg> vpkg);
     void setCurrentVolume(std::shared_ptr<volcart::Volume> volume);
     void setCache(ChunkCache* cache);
-    void setPointCollection(VCCollection* collection);
     
 signals:
     void sendPointsChanged(VCCollection*);
@@ -123,6 +124,7 @@ private:
     ChunkCache* chunkCache;
     int currentZSlice;
     VCCollection* _point_collection;
+    CSurfaceCollection* _surface_collection;
     cv::Mat distanceTransform;
     
     // Drawing mode data

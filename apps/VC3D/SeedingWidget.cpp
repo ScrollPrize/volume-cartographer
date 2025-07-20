@@ -19,6 +19,7 @@
 #include "vc/core/util/Logging.hpp"
 
 #include "VCCollection.hpp"
+#include "CSurfaceCollection.hpp"
 
 #include <cmath>
 #include <filesystem>
@@ -31,7 +32,7 @@ namespace vc = volcart;
 
 namespace ChaoVis {
 
-SeedingWidget::SeedingWidget(QWidget* parent)
+SeedingWidget::SeedingWidget(VCCollection* point_collection, CSurfaceCollection* surface_collection, QWidget* parent)
     : QWidget(parent)
     , fVpkg(nullptr)
     , currentVolume(nullptr)
@@ -41,14 +42,20 @@ SeedingWidget::SeedingWidget(QWidget* parent)
     , isDrawing(false)
     , colorIndex(0)
     , jobsRunning(false)
-    , _point_collection(nullptr)
+    , _point_collection(point_collection)
+    , _surface_collection(surface_collection)
 {
     setupUI();
+
+    if (_point_collection) {
+        connect(_point_collection, &VCCollection::collectionChanged, this, &SeedingWidget::onCollectionChanged);
+        onCollectionChanged(); // Initial population
+    }
     
     // Automatically find the executable path
     executablePath = findExecutablePath();
     if (executablePath.isEmpty()) {
-        QMessageBox::warning(this, "Warning", 
+        QMessageBox::warning(this, "Warning",
             "Could not find vc_grow_seg_from_seed executable. "
             "Please ensure it is built and in your PATH or in the build directory.");
     }
@@ -218,14 +225,6 @@ void SeedingWidget::setCache(ChunkCache* cache)
     chunkCache = cache;
 }
 
-void SeedingWidget::setPointCollection(VCCollection* collection)
-{
-    _point_collection = collection;
-    if (_point_collection) {
-        connect(_point_collection, &VCCollection::collectionChanged, this, &SeedingWidget::onCollectionChanged);
-        onCollectionChanged(); // Initial population
-    }
-}
 
 void SeedingWidget::onCollectionChanged()
 {
@@ -338,12 +337,12 @@ void SeedingWidget::castRays()
         const cv::Vec2f rayDir(cos(angle), sin(angle));
         
         // Find peaks along this ray in 3D
-        auto focus_points = _point_collection->getPoints("focus");
-        if (focus_points.empty()) {
+        POI* focus_poi = _surface_collection->poi("focus");
+        if (!focus_poi) {
             QMessageBox::warning(this, "Warning", "No focus point set. Please set a focus point before casting rays.");
             return;
         }
-        findPeaksAlongRay(rayDir, focus_points[0].p);
+        findPeaksAlongRay(rayDir, focus_poi->p);
         
         // Update progress
         progressBar->setValue((i + 1) * 100 / numSteps);
@@ -402,6 +401,8 @@ void SeedingWidget::findPeaksAlongRay(
         return;
     }
     
+    std::vector<ColPoint> new_peaks;
+    
     // Enhanced local maxima detection with configurable window
     for (size_t i = window; i < intensities.size() - window; i++) {
         bool isLocalMax = true;
@@ -421,7 +422,7 @@ void SeedingWidget::findPeaksAlongRay(
             if (intensities[i] > thresholdSpinBox->value()) {
                 ColPoint p;
                 p.p = positions[i];
-                _point_collection->addPoint("seeding_peaks", p);
+                new_peaks.push_back(p);
             }
         }
     }
@@ -430,7 +431,7 @@ void SeedingWidget::findPeaksAlongRay(
     for (size_t i = window; i < intensities.size() - window; i++) {
         // Skip if we're too close to already detected peaks
         bool tooClose = false;
-        for (const auto& existingPoint : _point_collection->getPoints("seeding_peaks")) {
+        for (const auto& existingPoint : new_peaks) {
             float dist = cv::norm(existingPoint.p - positions[i]);
             if (dist < window) {
                 tooClose = true;
@@ -451,13 +452,17 @@ void SeedingWidget::findPeaksAlongRay(
         
         // If there's a significant gradient difference and the point is over threshold
         float gradientDiff = std::abs(leftAvg - rightAvg);
-        if (gradientDiff > thresholdSpinBox->value() * 0.5 && 
+        if (gradientDiff > thresholdSpinBox->value() * 0.5 &&
             intensities[i] > thresholdSpinBox->value()) {
             
             ColPoint p;
             p.p = positions[i];
-            _point_collection->addPoint("seeding_peaks", p);
+            new_peaks.push_back(p);
         }
+    }
+    
+    if (!new_peaks.empty()) {
+        _point_collection->addPoints("seeding_peaks", new_peaks);
     }
 }
 

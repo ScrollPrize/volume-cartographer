@@ -307,8 +307,7 @@ void CWindow::CreateWidgets(void)
     _drawingWidget->setCache(chunk_cache);
     
     // Create Seeding widget
-    _seedingWidget = new SeedingWidget(ui.dockWidgetDistanceTransform);
-    _seedingWidget->setPointCollection(_point_collection);
+    _seedingWidget = new SeedingWidget(_point_collection, _surf_col, ui.dockWidgetDistanceTransform);
     ui.dockWidgetDistanceTransform->setWidget(_seedingWidget);
     
     connect(this, &CWindow::sendVolumeChanged, _seedingWidget, 
