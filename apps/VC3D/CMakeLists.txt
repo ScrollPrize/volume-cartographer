@@ -36,6 +36,8 @@ set(srcs
     CommandLineToolRunner.hpp
     ConsoleOutputWidget.cpp
     ConsoleOutputWidget.hpp
+    VCCollection.cpp
+    VCCollection.hpp
 )
 
 set(MACOSX_BUNDLE_ICON logo.icns)

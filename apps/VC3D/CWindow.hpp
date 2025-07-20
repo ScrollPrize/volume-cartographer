@@ -8,6 +8,7 @@
 
 #include "CommandLineToolRunner.hpp"
 #include "vc/core/util/SurfaceDef.hpp"
+#include "VCCollection.hpp"
 
 #include <QShortcut>
 
@@ -59,7 +60,7 @@ signals:
     void sendVolumeChanged(std::shared_ptr<volcart::Volume> vol, const std::string& volumeId);
     void sendSliceChanged(std::string,Surface*);
     void sendOpChainSelected(OpChain*);
-    void sendPointsChanged(const std::vector<cv::Vec3f> red, const std::vector<cv::Vec3f> blue);
+    void sendPointsChanged(VCCollection*);
     void sendSurfacesLoaded();
     void sendVolumeClosing(); // Signal to notify viewers before closing volume
 
@@ -87,6 +88,7 @@ public:
     
     // Helper method to get the current volume path
     QString getCurrentVolumePath() const;
+    VCCollection* pointCollection() { return _point_collection; }
 
 protected:
     void keyPressEvent(QKeyEvent* event) override;
@@ -153,6 +155,7 @@ private slots:
     void onManualLocationChanged();
     void onZoomIn();
     void onZoomOut();
+    void onCollectionChanged();
 
 private:
     bool appInitComplete{false};
@@ -210,8 +213,7 @@ private:
     SeedingWidget* _seedingWidget;
     DrawingWidget* _drawingWidget;
 
-    std::vector<cv::Vec3f> _red_points;
-    std::vector<cv::Vec3f> _blue_points;
+    VCCollection* _point_collection;
     
     SurfaceTreeWidget *treeWidgetSurfaces;
     OpsList *wOpsList;

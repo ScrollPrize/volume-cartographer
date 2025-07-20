@@ -9,6 +9,7 @@
 
 #include "CVolumeViewerView.hpp"
 #include "CSurfaceCollection.hpp"
+#include "VCCollection.hpp"
 
 #include "vc/core/types/VolumePkg.hpp"
 #include "vc/core/util/Surface.hpp"
@@ -1134,56 +1135,66 @@ void CVolumeViewer::renderPaths()
 void CVolumeViewer::renderPoints()
 {
     for(auto &item : _points_items) {
-        // Only remove item if it's actually in our scene
         if (item && item->scene() == fScene) {
             fScene->removeItem(item);
         }
         delete item;
     }
-    _points_items.resize(0);
-    
-    std::vector<cv::Vec3f> all_ps(_red_points);
-    all_ps.insert(all_ps.end(), _blue_points.begin(), _blue_points.end());
-    
-    int n = -1;
-    for(auto &wp : all_ps) {
-        n++;
-        PlaneSurface *plane = dynamic_cast<PlaneSurface*>(_surf);
-        QuadSurface *quad = dynamic_cast<QuadSurface*>(_surf);
-        
-        cv::Vec3f p;
-        
-        if (plane) {
-            if (plane->pointDist(wp) >= 4.0)
-                continue;
-            p = plane->project(wp, 1.0, _scale);
-        }
-        else if (quad) {
-            SurfacePointer *ptr = quad->pointer();
-            float res = _surf->pointTo(ptr, wp, 4.0, 100);
-            p = _surf->loc(ptr)*_scale;
-            if (res >= 4.0)
-                continue;
-        }
-        else
-            continue;
-        
-        QColor col = QColor(100, 100, 255);
-        if (n < _red_points.size())
+    _points_items.clear();
+
+    if (!_point_collection) return;
+
+    const auto& collections = _point_collection->getAllCollections();
+    for (const auto& pair : collections) {
+        const std::string& collectionName = pair.first;
+        const std::vector<ColPoint>& points = pair.second;
+
+        QColor col;
+        if (collectionName == "user_red") {
             col = QColor(255, 100, 100);
-        
-        QGraphicsItem *item = fScene->addEllipse(p[0]-4, p[1]-4, 8, 8, QPen(Qt::white), QBrush(col, Qt::SolidPattern));
-        item->setZValue(30);
-        _points_items.push_back(item);
+        } else if (collectionName == "user_blue") {
+            col = QColor(100, 100, 255);
+        } else if (collectionName == "seeding_seeds") {
+            col = QColor(100, 255, 100); // Green for seeds
+        } else if (collectionName == "seeding_peaks") {
+            col = QColor(255, 165, 0); // Orange for peaks
+        } else {
+            col = Qt::white;
+        }
+
+        for (const auto& point : points) {
+            const cv::Vec3f& wp = point.p;
+            PlaneSurface *plane = dynamic_cast<PlaneSurface*>(_surf);
+            QuadSurface *quad = dynamic_cast<QuadSurface*>(_surf);
+            
+            cv::Vec3f p;
+            
+            if (plane) {
+                if (plane->pointDist(wp) >= 4.0)
+                    continue;
+                p = plane->project(wp, 1.0, _scale);
+            }
+            else if (quad) {
+                SurfacePointer *ptr = quad->pointer();
+                float res = _surf->pointTo(ptr, wp, 4.0, 100);
+                p = _surf->loc(ptr)*_scale;
+                if (res >= 4.0)
+                    continue;
+            }
+            else
+                continue;
+            
+            QGraphicsItem *item = fScene->addEllipse(p[0]-4, p[1]-4, 8, 8, QPen(Qt::white), QBrush(col, Qt::SolidPattern));
+            item->setZValue(30);
+            _points_items.push_back(item);
+        }
     }
 }
 
 
-void CVolumeViewer::onPointsChanged(const std::vector<cv::Vec3f> red, const std::vector<cv::Vec3f> blue)
+void CVolumeViewer::onPointsChanged(VCCollection* collection)
 {
-    _red_points = red;
-    _blue_points = blue;
-    
+    _point_collection = collection;
     renderPoints();
 }
 

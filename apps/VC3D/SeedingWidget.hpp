@@ -16,6 +16,7 @@
 #include <memory>
 #include <map>
 #include "PathData.hpp"
+#include "VCCollection.hpp"
 
 namespace volcart {
     class Volume;
@@ -36,9 +37,10 @@ public:
     void setVolumePkg(std::shared_ptr<volcart::VolumePkg> vpkg);
     void setCurrentVolume(std::shared_ptr<volcart::Volume> volume);
     void setCache(ChunkCache* cache);
+    void setPointCollection(VCCollection* collection);
     
 signals:
-    void sendPointsChanged(const std::vector<cv::Vec3f> red, const std::vector<cv::Vec3f> blue);
+    void sendPointsChanged(VCCollection*);
     void sendPathsChanged(const QList<PathData>& paths);
     void sendStatusMessageAvailable(QString text, int timeout);
     
@@ -123,8 +125,7 @@ private:
     ChunkCache* chunkCache;
     cv::Vec3f selectedPoint;
     int currentZSlice;
-    std::vector<cv::Vec3f> peakPoints;
-    std::vector<cv::Vec3f> userPlacedPoints; // Points placed via shift+click
+    VCCollection* _point_collection;
     cv::Mat distanceTransform;
     bool hasSelectedPoint;
     bool waitingForSeedPoint;

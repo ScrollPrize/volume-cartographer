@@ -64,6 +64,8 @@ CWindow::CWindow() :
     _seedingWidget(nullptr),
     _drawingWidget(nullptr)
 {
+    _point_collection = new VCCollection(this);
+    connect(_point_collection, &VCCollection::collectionChanged, this, &CWindow::onCollectionChanged);
     const QSettings settings("VC.ini", QSettings::IniFormat);
     setWindowIcon(QPixmap(":/images/logo.png"));
     ui.setupUi(this);
@@ -190,6 +192,7 @@ CWindow::~CWindow(void)
     CloseVolume();
     delete chunk_cache;
     delete _surf_col;
+    delete _point_collection;
 }
 
 CVolumeViewer *CWindow::newConnectedCVolumeViewer(std::string surfaceName, QString title, QMdiArea *mdiArea)
@@ -305,6 +308,7 @@ void CWindow::CreateWidgets(void)
     
     // Create Seeding widget
     _seedingWidget = new SeedingWidget(ui.dockWidgetDistanceTransform);
+    _seedingWidget->setPointCollection(_point_collection);
     ui.dockWidgetDistanceTransform->setWidget(_seedingWidget);
     
     connect(this, &CWindow::sendVolumeChanged, _seedingWidget, 
@@ -344,7 +348,7 @@ void CWindow::CreateWidgets(void)
     }
     
     for (auto& viewer : _viewers) {
-        connect(_seedingWidget, &SeedingWidget::sendPointsChanged, 
+        connect(_seedingWidget, &SeedingWidget::sendPointsChanged,
                 viewer, &CVolumeViewer::onPointsChanged);
         connect(_seedingWidget, &SeedingWidget::sendPathsChanged,
                 viewer, &CVolumeViewer::onPathsChanged);
@@ -928,9 +932,7 @@ void CWindow::CloseVolume(void)
     _opchains.clear();
     
     // Clear points
-    _red_points.clear();
-    _blue_points.clear();
-    sendPointsChanged(_red_points, _blue_points);
+    _point_collection->clearAll();
 }
 
 // Handle open request
@@ -1170,12 +1172,12 @@ void CWindow::onVolumeClicked(cv::Vec3f vol_loc, cv::Vec3f normal, Surface *surf
     }
     
     if (modifiers & Qt::ShiftModifier) {
+        ColPoint p;
+        p.p = vol_loc;
         if (modifiers & Qt::ControlModifier)
-            _blue_points.push_back(vol_loc);
+            _point_collection->addPoint("user_blue", p);
         else
-            _red_points.push_back(vol_loc);
-        sendPointsChanged(_red_points, _blue_points);
-        _lblPointsInfo->setText(QString("Red: %1 Blue: %2").arg(_red_points.size()).arg(_blue_points.size()));
+            _point_collection->addPoint("user_red", p);
 
         // Also forward to Seeding widget for user-placed points
         if (_seedingWidget) {
@@ -1569,7 +1571,17 @@ void CWindow::onSegFilterChanged(int index)
             
             // Filter by point sets (red and blue points)
             if (chkFilterPointSets->isChecked()) {
-                show = show && contains(*_vol_qsurfs[id], _red_points) && contains(*_vol_qsurfs[id], _blue_points);
+                auto get_points_as_vec3f = [&](const std::string& name) {
+                    std::vector<cv::Vec3f> points;
+                    auto collection = _point_collection->getPoints(name);
+                    points.reserve(collection.size());
+                    for (const auto& p : collection) {
+                        points.push_back(p.p);
+                    }
+                    return points;
+                };
+
+                show = show && contains(*_vol_qsurfs[id], get_points_as_vec3f("red_points")) && contains(*_vol_qsurfs[id], get_points_as_vec3f("blue_points"));
             }
             
             // Filter by unreviewed
@@ -1659,11 +1671,8 @@ void CWindow::onSegFilterChanged(int index)
 
 void CWindow::onResetPoints(void)
 {
-    _lblPointsInfo->setText(QString("Red: %1 Blue: %2").arg(_red_points.size()).arg(_blue_points.size()));
-    _red_points.resize(0);
-    _blue_points.resize(0);
-    
-    sendPointsChanged(_red_points, _blue_points);
+    _point_collection->clearCollection("user_red");
+    _point_collection->clearCollection("user_blue");
 }
 
 void CWindow::onEditMaskPressed(void)
@@ -2407,4 +2416,10 @@ void CWindow::onZoomOut()
     
     // Trigger zoom out (negative steps)
     viewer->onZoom(-3, center, Qt::NoModifier);
+}
+
+void CWindow::onCollectionChanged()
+{
+    sendPointsChanged(_point_collection);
+    _lblPointsInfo->setText(QString("Red: %1 Blue: %2").arg(_point_collection->getPoints("user_red").size()).arg(_point_collection->getPoints("user_blue").size()));
 }

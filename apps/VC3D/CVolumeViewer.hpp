@@ -26,7 +26,8 @@ class CSurfaceCollection;
 class POI;
 class Intersection;
 class SeedingWidget;
-
+class VCCollection;
+ 
 class CVolumeViewer : public QWidget
 {
     Q_OBJECT
@@ -81,7 +82,7 @@ public slots:
     void onScrolled();
     void onZoom(int steps, QPointF scene_point, Qt::KeyboardModifiers modifiers);
     void onCursorMove(QPointF);
-    void onPointsChanged(const std::vector<cv::Vec3f> red, const std::vector<cv::Vec3f> blue);
+    void onPointsChanged(VCCollection*);
     void onPathsChanged(const QList<PathData>& paths);
     
     // Mouse event handlers for drawing (transform coordinates)
@@ -162,8 +163,7 @@ protected:
     
     CSurfaceCollection *_surf_col = nullptr;
     
-    std::vector<cv::Vec3f> _red_points;
-    std::vector<cv::Vec3f> _blue_points;
+    VCCollection* _point_collection;
     std::vector<QGraphicsItem*> _points_items;
     
     QList<PathData> _paths;
