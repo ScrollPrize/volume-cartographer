@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QWidget>
+#include <QComboBox>
 #include <QSpinBox>
 #include <QDoubleSpinBox>
 #include <QPushButton>
@@ -46,24 +47,21 @@ signals:
     
 public slots:
     void onSurfacesLoaded();  // Called when surfaces have been loaded/reloaded
+    void onCollectionChanged();
     
 public slots:
-    void onPointSelected(cv::Vec3f point, cv::Vec3f normal);
     void onVolumeChanged(std::shared_ptr<volcart::Volume> vol, const std::string& volumeId);
     void updateCurrentZSlice(int z);
-    void onUserPointAdded(cv::Vec3f point);
     void onMousePress(cv::Vec3f vol_point, Qt::MouseButton button, Qt::KeyboardModifiers modifiers);
     void onMouseMove(cv::Vec3f vol_point, Qt::MouseButtons buttons, Qt::KeyboardModifiers modifiers);
     void onMouseRelease(cv::Vec3f vol_point, Qt::MouseButton button, Qt::KeyboardModifiers modifiers);
     
 private slots:
-    void onSetSeedClicked();
     void onCastRaysClicked();
     void onRunSegmentationClicked();
     void onExpandSeedsClicked();
     void onResetPointsClicked();
     void onCancelClicked();
-    void onDrawModeToggled();
     
 private:
     // Mode enum
@@ -95,7 +93,7 @@ private:
     
     // UI elements
     QLabel* infoLabel;
-    QPushButton* setSeedButton;
+    QComboBox* collectionComboBox;
     QDoubleSpinBox* angleStepSpinBox;
     QSpinBox* processesSpinBox;
     QSpinBox* thresholdSpinBox;  // Intensity threshold for peak detection
@@ -123,12 +121,9 @@ private:
     std::shared_ptr<volcart::Volume> currentVolume;
     std::string currentVolumeId;
     ChunkCache* chunkCache;
-    cv::Vec3f selectedPoint;
     int currentZSlice;
     VCCollection* _point_collection;
     cv::Mat distanceTransform;
-    bool hasSelectedPoint;
-    bool waitingForSeedPoint;
     
     // Drawing mode data
     Mode currentMode;

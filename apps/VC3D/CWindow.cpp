@@ -1166,11 +1166,6 @@ void CWindow::onLocChanged(void)
 
 void CWindow::onVolumeClicked(cv::Vec3f vol_loc, cv::Vec3f normal, Surface *surf, Qt::MouseButton buttons, Qt::KeyboardModifiers modifiers)
 {
-    // Forward to Seeding widget if it exists
-    if (_seedingWidget) {
-        _seedingWidget->onPointSelected(vol_loc, normal);
-    }
-    
     if (modifiers & Qt::ShiftModifier) {
         ColPoint p;
         p.p = vol_loc;
@@ -1178,11 +1173,6 @@ void CWindow::onVolumeClicked(cv::Vec3f vol_loc, cv::Vec3f normal, Surface *surf
             _point_collection->addPoint("user_blue", p);
         else
             _point_collection->addPoint("user_red", p);
-
-        // Also forward to Seeding widget for user-placed points
-        if (_seedingWidget) {
-            _seedingWidget->onUserPointAdded(vol_loc);
-        }
 
         // Force an update of the filter
         onSegFilterChanged(0);

@@ -37,8 +37,6 @@ SeedingWidget::SeedingWidget(QWidget* parent)
     , currentVolume(nullptr)
     , chunkCache(nullptr)
     , currentZSlice(0)
-    , hasSelectedPoint(false)
-    , waitingForSeedPoint(false)
     , currentMode(Mode::PointMode)
     , isDrawing(false)
     , colorIndex(0)
@@ -64,7 +62,7 @@ void SeedingWidget::setupUI()
     auto mainLayout = new QVBoxLayout(this);
     
     // Info label
-    infoLabel = new QLabel("Click 'Set Seed' to begin", this);
+    infoLabel = new QLabel("Set a focus point to begin", this);
     mainLayout->addWidget(infoLabel);
     
     // Mode toggle button
@@ -72,10 +70,12 @@ void SeedingWidget::setupUI()
     modeButton->setToolTip("Toggle between point mode and draw mode");
     mainLayout->addWidget(modeButton);
     
-    // Set seed button
-    setSeedButton = new QPushButton("Set Seed", this);
-    setSeedButton->setToolTip("Click to enable point selection mode");
-    mainLayout->addWidget(setSeedButton);
+    // Collection selector
+    auto collectionLayout = new QHBoxLayout();
+    collectionLayout->addWidget(new QLabel("Source Collection:", this));
+    collectionComboBox = new QComboBox(this);
+    collectionLayout->addWidget(collectionComboBox);
+    mainLayout->addLayout(collectionLayout);
     
     // Max radius control
     maxRadiusLayout = new QHBoxLayout();
@@ -179,12 +179,11 @@ void SeedingWidget::setupUI()
         } else {
             currentMode = Mode::PointMode;
             modeButton->setText("Switch to Draw Mode");
-            infoLabel->setText("Point Mode: Click 'Set Seed' to begin");
+            infoLabel->setText("Point Mode: Set a focus point to begin");
         }
         updateModeUI();
         displayPaths();
     });
-    connect(setSeedButton, &QPushButton::clicked, this, &SeedingWidget::onSetSeedClicked);
     connect(castRaysButton, &QPushButton::clicked, this, &SeedingWidget::onCastRaysClicked);
     connect(runSegmentationButton, &QPushButton::clicked, this, &SeedingWidget::onRunSegmentationClicked);
     connect(expandSeedsButton, &QPushButton::clicked, this, &SeedingWidget::onExpandSeedsClicked);
@@ -219,76 +218,44 @@ void SeedingWidget::setCache(ChunkCache* cache)
     chunkCache = cache;
 }
 
+void SeedingWidget::setPointCollection(VCCollection* collection)
+{
+    _point_collection = collection;
+    if (_point_collection) {
+        connect(_point_collection, &VCCollection::collectionChanged, this, &SeedingWidget::onCollectionChanged);
+        onCollectionChanged(); // Initial population
+    }
+}
+
+void SeedingWidget::onCollectionChanged()
+{
+    if (!_point_collection) return;
+
+    collectionComboBox->clear();
+    auto names = _point_collection->getCollectionNames();
+    for (const auto& name : names) {
+        collectionComboBox->addItem(QString::fromStdString(name));
+    }
+}
+
 void SeedingWidget::onVolumeChanged(std::shared_ptr<volcart::Volume> vol, const std::string& volumeId)
 {
-    std::cout << "SeedingWidget::onVolumeChanged called - volume: " << (vol ? "valid" : "null") 
+    std::cout << "SeedingWidget::onVolumeChanged called - volume: " << (vol ? "valid" : "null")
               << ", volumeId: " << volumeId << std::endl;
     currentVolume = vol;
     currentVolumeId = volumeId;
     updateButtonStates();
 }
 
-void SeedingWidget::onUserPointAdded(cv::Vec3f point)
-{
-    if (!_point_collection) return;
-    ColPoint p;
-    p.p = point;
-    _point_collection->addPoint("seeding_seeds", p);
-    
-    updateInfoLabel();
-    updateButtonStates();
-    
-    emit sendStatusMessageAvailable(
-        QString("Added user point at (%1, %2, %3).")
-            .arg(point[0]).arg(point[1]).arg(point[2]),
-        3000);
-}
-
 void SeedingWidget::updateCurrentZSlice(int z)
 {
     currentZSlice = z;
-    // If we have a selected point, update its Z coordinate
-    if (hasSelectedPoint) {
-        selectedPoint[2] = z;
-        infoLabel->setText(QString("Selected point: (%1, %2, %3)")
-                               .arg(selectedPoint[0])
-                               .arg(selectedPoint[1])
-                               .arg(selectedPoint[2]));
-    }
-}
-
-void SeedingWidget::onPointSelected(cv::Vec3f point, cv::Vec3f normal)
-{
-    // Only accept points when waiting for seed selection
-    if (!waitingForSeedPoint) {
-        return;
-    }
-    
-    selectedPoint = point;
-    currentZSlice = static_cast<int>(point[2]);
-    hasSelectedPoint = true;
-    waitingForSeedPoint = false;
-    
-    // Reset button text
-    setSeedButton->setText("Set Seed");
-    setSeedButton->setEnabled(true);
-    
-    infoLabel->setText(QString("Selected point: (%1, %2, %3)")
-                           .arg(selectedPoint[0])
-                           .arg(selectedPoint[1])
-                           .arg(selectedPoint[2]));
-    
-    castRaysButton->setEnabled(currentVolume != nullptr);
-    resetPointsButton->setEnabled(true);
-    
-    // Immediately show the parameter preview
-    updateParameterPreview();
 }
 
 void SeedingWidget::onCastRaysClicked()
 {
     if (currentMode == Mode::PointMode) {
-        if (!currentVolume || !hasSelectedPoint) {
+        if (!currentVolume) {
             return;
         }
         
@@ -371,7 +338,12 @@ void SeedingWidget::castRays()
         const cv::Vec2f rayDir(cos(angle), sin(angle));
         
         // Find peaks along this ray in 3D
-        findPeaksAlongRay(rayDir, selectedPoint);
+        auto focus_points = _point_collection->getPoints("focus");
+        if (focus_points.empty()) {
+            QMessageBox::warning(this, "Warning", "No focus point set. Please set a focus point before casting rays.");
+            return;
+        }
+        findPeaksAlongRay(rayDir, focus_points[0].p);
         
         // Update progress
         progressBar->setValue((i + 1) * 100 / numSteps);
@@ -496,10 +468,15 @@ void SeedingWidget::onRunSegmentationClicked()
     std::cout << "  currentVolumeId: " << currentVolumeId << std::endl;
     std::cout << "  fVpkg: " << (fVpkg ? "valid" : "null") << std::endl;
     
+    // Get the selected collection name from the combo box
+    std::string sourceCollection = collectionComboBox->currentText().toStdString();
+    if (sourceCollection.empty()) {
+        QMessageBox::warning(this, "Warning", "Please select a source collection.");
+        return;
+    }
+
     // Combine analysis points and user-placed points for segmentation
-    std::vector<ColPoint> allPoints = _point_collection->getPoints("seeding_peaks");
-    auto userPoints = _point_collection->getPoints("seeding_seeds");
-    allPoints.insert(allPoints.end(), userPoints.begin(), userPoints.end());
+    std::vector<ColPoint> allPoints = _point_collection->getPoints(sourceCollection);
     
     if (allPoints.empty() || !fVpkg) {
         QMessageBox::warning(this, "Error", "No points available for segmentation or volume package not loaded.");
@@ -659,53 +636,27 @@ void SeedingWidget::onRunSegmentationClicked()
     }
 }
 
-void SeedingWidget::onSetSeedClicked()
-{
-    if (currentMode == Mode::PointMode) {
-        waitingForSeedPoint = true;
-        setSeedButton->setText("Click on volume to place seed...");
-        setSeedButton->setEnabled(false);
-        infoLabel->setText("Click on the volume viewer to select a seed point");
-        emit sendStatusMessageAvailable("Click on the volume to place a seed point", 5000);
-    } else {
-        // Switch to point mode
-        currentMode = Mode::PointMode;
-        isDrawing = false;
-        updateModeUI();
-        displayPaths();
-        infoLabel->setText("Switched to Point Mode");
-    }
-}
 
 void SeedingWidget::onResetPointsClicked()
 {
-    if (currentMode == Mode::PointMode) {
-        // Point mode - reset seed point, peaks, and user points
+    if (_point_collection) {
         _point_collection->clearCollection("seeding_peaks");
         _point_collection->clearCollection("seeding_seeds");
-        hasSelectedPoint = false;
-        waitingForSeedPoint = false;
-        
-        setSeedButton->setText("Set Seed");
-        setSeedButton->setEnabled(true);
-        infoLabel->setText("Click 'Set Seed' to begin");
-        
-        castRaysButton->setEnabled(false);
-        runSegmentationButton->setEnabled(false);
-        resetPointsButton->setEnabled(false);
-    } else {
-        // Draw mode - clear all paths, peaks, and user points
-        paths.clear();
-        _point_collection->clearCollection("seeding_peaks");
-        _point_collection->clearCollection("seeding_seeds");
-        
-        // Update UI
-        updateModeUI();
-        infoLabel->setText("All paths cleared");
-        
-        // Clear visualization - send empty paths and points
-        emit sendPathsChanged({});
     }
+    
+    // Clear paths
+    paths.clear();
+    
+    // Reset UI
+    castRaysButton->setEnabled(false);
+    runSegmentationButton->setEnabled(false);
+    expandSeedsButton->setEnabled(false);
+    resetPointsButton->setEnabled(false);
+    infoLabel->setText("Click 'Cast Rays' to begin");
+    
+    // Redraw to clear points and paths
+    updatePointsDisplay();
+    displayPaths();
 }
 
 QString SeedingWidget::findExecutablePath()
@@ -724,75 +675,56 @@ QString SeedingWidget::findExecutablePath()
 
 void SeedingWidget::updateParameterPreview()
 {
-    if (!hasSelectedPoint || !currentVolume) {
+    auto focus_points = _point_collection->getPoints("focus");
+    if (focus_points.empty() || !currentVolume) {
         return;
     }
+    auto& center_point = focus_points[0].p;
+
+    // Clear previous preview points
+    _point_collection->clearCollection("seeding_preview");
     
-    // Clear any existing preview points
-    std::vector<cv::Vec3f> previewPoints;
-    std::vector<cv::Vec3f> seedPoints;
-    
-    // Add the seed point (will be displayed in blue)
-    ColPoint p;
-    p.p = selectedPoint;
-    _point_collection->setPoints("seeding_seeds", {p});
-    
-    // Get parameter values
+    // Get parameters
     const double angleStep = angleStepSpinBox->value();
-    const int maxRadius = maxRadiusSpinBox->value();
     const int numRays = static_cast<int>(360.0 / angleStep);
+    const int maxRadius = maxRadiusSpinBox->value();
     
-    // Generate preview points to show the radius and ray directions
-    for (int i = 0; i < numRays; i++) {
+    // Add points along the radius circle
+    for (int i = 0; i < numRays; ++i) {
         const double angle = i * angleStep * M_PI / 180.0;
         const cv::Vec2f rayDir(cos(angle), sin(angle));
         
         // Add points along the radius circle
-        float x = selectedPoint[0] + maxRadius * rayDir[0];
-        float y = selectedPoint[1] + maxRadius * rayDir[1];
+        float x = center_point[0] + maxRadius * rayDir[0];
+        float y = center_point[1] + maxRadius * rayDir[1];
         
-        // Check bounds
-        if (x >= 0 && x < currentVolume->sliceWidth() &&
-            y >= 0 && y < currentVolume->sliceHeight()) {
-            previewPoints.push_back(cv::Vec3f(x, y, currentZSlice));
-        }
+        ColPoint p;
+        p.p = {x, y, center_point[2]};
+        _point_collection->addPoint("seeding_preview", p);
         
-        // Add a few intermediate points along each ray for visualization
+        // Add intermediate points for better visualization
         for (int r = maxRadius / 4; r < maxRadius; r += maxRadius / 4) {
-            x = selectedPoint[0] + r * rayDir[0];
-            y = selectedPoint[1] + r * rayDir[1];
+            x = center_point[0] + r * rayDir[0];
+            y = center_point[1] + r * rayDir[1];
             
-            if (x >= 0 && x < currentVolume->sliceWidth() &&
-                y >= 0 && y < currentVolume->sliceHeight()) {
-                previewPoints.push_back(cv::Vec3f(x, y, currentZSlice));
-            }
+            ColPoint p_intermediate;
+            p_intermediate.p = {x, y, center_point[2]};
+            _point_collection->addPoint("seeding_preview", p_intermediate);
         }
     }
-
-// Send the preview points to the volume viewer
-// Red points show the preview, blue point shows the seed
-_point_collection->setPoints("seeding_preview", {});
-
-// Update the info label
+    
+    // Update info label
     infoLabel->setText(QString("Seed at (%1, %2, %3) | Preview: %4 rays, radius %5px")
-                           .arg(selectedPoint[0])
-                           .arg(selectedPoint[1])
-                           .arg(selectedPoint[2])
+                           .arg(center_point[0])
+                           .arg(center_point[1])
+                           .arg(center_point[2])
                            .arg(numRays)
                            .arg(maxRadius));
-}
-
-void SeedingWidget::onDrawModeToggled()
-{
-    // This will be called when setSeedButton is clicked in draw mode
-    // Already handled in onSetSeedClicked
 }
 
 void SeedingWidget::updateModeUI()
 {
     if (currentMode == Mode::PointMode) {
-        setSeedButton->setVisible(true);
-        setSeedButton->setText("Set Seed");
         castRaysButton->setText("Cast Rays");
         resetPointsButton->setText("Reset Points");
         
@@ -803,11 +735,9 @@ void SeedingWidget::updateModeUI()
         angleStepSpinBox->setVisible(true);
         
         // Enable/disable based on state
-        castRaysButton->setEnabled(hasSelectedPoint && currentVolume != nullptr);
-        resetPointsButton->setEnabled(hasSelectedPoint);
+        castRaysButton->setEnabled(currentVolume != nullptr);
+        resetPointsButton->setEnabled(true);
     } else { // DrawMode
-        // Hide the setSeedButton in draw mode
-        setSeedButton->setVisible(false);
         castRaysButton->setText("Analyze Paths");
         resetPointsButton->setText("Clear All Paths");
         
@@ -1079,25 +1009,21 @@ void SeedingWidget::updateInfoLabel()
     QString infoText;
     
     if (currentMode == Mode::PointMode) {
-        if (hasSelectedPoint) {
+        auto focus_points = _point_collection->getPoints("focus");
+        if (!focus_points.empty()) {
+            auto& p = focus_points[0].p;
             infoText = QString("Seed: (%1, %2, %3) | Analysis: %4 pts | User: %5 pts")
-                           .arg(selectedPoint[0])
-                           .arg(selectedPoint[1])
-                           .arg(selectedPoint[2])
+                           .arg(p[0])
+                           .arg(p[1])
+                           .arg(p[2])
                            .arg(_point_collection->getPoints("seeding_peaks").size())
                            .arg(_point_collection->getPoints("seeding_seeds").size());
         } else {
-            infoText = QString("Point Mode | Analysis: %1 pts | User: %2 pts")
-                           .arg(_point_collection->getPoints("seeding_peaks").size())
-                           .arg(_point_collection->getPoints("seeding_seeds").size());
+            infoText = "Point Mode: Set a focus point to begin";
         }
     } else {
-        infoText = QString("Draw Mode: %1 path(s) | Analysis: %2 pts | User: %3 pts")
-                       .arg(paths.size())
-                       .arg(_point_collection->getPoints("seeding_peaks").size())
-                       .arg(_point_collection->getPoints("seeding_seeds").size());
+        infoText = QString("Draw Mode: %1 paths drawn").arg(paths.size());
     }
-    
     infoLabel->setText(infoText);
 }
 
@@ -1112,13 +1038,13 @@ void SeedingWidget::updateButtonStates()
     expandSeedsButton->setEnabled(currentVolume != nullptr && hasSegmentations);
     
     // Enable reset if we have any points or paths
-    bool hasAnyData = hasAnyPoints || !paths.empty() || hasSelectedPoint;
+    bool hasAnyData = hasAnyPoints || !paths.empty();
     resetPointsButton->setEnabled(hasAnyData);
     
     if (currentMode == Mode::PointMode) {
-        castRaysButton->setEnabled(hasSelectedPoint && currentVolume != nullptr);
+        castRaysButton->setEnabled(currentVolume != nullptr);
     } else {
-        castRaysButton->setEnabled(!paths.empty() && currentVolume != nullptr);
+        castRaysButton->setEnabled(!paths.empty());
     }
 }
 
@@ -1351,11 +1277,6 @@ void SeedingWidget::onSurfacesLoaded()
     updateButtonStates();
 }
 
-void SeedingWidget::setPointCollection(VCCollection* collection)
-{
-    _point_collection = collection;
-    emit sendPointsChanged(_point_collection);
-}
 
 
 } // namespace ChaoVis
