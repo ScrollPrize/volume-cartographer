@@ -1159,7 +1159,7 @@ void CVolumeViewer::renderPoints()
         } else if (collectionName == "seeding_peaks") {
             col = QColor(255, 165, 0); // Orange for peaks
         } else {
-            col = Qt::white;
+            col = QColor(200, 100, 0); // Dark Orange for preview
         }
 
         for (const auto& point : points) {

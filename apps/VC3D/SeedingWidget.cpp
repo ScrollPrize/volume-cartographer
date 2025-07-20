@@ -147,6 +147,10 @@ void SeedingWidget::setupUI()
     mainLayout->addLayout(expansionLayout);
     
     // Buttons
+    previewRaysButton = new QPushButton("Preview Rays", this);
+    previewRaysButton->setEnabled(true);
+    mainLayout->addWidget(previewRaysButton);
+    
     castRaysButton = new QPushButton("Cast Rays", this);
     castRaysButton->setEnabled(false);
     mainLayout->addWidget(castRaysButton);
@@ -191,6 +195,7 @@ void SeedingWidget::setupUI()
         updateModeUI();
         displayPaths();
     });
+    connect(previewRaysButton, &QPushButton::clicked, this, &SeedingWidget::onPreviewRaysClicked);
     connect(castRaysButton, &QPushButton::clicked, this, &SeedingWidget::onCastRaysClicked);
     connect(runSegmentationButton, &QPushButton::clicked, this, &SeedingWidget::onRunSegmentationClicked);
     connect(expandSeedsButton, &QPushButton::clicked, this, &SeedingWidget::onExpandSeedsClicked);
@@ -249,6 +254,52 @@ void SeedingWidget::onVolumeChanged(std::shared_ptr<volcart::Volume> vol, const 
 void SeedingWidget::updateCurrentZSlice(int z)
 {
     currentZSlice = z;
+}
+
+void SeedingWidget::onPreviewRaysClicked()
+{
+    if (currentMode != Mode::PointMode || !currentVolume) {
+        return;
+    }
+
+    POI* focus_poi = _surface_collection->poi("focus");
+    if (!focus_poi) {
+        QMessageBox::warning(this, "Warning", "No focus point set. Please set a focus point before previewing rays.");
+        return;
+    }
+
+    _point_collection->clearCollection("ray_preview");
+
+    const double angleStep = angleStepSpinBox->value();
+    const int numSteps = static_cast<int>(360.0 / angleStep);
+    const int maxRadius = maxRadiusSpinBox->value();
+    const cv::Vec3f& startPoint = focus_poi->p;
+
+    std::vector<ColPoint> preview_points;
+
+    const int pointsPerRay = 10;
+    for (int i = 0; i < numSteps; i++) {
+        const double angle = i * angleStep * M_PI / 180.0;
+        const cv::Vec2f rayDir(cos(angle), sin(angle));
+
+        for (int j = 1; j <= pointsPerRay; ++j) {
+            const float dist = (static_cast<float>(j) / pointsPerRay) * maxRadius;
+            cv::Vec3f pointOnRay;
+            pointOnRay[0] = startPoint[0] + dist * rayDir[0];
+            pointOnRay[1] = startPoint[1] + dist * rayDir[1];
+            pointOnRay[2] = startPoint[2];
+
+            ColPoint p;
+            p.p = pointOnRay;
+            preview_points.push_back(p);
+        }
+    }
+
+    if (!preview_points.empty()) {
+        _point_collection->addPoints("ray_preview", preview_points);
+    }
+
+    infoLabel->setText(QString("Previewing %1 rays.").arg(numSteps));
 }
 
 void SeedingWidget::onCastRaysClicked()

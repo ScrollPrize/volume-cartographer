@@ -58,6 +58,7 @@ public slots:
     void onMouseRelease(cv::Vec3f vol_point, Qt::MouseButton button, Qt::KeyboardModifiers modifiers);
     
 private slots:
+    void onPreviewRaysClicked();
     void onCastRaysClicked();
     void onRunSegmentationClicked();
     void onExpandSeedsClicked();
@@ -110,6 +111,7 @@ private:
     
     QString executablePath;
     
+    QPushButton* previewRaysButton;
     QPushButton* castRaysButton;
     QPushButton* runSegmentationButton;
     QPushButton* expandSeedsButton;
