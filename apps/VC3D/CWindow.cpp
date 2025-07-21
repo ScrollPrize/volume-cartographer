@@ -1169,9 +1169,9 @@ void CWindow::onVolumeClicked(cv::Vec3f vol_loc, cv::Vec3f normal, Surface *surf
         ColPoint p;
         p.p = vol_loc;
         if (modifiers & Qt::ControlModifier)
-            _point_collection->addPoint("user_blue", p);
+            _point_collection->addPoint("user_blue", p.p);
         else
-            _point_collection->addPoint("user_red", p);
+            _point_collection->addPoint("user_red", p.p);
 
         // Force an update of the filter
         onSegFilterChanged(0);

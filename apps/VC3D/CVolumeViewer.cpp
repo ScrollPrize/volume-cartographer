@@ -186,7 +186,8 @@ void CVolumeViewer::onCursorMove(QPointF scene_loc)
             for (const auto& point_pair : points) {
                 const auto& point = point_pair.second;
                 QPointF point_scene_pos = volumeToScene(point.p);
-                float dist_sq = QLineF(scene_loc, point_scene_pos).lengthSquared();
+                QPointF diff = scene_loc - point_scene_pos;
+                float dist_sq = QPointF::dotProduct(diff, diff);
                 if (dist_sq < min_dist_sq) {
                     min_dist_sq = dist_sq;
                     _highlighted_point_id = point.id;
@@ -759,7 +760,6 @@ void CVolumeViewer::renderVisible(bool force)
     if (!force && QRectF(curr_img_area).contains(bbox))
         return;
     
-    renderPoints();
     renderPaths();
     
     curr_img_area = {bbox.left()-128,bbox.top()-128, bbox.width()+256, bbox.height()+256};

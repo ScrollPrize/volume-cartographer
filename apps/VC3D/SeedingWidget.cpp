@@ -907,7 +907,7 @@ void SeedingWidget::findPeaksAlongPath(const PathData& path)
             if (intensities[i] > thresholdSpinBox->value()) {
                 ColPoint p;
                 p.p = positions[i];
-                _point_collection->addPoint("seeding_peaks", p);
+                _point_collection->addPoint("seeding_peaks", p.p);
             }
         }
     }
@@ -942,7 +942,7 @@ void SeedingWidget::findPeaksAlongPath(const PathData& path)
             
             ColPoint p;
             p.p = positions[i];
-            _point_collection->addPoint("seeding_peaks", p);
+            _point_collection->addPoint("seeding_peaks", p.p);
         }
     }
 }

@@ -7,6 +7,7 @@
 
 #include <set>
 #include "PathData.hpp"
+#include "VCCollection.hpp"
 
 class ChunkCache;
 class Surface;
