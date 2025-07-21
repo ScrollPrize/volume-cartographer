@@ -1227,29 +1227,50 @@ void CVolumeViewer::renderOrUpdatePoint(const std::string& collectionName, const
     colors["user_blue"] = QColor(100, 100, 255);
     colors["seeding_seeds"] = QColor(100, 255, 100);
 
-    QColor color = colors.count(collectionName) ? colors[collectionName] : Qt::white;
-    float radius = 2.0f;
-
-    if (point.id == _highlighted_point_id || point.id == _dragged_point_id) {
-        color = Qt::cyan;
-        radius = 4.0f;
-    }
-
+    QColor color = colors.count(collectionName) ? colors.at(collectionName) : Qt::white;
     QPointF scene_pos = volumeToScene(point.p);
+
+    bool is_highlighted = (point.id == _highlighted_point_id || point.id == _dragged_point_id);
 
     if (_points_items.count(point.id)) {
         // Update existing item
-        QGraphicsEllipseItem* item = static_cast<QGraphicsEllipseItem*>(_points_items[point.id]);
-        item->setRect(scene_pos.x() - radius, scene_pos.y() - radius, radius * 2, radius * 2);
-        item->setBrush(color);
+        QGraphicsItemGroup* group = static_cast<QGraphicsItemGroup*>(_points_items.at(point.id));
+        group->setPos(scene_pos);
+
+        auto items = group->childItems();
+        if (items.size() == 2) {
+            QGraphicsEllipseItem* point_item = static_cast<QGraphicsEllipseItem*>(items[0]);
+            QGraphicsEllipseItem* highlight_item = static_cast<QGraphicsEllipseItem*>(items[1]);
+
+            point_item->setBrush(color);
+            point_item->setPen(QPen(Qt::white, 1));
+
+            highlight_item->setPen(QPen(color, 3)); // Fat ring
+            highlight_item->setVisible(is_highlighted);
+        }
     } else {
         // Create new item
-        QGraphicsEllipseItem* item = new QGraphicsEllipseItem(scene_pos.x() - radius, scene_pos.y() - radius, radius * 2, radius * 2);
-        item->setBrush(color);
-        item->setPen(Qt::NoPen);
-        item->setZValue(30);
-        fScene->addItem(item);
-        _points_items[point.id] = item;
+        QGraphicsItemGroup* group = new QGraphicsItemGroup();
+        group->setZValue(30);
+
+        // Main point item (mimicking original appearance)
+        float radius = 4.0f;
+        QGraphicsEllipseItem* point_item = new QGraphicsEllipseItem(QRectF(-radius, -radius, radius * 2, radius * 2));
+        point_item->setBrush(color);
+        point_item->setPen(QPen(Qt::white, 1)); // Ring as it was originally
+        group->addToGroup(point_item);
+
+        // Highlight ring
+        float highlight_radius = radius + 3.0f; // Make it a bit larger to be "around"
+        QGraphicsEllipseItem* highlight_item = new QGraphicsEllipseItem(QRectF(-highlight_radius, -highlight_radius, highlight_radius * 2, highlight_radius * 2));
+        highlight_item->setBrush(Qt::NoBrush);
+        highlight_item->setPen(QPen(color, 3)); // Fat ring
+        highlight_item->setVisible(is_highlighted);
+        group->addToGroup(highlight_item);
+
+        group->setPos(scene_pos);
+        fScene->addItem(group);
+        _points_items[point.id] = group;
     }
 }
 
