@@ -1569,7 +1569,25 @@ void CWindow::onSegFilterChanged(int index)
             
             // Filter by point sets (red and blue points)
             if (chkFilterPointSets->isChecked()) {
-                show = show && contains(*_vol_qsurfs[id], _red_points) && contains(*_vol_qsurfs[id], _blue_points);
+                bool containsAnyPoint = false;
+
+                for (const auto& point : _red_points) {
+                    if (contains(*_vol_qsurfs[id], point)) {
+                        containsAnyPoint = true;
+                        break;
+                    }
+                }
+
+                if (!containsAnyPoint) {
+                    for (const auto& point : _blue_points) {
+                        if (contains(*_vol_qsurfs[id], point)) {
+                            containsAnyPoint = true;
+                            break;
+                        }
+                    }
+                }
+
+                show = show && containsAnyPoint;
             }
             
             // Filter by unreviewed
