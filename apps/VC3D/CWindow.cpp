@@ -65,7 +65,6 @@ CWindow::CWindow() :
     _drawingWidget(nullptr)
 {
     _point_collection = new VCCollection(this);
-    connect(_point_collection, &VCCollection::collectionChanged, this, &CWindow::onCollectionChanged);
     const QSettings settings("VC.ini", QSettings::IniFormat);
     setWindowIcon(QPixmap(":/images/logo.png"));
     ui.setupUi(this);
@@ -203,7 +202,9 @@ CVolumeViewer *CWindow::newConnectedCVolumeViewer(std::string surfaceName, QStri
     win->setWindowFlags(Qt::WindowTitleHint | Qt::WindowMinMaxButtonsHint);
     volView->setCache(chunk_cache);
     connect(this, &CWindow::sendVolumeChanged, volView, &CVolumeViewer::OnVolumeChanged);
-    connect(this, &CWindow::sendPointsChanged, volView, &CVolumeViewer::onPointsChanged);
+    volView->setPointCollection(_point_collection);
+    connect(_point_collection, &VCCollection::pointChanged, volView, &CVolumeViewer::onPointChanged);
+    connect(_point_collection, &VCCollection::pointRemoved, volView, &CVolumeViewer::onPointRemoved);
     connect(_surf_col, &CSurfaceCollection::sendSurfaceChanged, volView, &CVolumeViewer::onSurfaceChanged);
     connect(_surf_col, &CSurfaceCollection::sendPOIChanged, volView, &CVolumeViewer::onPOIChanged);
     connect(_surf_col, &CSurfaceCollection::sendIntersectionChanged, volView, &CVolumeViewer::onIntersectionChanged);
@@ -347,8 +348,6 @@ void CWindow::CreateWidgets(void)
     }
     
     for (auto& viewer : _viewers) {
-        connect(_seedingWidget, &SeedingWidget::sendPointsChanged,
-                viewer, &CVolumeViewer::onPointsChanged);
         connect(_seedingWidget, &SeedingWidget::sendPathsChanged,
                 viewer, &CVolumeViewer::onPathsChanged);
         connect(viewer, &CVolumeViewer::sendMousePressVolume,
@@ -2407,8 +2406,3 @@ void CWindow::onZoomOut()
     viewer->onZoom(-3, center, Qt::NoModifier);
 }
 
-void CWindow::onCollectionChanged()
-{
-    sendPointsChanged(_point_collection);
-    _lblPointsInfo->setText(QString("Red: %1 Blue: %2").arg(_point_collection->getPoints("user_red").size()).arg(_point_collection->getPoints("user_blue").size()));
-}

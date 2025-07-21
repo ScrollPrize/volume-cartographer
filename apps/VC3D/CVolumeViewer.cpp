@@ -364,6 +364,11 @@ void CVolumeViewer::setCache(ChunkCache *cache_)
     cache = cache_;
 }
 
+void CVolumeViewer::setPointCollection(VCCollection* point_collection)
+{
+    _point_collection = point_collection;
+}
+
 void CVolumeViewer::setSurface(const std::string &name)
 {
     _surf_name = name;
@@ -1187,36 +1192,6 @@ void CVolumeViewer::renderPaths()
     }
 }
 
-void CVolumeViewer::onPointsChanged(VCCollection* point_collection)
-{
-    if (_point_collection) {
-        disconnect(_point_collection, &VCCollection::pointChanged, this, &CVolumeViewer::onPointChanged);
-        disconnect(_point_collection, &VCCollection::pointRemoved, this, &CVolumeViewer::onPointRemoved);
-    }
-
-    _point_collection = point_collection;
-
-    // Clear old points
-    for (auto& pair : _points_items) {
-        fScene->removeItem(pair.second);
-        delete pair.second;
-    }
-    _points_items.clear();
-
-    if (_point_collection) {
-        connect(_point_collection, &VCCollection::pointChanged, this, &CVolumeViewer::onPointChanged);
-        connect(_point_collection, &VCCollection::pointRemoved, this, &CVolumeViewer::onPointRemoved);
-
-        // Initial render
-        for (const auto& pair : _point_collection->getAllCollections()) {
-            const std::string& collectionName = pair.first;
-            const auto& points = pair.second;
-            for (const auto& point_pair : points) {
-                renderOrUpdatePoint(collectionName, point_pair.second);
-            }
-        }
-    }
-}
 
 void CVolumeViewer::onPointChanged(const std::string& collectionName, const ColPoint& point)
 {

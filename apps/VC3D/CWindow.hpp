@@ -60,7 +60,6 @@ signals:
     void sendVolumeChanged(std::shared_ptr<volcart::Volume> vol, const std::string& volumeId);
     void sendSliceChanged(std::string,Surface*);
     void sendOpChainSelected(OpChain*);
-    void sendPointsChanged(VCCollection*);
     void sendSurfacesLoaded();
     void sendVolumeClosing(); // Signal to notify viewers before closing volume
 
@@ -155,7 +154,6 @@ private slots:
     void onManualLocationChanged();
     void onZoomIn();
     void onZoomOut();
-    void onCollectionChanged();
 
 private:
     bool appInitComplete{false};

@@ -49,7 +49,6 @@ SeedingWidget::SeedingWidget(VCCollection* point_collection, CSurfaceCollection*
 
     if (_point_collection) {
         connect(_point_collection, &VCCollection::collectionChanged, this, &SeedingWidget::onCollectionChanged);
-        onCollectionChanged(); // Initial population
     }
     
     // Automatically find the executable path
@@ -1040,13 +1039,11 @@ void SeedingWidget::displayPaths()
     emit sendPathsChanged(allPaths);
     
     // Send peaks as red points (they should still be displayed as individual points)
-    emit sendPointsChanged(_point_collection);
 }
 
 void SeedingWidget::updatePointsDisplay()
 {
     // Send both analysis results (red) and user points (blue) for display
-    emit sendPointsChanged(_point_collection);
 }
 
 void SeedingWidget::updateInfoLabel()

@@ -38,6 +38,7 @@ public:
     ~CVolumeViewer(void);
 
     void setCache(ChunkCache *cache);
+    void setPointCollection(VCCollection* point_collection);
     void setSurface(const std::string &name);
     void renderVisible(bool force = false);
     void renderIntersections();
@@ -82,7 +83,6 @@ public slots:
     void onScrolled();
     void onZoom(int steps, QPointF scene_point, Qt::KeyboardModifiers modifiers);
     void onCursorMove(QPointF);
-    void onPointsChanged(VCCollection*);
     void onPointChanged(const std::string& collectionName, const ChaoVis::ColPoint& point);
     void onPointRemoved(const std::string& collectionName, uint64_t pointId);
     void onPathsChanged(const QList<PathData>& paths);

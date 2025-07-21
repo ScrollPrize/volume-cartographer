@@ -42,7 +42,6 @@ public:
     void setCache(ChunkCache* cache);
     
 signals:
-    void sendPointsChanged(VCCollection*);
     void sendPathsChanged(const QList<PathData>& paths);
     void sendStatusMessageAvailable(QString text, int timeout);
     
