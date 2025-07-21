@@ -298,6 +298,16 @@ void CVolumeViewer::onZoom(int steps, QPointF scene_loc, Qt::KeyboardModifiers m
         int max_size = 100000; //std::max(volume->sliceWidth(), std::max(volume->numSlices(), volume->sliceHeight()))*_ds_scale + 512;
         fGraphicsView->setSceneRect(-max_size/2, -max_size/2, max_size, max_size);
         renderVisible();
+
+        // Re-render all points to update their positions according to the new scale
+        if (_point_collection) {
+            for (const auto& pair : _point_collection->getAllCollections()) {
+                const auto& points = pair.second;
+                for (const auto& point_pair : points) {
+                    renderOrUpdatePoint(pair.first, point_pair.second);
+                }
+            }
+        }
     }
 
     _lbl->setText(QString("%1x %2").arg(_scale).arg(_z_off));
