@@ -293,14 +293,7 @@ void CVolumeViewer::onZoom(int steps, QPointF scene_loc, Qt::KeyboardModifiers m
         renderVisible();
 
         // Re-render all points to update their positions according to the new scale
-        if (_point_collection) {
-            for (const auto& pair : _point_collection->getAllCollections()) {
-                const auto& points = pair.second;
-                for (const auto& point_pair : points) {
-                    renderOrUpdatePoint(pair.first, point_pair.second);
-                }
-            }
-        }
+        refreshPointPositions();
     }
 
     _lbl->setText(QString("%1x %2").arg(_scale).arg(_z_off));
@@ -560,6 +553,7 @@ void CVolumeViewer::onPOIChanged(std::string name, POI *poi)
             return;
         
         plane->setOrigin(poi->p);
+        refreshPointPositions();
         
         _surf_col->setSurface(_surf_name, plane);
     }
@@ -1506,5 +1500,21 @@ void CVolumeViewer::onDrawingModeActive(bool active, float brushSize, bool isSqu
     POI *cursor = _surf_col->poi("cursor");
     if (cursor) {
         onPOIChanged("cursor", cursor);
+    }
+}
+
+void CVolumeViewer::refreshPointPositions()
+{
+    if (!_point_collection) {
+        return;
+    }
+
+    for (const auto& pair : _point_collection->getAllCollections()) {
+        const auto& points = pair.second;
+        for (const auto& point_pair : points) {
+            if (_points_items.count(point_pair.first)) {
+                _points_items[point_pair.first]->setPos(volumeToScene(point_pair.second.p));
+            }
+        }
     }
 }

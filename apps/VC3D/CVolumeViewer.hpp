@@ -110,6 +110,7 @@ protected:
     void ScaleImage(double nFactor);
     void CenterOn(const QPointF& point);
     QPointF volumeToScene(const cv::Vec3f& vol_point);
+    void refreshPointPositions();
     void renderOrUpdatePoint(const std::string& collectionName, const ColPoint& point);
 
 protected:
