@@ -247,6 +247,7 @@ void CVolumeViewer::onZoom(int steps, QPointF scene_loc, Qt::KeyboardModifiers m
 
 void CVolumeViewer::OnVolumeChanged(volcart::Volume::Pointer volume_)
 {
+    std::cout << "on volume changed\n";
     volume = volume_;
     
     // printf("sizes %d %d %d\n", volume_->sliceWidth(), volume_->sliceHeight(), volume_->numSlices());
@@ -374,8 +375,92 @@ void CVolumeViewer::setIntersects(const std::set<std::string> &set)
     renderIntersections();
 }
 
+
+// Add this method implementation to CVolumeViewer.cpp
+void CVolumeViewer::fitSurfaceInView()
+{
+    if (!_surf || !fGraphicsView) {
+        return;
+    }
+
+    Rect3D bbox;
+    bool haveBounds = false;
+
+    // Get the bounding box in world coordinates
+    if (auto* quadSurf = dynamic_cast<QuadSurface*>(_surf)) {
+        bbox = quadSurf->bbox();
+        haveBounds = true;
+    } else if (auto* opChain = dynamic_cast<OpChain*>(_surf)) {
+        QuadSurface* src = opChain->src();
+        if (src) {
+            bbox = src->bbox();
+            haveBounds = true;
+        }
+    }
+
+    if (!haveBounds) {
+        // For plane surfaces or when we can't get bounds, just reset to a default view
+        _scale = 1.0f;
+        recalcScales();
+        fGraphicsView->resetTransform();
+        fGraphicsView->centerOn(0, 0);
+        _lbl->setText(QString("%1x %2").arg(_scale).arg(_z_off));
+        return;
+    }
+
+    // Calculate surface dimensions in world coordinates
+    float worldWidth = bbox.high[0] - bbox.low[0];
+    float worldHeight = bbox.high[1] - bbox.low[1];
+
+    if (worldWidth <= 0 || worldHeight <= 0) {
+        return; // Invalid bounds
+    }
+
+    // Get viewport size in pixels
+    QSize viewportSize = fGraphicsView->viewport()->size();
+    float viewportWidth = viewportSize.width();
+    float viewportHeight = viewportSize.height();
+
+    if (viewportWidth <= 0 || viewportHeight <= 0) {
+        return; // Invalid viewport
+    }
+
+    // Calculate what scale factor would fit the surface in the viewport
+    // We want: surface_size_in_scene * viewport_transform_scale = viewport_size * fit_factor
+    // surface_size_in_scene = world_size * _scale
+    // So: world_size * _scale * viewport_transform_scale = viewport_size * fit_factor
+    // We'll use a fit_factor of 0.8 to leave some padding
+
+    float fit_factor = 0.8f;
+    float required_scale_x = (viewportWidth * fit_factor) / worldWidth;
+    float required_scale_y = (viewportHeight * fit_factor) / worldHeight;
+
+    // Use the smaller scale to ensure both dimensions fit
+    float required_scale = std::min(required_scale_x, required_scale_y);
+
+    // Update the scale factor
+    _scale = required_scale;
+    round_scale(_scale); // Apply the existing scale rounding logic
+    recalcScales();
+
+    // Reset the graphics view transform
+    fGraphicsView->resetTransform();
+
+    // Center on the logical center of the volume (0,0 in scene coordinates)
+    // This is where the center marker is positioned
+    fGraphicsView->centerOn(0, 0);
+
+    // Update the zoom label
+    _lbl->setText(QString("%1x %2").arg(_scale).arg(_z_off));
+
+    // Force a re-render with the new scale
+    curr_img_area = {0,0,0,0}; // Clear cached area to force re-render
+}
+
+
 void CVolumeViewer::onSurfaceChanged(std::string name, Surface *surf)
 {
+    std::cout << "onsurfacechanged " << name << " " << _surf_name << std::endl;
     if (_surf_name == name) {
         _surf = surf;
         if (!_surf) {
@@ -392,6 +477,7 @@ void CVolumeViewer::onSurfaceChanged(std::string name, Surface *surf)
         }
         else {
             invalidateVis();
+            if (name == "segmentation") {fitSurfaceInView();}
         }
     }
 
@@ -895,8 +981,7 @@ void CVolumeViewer::renderIntersections()
             
             std::unordered_map<cv::Vec3f,cv::Vec3f,vec3f_hash> location_cache;
             std::vector<cv::Vec3f> src_locations;
-            SurfacePointer *ptrs[omp_get_max_threads()] = {};
-            
+
             for (auto seg : _surf_col->intersection(pair.first, pair.second)->lines)
                 for (auto wp : seg)
                     src_locations.push_back(wp);

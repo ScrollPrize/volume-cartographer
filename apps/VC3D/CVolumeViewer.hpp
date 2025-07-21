@@ -62,7 +62,10 @@ public:
     void setCompositeMaterial(int value);
     void setCompositeReverseDirection(bool reverse);
     bool isCompositeEnabled() const { return _composite_enabled; }
-    
+
+    void fitSurfaceInView();
+
+
     // Get current scale for coordinate transformation
     float getCurrentScale() const { return _scale; }
     // Transform scene coordinates to volume coordinates
