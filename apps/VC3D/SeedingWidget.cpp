@@ -275,7 +275,7 @@ void SeedingWidget::onPreviewRaysClicked()
     const int maxRadius = maxRadiusSpinBox->value();
     const cv::Vec3f& startPoint = focus_poi->p;
 
-    std::vector<ColPoint> preview_points;
+    std::vector<cv::Vec3f> preview_points;
 
     const int pointsPerRay = 10;
     for (int i = 0; i < numSteps; i++) {
@@ -288,10 +288,7 @@ void SeedingWidget::onPreviewRaysClicked()
             pointOnRay[0] = startPoint[0] + dist * rayDir[0];
             pointOnRay[1] = startPoint[1] + dist * rayDir[1];
             pointOnRay[2] = startPoint[2];
-
-            ColPoint p;
-            p.p = pointOnRay;
-            preview_points.push_back(p);
+            preview_points.push_back(pointOnRay);
         }
     }
 
@@ -452,7 +449,7 @@ void SeedingWidget::findPeaksAlongRay(
         return;
     }
     
-    std::vector<ColPoint> new_peaks;
+    std::vector<cv::Vec3f> new_peaks;
     
     // Enhanced local maxima detection with configurable window
     for (size_t i = window; i < intensities.size() - window; i++) {
@@ -471,9 +468,7 @@ void SeedingWidget::findPeaksAlongRay(
         if (isLocalMax) {
             // Apply threshold
             if (intensities[i] > thresholdSpinBox->value()) {
-                ColPoint p;
-                p.p = positions[i];
-                new_peaks.push_back(p);
+                new_peaks.push_back(positions[i]);
             }
         }
     }
@@ -483,7 +478,7 @@ void SeedingWidget::findPeaksAlongRay(
         // Skip if we're too close to already detected peaks
         bool tooClose = false;
         for (const auto& existingPoint : new_peaks) {
-            float dist = cv::norm(existingPoint.p - positions[i]);
+            float dist = cv::norm(existingPoint - positions[i]);
             if (dist < window) {
                 tooClose = true;
                 break;
@@ -506,9 +501,7 @@ void SeedingWidget::findPeaksAlongRay(
         if (gradientDiff > thresholdSpinBox->value() * 0.5 &&
             intensities[i] > thresholdSpinBox->value()) {
             
-            ColPoint p;
-            p.p = positions[i];
-            new_peaks.push_back(p);
+            new_peaks.push_back(positions[i]);
         }
     }
     
@@ -754,18 +747,14 @@ void SeedingWidget::updateParameterPreview()
         float x = center_point[0] + maxRadius * rayDir[0];
         float y = center_point[1] + maxRadius * rayDir[1];
         
-        ColPoint p;
-        p.p = {x, y, center_point[2]};
-        _point_collection->addPoint("seeding_preview", p);
+        _point_collection->addPoint("seeding_preview", {x, y, center_point[2]});
         
         // Add intermediate points for better visualization
         for (int r = maxRadius / 4; r < maxRadius; r += maxRadius / 4) {
             x = center_point[0] + r * rayDir[0];
             y = center_point[1] + r * rayDir[1];
             
-            ColPoint p_intermediate;
-            p_intermediate.p = {x, y, center_point[2]};
-            _point_collection->addPoint("seeding_preview", p_intermediate);
+            _point_collection->addPoint("seeding_preview", {x, y, center_point[2]});
         }
     }
     

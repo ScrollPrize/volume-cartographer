@@ -48,7 +48,6 @@ public:
     void setIntersects(const std::set<std::string> &set);
     std::string surfName() { return _surf_name; };
     void recalcScales();
-    void renderPoints();
     void renderPaths();
     
     // Composite view methods
@@ -83,6 +82,8 @@ public slots:
     void onZoom(int steps, QPointF scene_point, Qt::KeyboardModifiers modifiers);
     void onCursorMove(QPointF);
     void onPointsChanged(VCCollection*);
+    void onPointChanged(const std::string& collectionName, const ChaoVis::ColPoint& point);
+    void onPointRemoved(const std::string& collectionName, uint64_t pointId);
     void onPathsChanged(const QList<PathData>& paths);
     
     // Mouse event handlers for drawing (transform coordinates)
@@ -107,6 +108,8 @@ signals:
 protected:
     void ScaleImage(double nFactor);
     void CenterOn(const QPointF& point);
+    QPointF volumeToScene(const cv::Vec3f& vol_point);
+    void renderOrUpdatePoint(const std::string& collectionName, const ColPoint& point);
 
 protected:
     // widget components
@@ -164,7 +167,11 @@ protected:
     CSurfaceCollection *_surf_col = nullptr;
     
     VCCollection* _point_collection;
-    std::vector<QGraphicsItem*> _points_items;
+    std::unordered_map<uint64_t, QGraphicsItem*> _points_items;
+    
+    // Point interaction state
+    uint64_t _highlighted_point_id = 0;
+    uint64_t _dragged_point_id = 0;
     
     QList<PathData> _paths;
     std::vector<QGraphicsItem*> _path_items;
