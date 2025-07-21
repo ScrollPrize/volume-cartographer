@@ -150,7 +150,6 @@ void CVolumeViewer::onCursorMove(QPointF scene_loc)
 
 void CVolumeViewer::recalcScales()
 {
-
     float old_ds = _ds_scale;         // remember previous level
     // if (dynamic_cast<PlaneSurface*>(_surf))
     _min_scale = pow(2.0,1.-volume->numScales());
@@ -161,6 +160,7 @@ void CVolumeViewer::recalcScales()
     if      (_scale >= _max_scale) { _ds_sd_idx = 0;                         }
     else if (_scale <  _min_scale) { _ds_sd_idx = volume->numScales()-1;     }
     else  { _ds_sd_idx = int(std::round(-std::log2(_scale))); }
+    if (_ds_sd_idx < volume->numScales()-1)_ds_sd_idx++;
     _ds_scale = std::pow(2.0f, -_ds_sd_idx);
     /* ---------------------------------------------------------------- */
 
