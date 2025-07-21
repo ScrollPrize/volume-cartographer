@@ -48,7 +48,7 @@ SeedingWidget::SeedingWidget(VCCollection* point_collection, CSurfaceCollection*
     setupUI();
 
     if (_point_collection) {
-        connect(_point_collection, &VCCollection::collectionChanged, this, &SeedingWidget::onCollectionChanged);
+        connect(_point_collection, &VCCollection::collectionNamesChanged, this, &SeedingWidget::onCollectionChanged);
     }
     
     // Automatically find the executable path
@@ -146,13 +146,21 @@ void SeedingWidget::setupUI()
     mainLayout->addLayout(expansionLayout);
     
     // Buttons
-    previewRaysButton = new QPushButton("Preview Rays", this);
+    auto previewLayout = new QHBoxLayout();
+    previewRaysButton = new QPushButton("Show Preview Points", this);
     previewRaysButton->setEnabled(true);
-    mainLayout->addWidget(previewRaysButton);
-    
+    previewLayout->addWidget(previewRaysButton);
+    clearPreviewButton = new QPushButton("Clear", this);
+    previewLayout->addWidget(clearPreviewButton);
+    mainLayout->addLayout(previewLayout);
+
+    auto castLayout = new QHBoxLayout();
     castRaysButton = new QPushButton("Cast Rays", this);
     castRaysButton->setEnabled(false);
-    mainLayout->addWidget(castRaysButton);
+    castLayout->addWidget(castRaysButton);
+    clearPeaksButton = new QPushButton("Clear", this);
+    castLayout->addWidget(clearPeaksButton);
+    mainLayout->addLayout(castLayout);
     
     runSegmentationButton = new QPushButton("Run Seeding", this);
     runSegmentationButton->setEnabled(false);
@@ -195,7 +203,9 @@ void SeedingWidget::setupUI()
         displayPaths();
     });
     connect(previewRaysButton, &QPushButton::clicked, this, &SeedingWidget::onPreviewRaysClicked);
+    connect(clearPreviewButton, &QPushButton::clicked, this, &SeedingWidget::onClearPreviewClicked);
     connect(castRaysButton, &QPushButton::clicked, this, &SeedingWidget::onCastRaysClicked);
+    connect(clearPeaksButton, &QPushButton::clicked, this, &SeedingWidget::onClearPeaksClicked);
     connect(runSegmentationButton, &QPushButton::clicked, this, &SeedingWidget::onRunSegmentationClicked);
     connect(expandSeedsButton, &QPushButton::clicked, this, &SeedingWidget::onExpandSeedsClicked);
     connect(resetPointsButton, &QPushButton::clicked, this, &SeedingWidget::onResetPointsClicked);
@@ -253,6 +263,18 @@ void SeedingWidget::onVolumeChanged(std::shared_ptr<volcart::Volume> vol, const 
 void SeedingWidget::updateCurrentZSlice(int z)
 {
     currentZSlice = z;
+}
+
+void SeedingWidget::onClearPreviewClicked()
+{
+    _point_collection->clearCollection("ray_preview");
+    infoLabel->setText("Preview points cleared.");
+}
+
+void SeedingWidget::onClearPeaksClicked()
+{
+    _point_collection->clearCollection("seeding_peaks");
+    infoLabel->setText("Peak points cleared.");
 }
 
 void SeedingWidget::onPreviewRaysClicked()

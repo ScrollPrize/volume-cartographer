@@ -58,7 +58,9 @@ public slots:
     
 private slots:
     void onPreviewRaysClicked();
+    void onClearPreviewClicked();
     void onCastRaysClicked();
+    void onClearPeaksClicked();
     void onRunSegmentationClicked();
     void onExpandSeedsClicked();
     void onResetPointsClicked();
@@ -111,7 +113,9 @@ private:
     QString executablePath;
     
     QPushButton* previewRaysButton;
+    QPushButton* clearPreviewButton;
     QPushButton* castRaysButton;
+    QPushButton* clearPeaksButton;
     QPushButton* runSegmentationButton;
     QPushButton* expandSeedsButton;
     QPushButton* resetPointsButton;
