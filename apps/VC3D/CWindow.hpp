@@ -42,6 +42,7 @@ namespace ChaoVis
 
 class CVolumeViewer;
 class CSurfaceCollection;
+class CPointCollectionWidget;
 class CSegmentationEditorWindow;
 class SeedingWidget;
 class DrawingWidget;
@@ -70,7 +71,6 @@ public slots:
     void onVolumeClicked(cv::Vec3f vol_loc, cv::Vec3f normal, Surface *surf, Qt::MouseButton buttons, Qt::KeyboardModifiers modifiers);
     void onOpChainChanged(OpChain *chain);
     void onTagChanged(void);
-    void onResetPoints(void);
     void onSurfaceContextMenuRequested(const QPoint& pos);
     void onRenderSegment(const SurfaceID& segmentId);
     void onGrowSegmentFromSegment(const SurfaceID& segmentId);
@@ -202,14 +202,13 @@ private:
     QCheckBox* _chkDefective;
     QCheckBox* _chkReviewed;
     QCheckBox* _chkRevisit;
-    QLabel* _lblPointsInfo;
-    QPushButton* _btnResetPoints;
     QuadSurface *_surf;
     SurfaceID _surfID;
     
   
     SeedingWidget* _seedingWidget;
     DrawingWidget* _drawingWidget;
+    CPointCollectionWidget* _point_collection_widget;
 
     VCCollection* _point_collection;
     

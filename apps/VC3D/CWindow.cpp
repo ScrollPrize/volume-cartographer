@@ -31,6 +31,7 @@
 #include "UDataManipulateUtils.hpp"
 #include "SettingsDialog.hpp"
 #include "CSurfaceCollection.hpp"
+#include "CPointCollectionWidget.hpp"
 #include "OpChain.hpp"
 #include "OpsList.hpp"
 #include "OpsSettings.hpp"
@@ -62,7 +63,8 @@ CWindow::CWindow() :
     fVpkg(nullptr),
     _cmdRunner(nullptr),
     _seedingWidget(nullptr),
-    _drawingWidget(nullptr)
+    _drawingWidget(nullptr),
+    _point_collection_widget(nullptr)
 {
     _point_collection = new VCCollection(this);
     const QSettings settings("VC.ini", QSettings::IniFormat);
@@ -360,6 +362,11 @@ void CWindow::CreateWidgets(void)
                 _seedingWidget, &SeedingWidget::updateCurrentZSlice);
     }
     
+    // Create and add the point collection widget
+    _point_collection_widget = new CPointCollectionWidget(this);
+    _point_collection_widget->setPointCollection(_point_collection);
+    addDockWidget(Qt::RightDockWidgetArea, _point_collection_widget);
+
     // Tab the docks - Drawing first, then Seeding, then Tools
     tabifyDockWidget(ui.dockWidgetSegmentation, ui.dockWidgetDistanceTransform);
     tabifyDockWidget(ui.dockWidgetDistanceTransform, ui.dockWidgetDrawing);
@@ -468,9 +475,6 @@ void CWindow::CreateWidgets(void)
     connect(_chkRevisit, &QCheckBox::checkStateChanged, this, &CWindow::onTagChanged);
 #endif
 
-    _lblPointsInfo = ui.lblPointsInfo;
-    _btnResetPoints = ui.btnResetPoints;
-    connect(_btnResetPoints, &QPushButton::pressed, this, &CWindow::onResetPoints);
     connect(ui.btnEditMask, &QPushButton::pressed, this, &CWindow::onEditMaskPressed);
     
     // Connect composite view controls
@@ -1657,11 +1661,6 @@ void CWindow::onSegFilterChanged(int index)
 
 }
 
-void CWindow::onResetPoints(void)
-{
-    _point_collection->clearCollection("user_red");
-    _point_collection->clearCollection("user_blue");
-}
 
 void CWindow::onEditMaskPressed(void)
 {

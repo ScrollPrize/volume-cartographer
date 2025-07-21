@@ -38,6 +38,7 @@ set(srcs
     ConsoleOutputWidget.hpp
     VCCollection.cpp
     VCCollection.hpp
+    CPointCollectionWidget.cpp
 )
 
 set(MACOSX_BUNDLE_ICON logo.icns)

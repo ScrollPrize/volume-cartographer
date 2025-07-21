@@ -470,20 +470,6 @@
                </property>
               </widget>
              </item>
-             <item row="2" column="0">
-              <widget class="QLabel" name="lblPointsInfo">
-               <property name="text">
-                <string>Red: 0 Blue: 0</string>
-               </property>
-              </widget>
-             </item>
-             <item row="2" column="1">
-              <widget class="QPushButton" name="btnResetPoints">
-               <property name="text">
-                <string>Reset Points</string>
-               </property>
-              </widget>
-             </item>
             </layout>
            </widget>
           </item>
