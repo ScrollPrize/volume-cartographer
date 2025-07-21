@@ -247,7 +247,6 @@ void CVolumeViewer::onZoom(int steps, QPointF scene_loc, Qt::KeyboardModifiers m
 
 void CVolumeViewer::OnVolumeChanged(volcart::Volume::Pointer volume_)
 {
-    std::cout << "on volume changed\n";
     volume = volume_;
     
     // printf("sizes %d %d %d\n", volume_->sliceWidth(), volume_->sliceHeight(), volume_->numSlices());
@@ -376,7 +375,6 @@ void CVolumeViewer::setIntersects(const std::set<std::string> &set)
 }
 
 
-// Add this method implementation to CVolumeViewer.cpp
 void CVolumeViewer::fitSurfaceInView()
 {
     if (!_surf || !fGraphicsView) {
@@ -386,7 +384,6 @@ void CVolumeViewer::fitSurfaceInView()
     Rect3D bbox;
     bool haveBounds = false;
 
-    // Get the bounding box in world coordinates
     if (auto* quadSurf = dynamic_cast<QuadSurface*>(_surf)) {
         bbox = quadSurf->bbox();
         haveBounds = true;
@@ -399,7 +396,7 @@ void CVolumeViewer::fitSurfaceInView()
     }
 
     if (!haveBounds) {
-        // For plane surfaces or when we can't get bounds, just reset to a default view
+        // when we can't get bounds, just reset to a default view
         _scale = 1.0f;
         recalcScales();
         fGraphicsView->resetTransform();
@@ -408,21 +405,19 @@ void CVolumeViewer::fitSurfaceInView()
         return;
     }
 
-    // Calculate surface dimensions in world coordinates
     float worldWidth = bbox.high[0] - bbox.low[0];
     float worldHeight = bbox.high[1] - bbox.low[1];
 
     if (worldWidth <= 0 || worldHeight <= 0) {
-        return; // Invalid bounds
+        return;
     }
 
-    // Get viewport size in pixels
     QSize viewportSize = fGraphicsView->viewport()->size();
     float viewportWidth = viewportSize.width();
     float viewportHeight = viewportSize.height();
 
     if (viewportWidth <= 0 || viewportHeight <= 0) {
-        return; // Invalid viewport
+        return;
     }
 
     // Calculate what scale factor would fit the surface in the viewport
@@ -434,27 +429,19 @@ void CVolumeViewer::fitSurfaceInView()
     float fit_factor = 0.8f;
     float required_scale_x = (viewportWidth * fit_factor) / worldWidth;
     float required_scale_y = (viewportHeight * fit_factor) / worldHeight;
-
-    // Use the smaller scale to ensure both dimensions fit
     float required_scale = std::min(required_scale_x, required_scale_y);
 
-    // Update the scale factor
     _scale = required_scale;
-    round_scale(_scale); // Apply the existing scale rounding logic
+    round_scale(_scale);
     recalcScales();
 
-    // Reset the graphics view transform
     fGraphicsView->resetTransform();
 
-    // Center on the logical center of the volume (0,0 in scene coordinates)
-    // This is where the center marker is positioned
     fGraphicsView->centerOn(0, 0);
 
-    // Update the zoom label
     _lbl->setText(QString("%1x %2").arg(_scale).arg(_z_off));
 
-    // Force a re-render with the new scale
-    curr_img_area = {0,0,0,0}; // Clear cached area to force re-render
+    curr_img_area = {0,0,0,0};
 }
 
 
