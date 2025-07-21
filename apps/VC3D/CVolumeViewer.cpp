@@ -121,38 +121,26 @@ QPointF CVolumeViewer::volumeToScene(const cv::Vec3f& vol_point)
     return QPointF(p[0], p[1]);
 }
 
-void scene2vol(cv::Vec3f &p, cv::Vec3f &n, Surface *_surf, const std::string &_surf_name, CSurfaceCollection *_surf_col, const QPointF &scene_loc, const cv::Vec2f &_vis_center, float _ds_scale)
+bool scene2vol(cv::Vec3f &p, cv::Vec3f &n, Surface *_surf, const std::string &_surf_name, CSurfaceCollection *_surf_col, const QPointF &scene_loc, const cv::Vec2f &_vis_center, float _ds_scale)
 {
     // Safety check for null surface
     if (!_surf) {
         p = cv::Vec3f(0, 0, 0);
         n = cv::Vec3f(0, 0, 1);
-        return;
+        return false;
     }
     
-    //for PlaneSurface we work with absolute coordinates only
-    // if (dynamic_cast<PlaneSurface*>(_surf)) {
+    try {
         cv::Vec3f surf_loc = {scene_loc.x()/_ds_scale, scene_loc.y()/_ds_scale,0};
         
         SurfacePointer *ptr = _surf->pointer();
         
         n = _surf->normal(ptr, surf_loc);
         p = _surf->coord(ptr, surf_loc);
-//     }
-//     //FIXME quite some assumptions ...
-//     else if (_surf_name == "segmentation") {
-//         // assert(_ptr);
-//         assert(dynamic_cast<OpChain*>(_surf));
-//         
-//         QuadSurface* crop = dynamic_cast<QuadSurface*>(_surf_col->surface("visible_segmentation")); 
-//         
-//         cv::Vec3f delta = {(scene_loc.x()-_vis_center[0])/_ds_scale, (scene_loc.y()-_vis_center[1])/_ds_scale,0};
-//         
-//         //NOTE crop center and original scene _ptr are off by < 0.5 voxels?
-//         SurfacePointer *ptr = crop->pointer();
-//         n = crop->normal(ptr, delta);
-//         p = crop->coord(ptr, delta);
-//     }
+    } catch (const cv::Exception& e) {
+        return false;
+    }
+    return true;
 }
 
 void CVolumeViewer::onCursorMove(QPointF scene_loc)
@@ -160,13 +148,18 @@ void CVolumeViewer::onCursorMove(QPointF scene_loc)
     if (!_surf || !_surf_col)
         return;
 
+    cv::Vec3f p, n;
+    if (!scene2vol(p, n, _surf, _surf_name, _surf_col, scene_loc, _vis_center, _scale)) {
+        if (_cursor) _cursor->hide();
+        return;
+    }
+    if (_cursor) _cursor->show();
+
     // Standard cursor update
     POI *cursor = _surf_col->poi("cursor");
     if (!cursor)
         cursor = new POI;
     
-    cv::Vec3f p, n;
-    scene2vol(p, n, _surf, _surf_name, _surf_col, scene_loc, _vis_center, _scale);
     cursor->p = p;
     
     _surf_col->setPOI("cursor", cursor);
@@ -356,7 +349,8 @@ void CVolumeViewer::onVolumeClicked(QPointF scene_loc, Qt::MouseButton buttons, 
         return;
     
     cv::Vec3f p, n;
-    scene2vol(p, n, _surf, _surf_name, _surf_col, scene_loc, _vis_center, _scale);
+    if (!scene2vol(p, n, _surf, _surf_name, _surf_col, scene_loc, _vis_center, _scale))
+        return;
 
     //for PlaneSurface we work with absolute coordinates only
     if (dynamic_cast<PlaneSurface*>(_surf))
@@ -1290,7 +1284,8 @@ void CVolumeViewer::onMousePress(QPointF scene_loc, Qt::MouseButton button, Qt::
         }
         
         cv::Vec3f p, n;
-        scene2vol(p, n, _surf, _surf_name, _surf_col, scene_loc, _vis_center, _scale);
+        if (!scene2vol(p, n, _surf, _surf_name, _surf_col, scene_loc, _vis_center, _scale))
+            return;
         
         emit sendMousePressVolume(p, button, modifiers);
     }
@@ -1306,7 +1301,8 @@ void CVolumeViewer::onMouseMove(QPointF scene_loc, Qt::MouseButtons buttons, Qt:
             
             ColPoint updated_point = *point_opt;
             cv::Vec3f p, n;
-            scene2vol(p, n, _surf, _surf_name, _surf_col, scene_loc, _vis_center, _scale);
+            if (!scene2vol(p, n, _surf, _surf_name, _surf_col, scene_loc, _vis_center, _scale))
+                return;
             updated_point.p = p;
             
             _point_collection->updatePoint(*collection_name_opt, updated_point);
@@ -1317,7 +1313,8 @@ void CVolumeViewer::onMouseMove(QPointF scene_loc, Qt::MouseButtons buttons, Qt:
         }
         
         cv::Vec3f p, n;
-        scene2vol(p, n, _surf, _surf_name, _surf_col, scene_loc, _vis_center, _scale);
+        if (!scene2vol(p, n, _surf, _surf_name, _surf_col, scene_loc, _vis_center, _scale))
+            return;
         
         emit sendMouseMoveVolume(p, buttons, modifiers);
     }
@@ -1335,7 +1332,8 @@ void CVolumeViewer::onMouseRelease(QPointF scene_loc, Qt::MouseButton button, Qt
         }
         
         cv::Vec3f p, n;
-        scene2vol(p, n, _surf, _surf_name, _surf_col, scene_loc, _vis_center, _scale);
+        if (!scene2vol(p, n, _surf, _surf_name, _surf_col, scene_loc, _vis_center, _scale))
+            return;
         
         emit sendMouseReleaseVolume(p, button, modifiers);
     }
