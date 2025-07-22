@@ -388,7 +388,13 @@ void CVolumeViewer::setCache(ChunkCache *cache_)
 
 void CVolumeViewer::setPointCollection(VCCollection* point_collection)
 {
+    if (_point_collection) {
+        disconnect(_point_collection, &VCCollection::collectionChanged, this, &CVolumeViewer::onCollectionChanged);
+    }
     _point_collection = point_collection;
+    if (_point_collection) {
+        connect(_point_collection, &VCCollection::collectionChanged, this, &CVolumeViewer::onCollectionChanged);
+    }
 }
 
 void CVolumeViewer::setSurface(const std::string &name)
@@ -1533,6 +1539,22 @@ void CVolumeViewer::onPointRemoved(uint64_t pointId)
 void CVolumeViewer::onCollectionSelected(uint64_t collectionId)
 {
     _selected_collection_id = collectionId;
+}
+
+void CVolumeViewer::onCollectionChanged(uint64_t collectionId)
+{
+    if (!_point_collection) {
+        return;
+    }
+
+    const auto& collections = _point_collection->getAllCollections();
+    auto it = collections.find(collectionId);
+    if (it != collections.end()) {
+        const auto& collection = it->second;
+        for (const auto& point_pair : collection.points) {
+            renderOrUpdatePoint(point_pair.second);
+        }
+    }
 }
 
 void CVolumeViewer::onKeyRelease(int key, Qt::KeyboardModifiers modifiers)
