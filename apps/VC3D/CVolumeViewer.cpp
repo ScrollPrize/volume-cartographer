@@ -1231,7 +1231,7 @@ void CVolumeViewer::renderOrUpdatePoint(const ColPoint& point)
     const auto& collections = _point_collection->getAllCollections();
     auto it = collections.find(point.collectionId);
     cv::Vec3f cv_color = (it != collections.end()) ? it->second.color : cv::Vec3f(1,0,0);
-    QColor color(cv_color[0] * 255, cv_color[1] * 255, cv_color[2] * 255, 180);
+    QColor color(cv_color[0] * 255, cv_color[1] * 255, cv_color[2] * 255, 255);
 
     QColor border_color(255, 255, 255, 200);
     float border_width = 1.5f;
