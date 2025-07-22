@@ -168,7 +168,6 @@ void CVolumeViewerView::mousePressEvent(QMouseEvent *event)
         QPointF scene_loc = mapToScene({int(global_loc.x()),int(global_loc.y())});
         
         _left_button_pressed = true;
-        sendMousePress(scene_loc, event->button(), event->modifiers());
         event->accept();
         return;
     }

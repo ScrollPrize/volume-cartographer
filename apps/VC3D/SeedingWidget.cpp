@@ -1125,7 +1125,7 @@ void SeedingWidget::updateButtonStates()
     }
 }
 
-void SeedingWidget::onMousePress(cv::Vec3f vol_point, Qt::MouseButton button, Qt::KeyboardModifiers modifiers)
+void SeedingWidget::onMousePress(cv::Vec3f vol_point, cv::Vec3f normal, Qt::MouseButton button, Qt::KeyboardModifiers modifiers)
 {
     if (currentMode != Mode::DrawMode || button != Qt::LeftButton) {
         return;
