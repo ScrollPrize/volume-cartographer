@@ -365,7 +365,9 @@ void CVolumeViewer::onVolumeClicked(QPointF scene_loc, Qt::MouseButton buttons, 
             } else {
                 // Otherwise, create a new collection.
                 std::string new_name = _point_collection->generateNewCollectionName("New Collection");
-                _point_collection->addPoint(new_name, p);
+                auto new_point = _point_collection->addPoint(new_name, p);
+                _selected_collection_id = new_point.collectionId;
+                emit sendCollectionSelected(_selected_collection_id);
             }
         }
     }
