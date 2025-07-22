@@ -1,5 +1,7 @@
 #include "VCCollection.hpp"
 #include <QDebug>
+#include <algorithm>
+#include <vector>
 
 namespace ChaoVis
 {
@@ -166,6 +168,30 @@ std::string VCCollection::generateNewCollectionName(const std::string& prefix) c
         if (!name_exists) break;
     } while (true);
     return new_name;
+}
+
+void VCCollection::autoFillWindingNumbers(uint64_t collectionId)
+{
+    if (_collections.count(collectionId)) {
+        auto& collection = _collections.at(collectionId);
+        
+        std::vector<ColPoint*> points_to_sort;
+        for(auto& pair : collection.points) {
+            points_to_sort.push_back(&pair.second);
+        }
+
+        std::sort(points_to_sort.begin(), points_to_sort.end(),
+            [](const ColPoint* a, const ColPoint* b) {
+                return a->id < b->id;
+            });
+
+        float winding_counter = 1.0f;
+        for(ColPoint* point : points_to_sort) {
+            point->winding_annotation = winding_counter;
+            updatePoint(*point);
+            winding_counter += 1.0f;
+        }
+    }
 }
 
 uint64_t VCCollection::getNextPointId()

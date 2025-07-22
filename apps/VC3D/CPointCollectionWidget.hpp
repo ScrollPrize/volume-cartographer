@@ -50,6 +50,8 @@ private slots:
     void onAbsoluteWindingChanged(int state);
     void onColorButtonClicked();
     void onWindingEdited(double value);
+    void onWindingEnabledChanged(int state);
+    void onAutoFillWindingClicked();
 
 private:
     void setupUi();
@@ -69,8 +71,10 @@ private:
     QPushButton *_new_name_button;
     QCheckBox *_absolute_winding_checkbox;
     QPushButton *_color_button;
+    QPushButton *_auto_fill_winding_button;
 
     QGroupBox *_point_metadata_group;
+    QCheckBox *_winding_enabled_checkbox;
     QDoubleSpinBox* _winding_spinbox;
 };
 

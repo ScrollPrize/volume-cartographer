@@ -61,16 +61,22 @@ void CPointCollectionWidget::setupUi()
     _color_button = new QPushButton("Change Color");
     collection_layout->addWidget(_color_button);
 
+    _auto_fill_winding_button = new QPushButton("Auto-fill Winding");
+    collection_layout->addWidget(_auto_fill_winding_button);
+
     layout->addWidget(_collection_metadata_group);
 
     connect(_absolute_winding_checkbox, &QCheckBox::checkStateChanged, this, &CPointCollectionWidget::onAbsoluteWindingChanged);
     connect(_color_button, &QPushButton::clicked, this, &CPointCollectionWidget::onColorButtonClicked);
+    connect(_auto_fill_winding_button, &QPushButton::clicked, this, &CPointCollectionWidget::onAutoFillWindingClicked);
 
     // Point Metadata
     _point_metadata_group = new QGroupBox("Point Metadata");
     QVBoxLayout *point_layout = new QVBoxLayout(_point_metadata_group);
     
     QHBoxLayout *winding_layout = new QHBoxLayout();
+    _winding_enabled_checkbox = new QCheckBox("Enabled");
+    winding_layout->addWidget(_winding_enabled_checkbox);
     winding_layout->addWidget(new QLabel("Winding:"));
     _winding_spinbox = new QDoubleSpinBox();
     _winding_spinbox->setRange(-1000, 1000);
@@ -81,6 +87,7 @@ void CPointCollectionWidget::setupUi()
 
     layout->addWidget(_point_metadata_group);
 
+    connect(_winding_enabled_checkbox, &QCheckBox::checkStateChanged, this, &CPointCollectionWidget::onWindingEnabledChanged);
     connect(_winding_spinbox, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, &CPointCollectionWidget::onWindingEdited);
 
     layout->addStretch();
@@ -270,13 +277,30 @@ void CPointCollectionWidget::updateMetadataWidgets()
         auto point_opt = _point_collection->getPoint(_selected_point_id);
         if (point_opt) {
             _winding_spinbox->blockSignals(true);
-            _winding_spinbox->setValue(point_opt->winding_annotation);
+            _winding_enabled_checkbox->blockSignals(true);
+
+            bool winding_enabled = !std::isnan(point_opt->winding_annotation);
+            _winding_enabled_checkbox->setChecked(winding_enabled);
+            _winding_spinbox->setEnabled(winding_enabled);
+            if (winding_enabled) {
+                _winding_spinbox->setValue(point_opt->winding_annotation);
+            } else {
+                _winding_spinbox->setValue(0);
+            }
+
             _winding_spinbox->blockSignals(false);
+            _winding_enabled_checkbox->blockSignals(false);
         }
     } else {
         _winding_spinbox->blockSignals(true);
+        _winding_enabled_checkbox->blockSignals(true);
+
+        _winding_enabled_checkbox->setChecked(false);
+        _winding_spinbox->setEnabled(false);
         _winding_spinbox->setValue(0);
+        
         _winding_spinbox->blockSignals(false);
+        _winding_enabled_checkbox->blockSignals(false);
     }
 }
 
@@ -332,6 +356,29 @@ void CPointCollectionWidget::onWindingEdited(double value)
             updated_point.winding_annotation = value;
             _point_collection->updatePoint(updated_point);
         }
+    }
+}
+
+void CPointCollectionWidget::onWindingEnabledChanged(int state)
+{
+    if (_selected_point_id != 0) {
+        auto point_opt = _point_collection->getPoint(_selected_point_id);
+        if (point_opt) {
+            ColPoint updated_point = *point_opt;
+            if (state == Qt::Checked) {
+                updated_point.winding_annotation = _winding_spinbox->value();
+            } else {
+                updated_point.winding_annotation = std::nan("");
+            }
+            _point_collection->updatePoint(updated_point);
+        }
+    }
+}
+
+void CPointCollectionWidget::onAutoFillWindingClicked()
+{
+    if (_selected_collection_id != 0) {
+        _point_collection->autoFillWindingNumbers(_selected_collection_id);
     }
 }
 

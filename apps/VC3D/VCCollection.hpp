@@ -58,6 +58,7 @@ public:
     std::optional<ColPoint> getPoint(uint64_t pointId) const;
     std::vector<ColPoint> getPoints(const std::string& collectionName) const;
     std::string generateNewCollectionName(const std::string& prefix = "col") const;
+    void autoFillWindingNumbers(uint64_t collectionId);
 
 
 signals:
