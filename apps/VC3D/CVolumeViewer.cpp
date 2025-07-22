@@ -447,7 +447,6 @@ void CVolumeViewer::fitSurfaceInView()
 
 void CVolumeViewer::onSurfaceChanged(std::string name, Surface *surf)
 {
-    std::cout << "onsurfacechanged " << name << " " << _surf_name << std::endl;
     if (_surf_name == name) {
         _surf = surf;
         if (!_surf) {
@@ -464,7 +463,7 @@ void CVolumeViewer::onSurfaceChanged(std::string name, Surface *surf)
         }
         else {
             invalidateVis();
-            if (name == "segmentation") {fitSurfaceInView();}
+            if (name == "segmentation" && _resetViewOnSurfaceChange) {fitSurfaceInView();}
         }
     }
 
@@ -1467,4 +1466,9 @@ void CVolumeViewer::onDrawingModeActive(bool active, float brushSize, bool isSqu
     if (cursor) {
         onPOIChanged("cursor", cursor);
     }
+}
+
+void CVolumeViewer::setResetViewOnSurfaceChange(bool reset)
+{
+    _resetViewOnSurfaceChange = reset;
 }
