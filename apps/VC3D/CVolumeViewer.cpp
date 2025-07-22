@@ -86,8 +86,11 @@ CVolumeViewer::~CVolumeViewer(void)
 
 void round_scale(float &scale)
 {
-    if (abs(scale-round(log2(scale))) < 0.02)
+    if (abs(scale-round(log2(scale))) < 0.02f)
         scale = pow(2,round(log2(scale)));
+    // the most reduced OME zarr projection is 32x so make the min zoom out 1/32 = 0.03125
+    if (scale < 0.03125f) scale = 0.03125f;
+    if (scale > 4.0f) scale = 4.0f;
 }
 
 //get center of current visible area in scene coordinates
@@ -895,8 +898,7 @@ void CVolumeViewer::renderIntersections()
             
             std::unordered_map<cv::Vec3f,cv::Vec3f,vec3f_hash> location_cache;
             std::vector<cv::Vec3f> src_locations;
-            SurfacePointer *ptrs[omp_get_max_threads()] = {};
-            
+
             for (auto seg : _surf_col->intersection(pair.first, pair.second)->lines)
                 for (auto wp : seg)
                     src_locations.push_back(wp);
