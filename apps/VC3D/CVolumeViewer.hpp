@@ -176,7 +176,11 @@ protected:
     CSurfaceCollection *_surf_col = nullptr;
     
     VCCollection* _point_collection = nullptr;
-    std::unordered_map<uint64_t, QGraphicsItem*> _points_items;
+    struct PointGraphics {
+        QGraphicsEllipseItem* circle;
+        QGraphicsTextItem* text;
+    };
+    std::unordered_map<uint64_t, PointGraphics> _points_items;
     
     // Point interaction state
     uint64_t _highlighted_point_id = 0;

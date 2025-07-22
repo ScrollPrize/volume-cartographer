@@ -180,7 +180,7 @@ void CVolumeViewer::onCursorMove(QPointF scene_loc)
         float min_dist_sq = highlight_dist_threshold * highlight_dist_threshold;
 
         for (const auto& item_pair : _points_items) {
-            auto item = static_cast<QGraphicsEllipseItem*>(item_pair.second);
+            auto item = item_pair.second.circle;
             QPointF point_scene_pos = item->rect().center();
             QPointF diff = scene_loc - point_scene_pos;
             float dist_sq = QPointF::dotProduct(diff, diff);
@@ -1228,8 +1228,8 @@ void CVolumeViewer::renderOrUpdatePoint(const ColPoint& point)
     float radius = 5.0f; // pixels
     
     const auto& collections = _point_collection->getAllCollections();
-    auto it = collections.find(point.collectionId);
-    cv::Vec3f cv_color = (it != collections.end()) ? it->second.color : cv::Vec3f(1,0,0);
+    auto col_it = collections.find(point.collectionId);
+    cv::Vec3f cv_color = (col_it != collections.end()) ? col_it->second.color : cv::Vec3f(1,0,0);
     QColor color(cv_color[0] * 255, cv_color[1] * 255, cv_color[2] * 255, 255);
 
     QColor border_color(255, 255, 255, 200);
@@ -1242,26 +1242,56 @@ void CVolumeViewer::renderOrUpdatePoint(const ColPoint& point)
     }
  
     if (point.id == _selected_point_id) {
-        // Use a different border to indicate selection
         border_color = QColor(255, 0, 255, 255); // Bright magenta for selection
         border_width = 2.5f;
         radius = 7.0f;
     }
 
-     if (_points_items.count(point.id)) {
-         // Update existing item
-        QGraphicsEllipseItem* item = static_cast<QGraphicsEllipseItem*>(_points_items[point.id]);
-        item->setRect(scene_pos.x() - radius, scene_pos.y() - radius, radius * 2, radius * 2);
-        item->setPen(QPen(border_color, border_width));
-        item->setBrush(QBrush(color));
+    PointGraphics pg;
+    bool exists = _points_items.count(point.id);
+    if (exists) {
+        pg = _points_items[point.id];
+    }
+
+    // Update circle
+    if (exists) {
+        pg.circle->setRect(scene_pos.x() - radius, scene_pos.y() - radius, radius * 2, radius * 2);
+        pg.circle->setPen(QPen(border_color, border_width));
+        pg.circle->setBrush(QBrush(color));
     } else {
-        // Create new item
-        QGraphicsEllipseItem* item = fScene->addEllipse(
+        pg.circle = fScene->addEllipse(
             scene_pos.x() - radius, scene_pos.y() - radius, radius * 2, radius * 2,
             QPen(border_color, border_width), QBrush(color)
         );
-        item->setZValue(10); // Ensure points are rendered on top
-        _points_items[point.id] = item;
+        pg.circle->setZValue(10);
+    }
+
+    // Update or create text
+    bool has_winding = !std::isnan(point.winding_annotation);
+    if (exists) {
+        pg.text->setPos(scene_pos.x() + radius, scene_pos.y() - radius);
+        pg.text->setVisible(has_winding);
+    } else {
+        pg.text = fScene->addText("");
+        pg.text->setZValue(11); // Above points
+        pg.text->setDefaultTextColor(Qt::white);
+        pg.text->setPos(scene_pos.x() + radius, scene_pos.y() - radius);
+        pg.text->setVisible(has_winding);
+    }
+    
+    if (has_winding) {
+        bool absolute = col_it != collections.end() ? col_it->second.metadata.absolute_winding_number : false;
+        QString text;
+        if (absolute) {
+            text = QString::number(point.winding_annotation, 'f', 2);
+        } else {
+            text = QString("%1%2").arg(point.winding_annotation >= 0 ? "+" : "").arg(point.winding_annotation, 0, 'f', 2);
+        }
+        pg.text->setPlainText(text);
+    }
+
+    if (!exists) {
+        _points_items[point.id] = pg;
     }
 }
 
@@ -1548,8 +1578,11 @@ void CVolumeViewer::onPointChanged(const ColPoint& point)
 void CVolumeViewer::onPointRemoved(uint64_t pointId)
 {
     if (_points_items.count(pointId)) {
-        fScene->removeItem(_points_items[pointId]);
-        delete _points_items[pointId];
+        auto& pg = _points_items[pointId];
+        fScene->removeItem(pg.circle);
+        fScene->removeItem(pg.text);
+        delete pg.circle;
+        delete pg.text;
         _points_items.erase(pointId);
     }
 }
