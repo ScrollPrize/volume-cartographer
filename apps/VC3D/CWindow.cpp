@@ -367,6 +367,10 @@ void CWindow::CreateWidgets(void)
     _point_collection_widget = new CPointCollectionWidget(_point_collection, this);
     addDockWidget(Qt::RightDockWidgetArea, _point_collection_widget);
 
+    for (auto& viewer : _viewers) {
+        connect(_point_collection_widget, &CPointCollectionWidget::collectionSelected, viewer, &CVolumeViewer::onCollectionSelected);
+    }
+
     // Tab the docks - Drawing first, then Seeding, then Tools
     tabifyDockWidget(ui.dockWidgetSegmentation, ui.dockWidgetDistanceTransform);
     tabifyDockWidget(ui.dockWidgetDistanceTransform, ui.dockWidgetDrawing);

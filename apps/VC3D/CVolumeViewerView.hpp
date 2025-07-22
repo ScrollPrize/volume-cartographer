@@ -17,6 +17,7 @@ public:
     void wheelEvent(QWheelEvent *event);
     void scrollContentsBy(int dx, int dy);
     void keyPressEvent(QKeyEvent *event);
+    void keyReleaseEvent(QKeyEvent *event);
     /// Set physical voxel size (units per scene-unit, e.g. µm/pixel).
     /// Call this after you load your Zarr spacing metadata.
     void setVoxelSize(double sx, double sy) { m_vx = sx; m_vy = sy; update(); }
@@ -31,6 +32,7 @@ signals:
     void sendMousePress(QPointF, Qt::MouseButton, Qt::KeyboardModifiers);
     void sendMouseMove(QPointF, Qt::MouseButtons, Qt::KeyboardModifiers);
     void sendMouseRelease(QPointF, Qt::MouseButton, Qt::KeyboardModifiers);
+    void sendKeyRelease(int key, Qt::KeyboardModifiers modifiers);
     
 protected:
     bool _regular_pan = false;

@@ -57,6 +57,10 @@ CVolumeViewer::CVolumeViewer(CSurfaceCollection *col, QWidget* parent)
     connect(fGraphicsView, &CVolumeViewerView::sendCursorMove, this, &CVolumeViewer::onCursorMove);
     connect(fGraphicsView, &CVolumeViewerView::sendPanRelease, this, &CVolumeViewer::onPanRelease);
     connect(fGraphicsView, &CVolumeViewerView::sendPanStart, this, &CVolumeViewer::onPanStart);
+    connect(fGraphicsView, &CVolumeViewerView::sendMousePress, this, &CVolumeViewer::onMousePress);
+    connect(fGraphicsView, &CVolumeViewerView::sendMouseMove, this, &CVolumeViewer::onMouseMove);
+    connect(fGraphicsView, &CVolumeViewerView::sendMouseRelease, this, &CVolumeViewer::onMouseRelease);
+    connect(fGraphicsView, &CVolumeViewerView::sendKeyRelease, this, &CVolumeViewer::onKeyRelease);
 
     // Create graphics scene
     fScene = new QGraphicsScene({-2500,-2500,5000,5000}, this);
@@ -1189,69 +1193,39 @@ void CVolumeViewer::renderPaths()
 
 void CVolumeViewer::renderOrUpdatePoint(const ColPoint& point)
 {
-    if (!_point_collection) {
-        return;
-    }
+    if (!_surf) return;
 
-    std::string collectionName = "";
+    QPointF scene_pos = volumeToScene(point.p);
+    float radius = 5.0f; // pixels
+    
     const auto& collections = _point_collection->getAllCollections();
     auto it = collections.find(point.collectionId);
-    if (it != collections.end()) {
-        collectionName = it->second.name;
+    cv::Vec3f cv_color = (it != collections.end()) ? it->second.color : cv::Vec3f(1,0,0);
+    QColor color(cv_color[0] * 255, cv_color[1] * 255, cv_color[2] * 255, 180);
+
+    QColor border_color(255, 255, 255, 200);
+    float border_width = 1.5f;
+
+    if (point.id == _highlighted_point_id) {
+        radius = 7.0f;
+        border_color = Qt::yellow;
+        border_width = 2.5f;
     }
-
-    // Define colors for different collections
-    std::unordered_map<std::string, QColor> colors;
-    colors["seeding_peaks"] = Qt::red;
-    colors["ray_preview"] = QColor(255, 165, 0); // Orange
-    colors["user_red"] = QColor(255, 100, 100);
-    colors["user_blue"] = QColor(100, 100, 255);
-    colors["seeding_seeds"] = QColor(100, 255, 100);
-
-    QColor color = colors.count(collectionName) ? colors.at(collectionName) : Qt::white;
-    QPointF scene_pos = volumeToScene(point.p);
-
-    bool is_highlighted = (point.id == _highlighted_point_id || point.id == _dragged_point_id);
 
     if (_points_items.count(point.id)) {
         // Update existing item
-        QGraphicsItemGroup* group = static_cast<QGraphicsItemGroup*>(_points_items.at(point.id));
-        group->setPos(scene_pos);
-
-        auto items = group->childItems();
-        if (items.size() == 2) {
-            QGraphicsEllipseItem* point_item = static_cast<QGraphicsEllipseItem*>(items[0]);
-            QGraphicsEllipseItem* highlight_item = static_cast<QGraphicsEllipseItem*>(items[1]);
-
-            point_item->setBrush(color);
-            point_item->setPen(QPen(Qt::white, 1));
-
-            highlight_item->setPen(QPen(color, 3)); // Fat ring
-            highlight_item->setVisible(is_highlighted);
-        }
+        QGraphicsEllipseItem* item = static_cast<QGraphicsEllipseItem*>(_points_items[point.id]);
+        item->setRect(scene_pos.x() - radius, scene_pos.y() - radius, radius * 2, radius * 2);
+        item->setPen(QPen(border_color, border_width));
+        item->setBrush(QBrush(color));
     } else {
         // Create new item
-        QGraphicsItemGroup* group = new QGraphicsItemGroup();
-        group->setZValue(30);
-
-        // Main point item (mimicking original appearance)
-        float radius = 4.0f;
-        QGraphicsEllipseItem* point_item = new QGraphicsEllipseItem(QRectF(-radius, -radius, radius * 2, radius * 2));
-        point_item->setBrush(color);
-        point_item->setPen(QPen(Qt::white, 1)); // Ring as it was originally
-        group->addToGroup(point_item);
-
-        // Highlight ring
-        float highlight_radius = radius + 3.0f; // Make it a bit larger to be "around"
-        QGraphicsEllipseItem* highlight_item = new QGraphicsEllipseItem(QRectF(-highlight_radius, -highlight_radius, highlight_radius * 2, highlight_radius * 2));
-        highlight_item->setBrush(Qt::NoBrush);
-        highlight_item->setPen(QPen(color, 3)); // Fat ring
-        highlight_item->setVisible(is_highlighted);
-        group->addToGroup(highlight_item);
-
-        group->setPos(scene_pos);
-        fScene->addItem(group);
-        _points_items[point.id] = group;
+        QGraphicsEllipseItem* item = fScene->addEllipse(
+            scene_pos.x() - radius, scene_pos.y() - radius, radius * 2, radius * 2,
+            QPen(border_color, border_width), QBrush(color)
+        );
+        item->setZValue(10); // Ensure points are rendered on top
+        _points_items[point.id] = item;
     }
 }
 
@@ -1263,18 +1237,54 @@ void CVolumeViewer::onPathsChanged(const QList<PathData>& paths)
 
 void CVolumeViewer::onMousePress(QPointF scene_loc, Qt::MouseButton button, Qt::KeyboardModifiers modifiers)
 {
-    if (button == Qt::LeftButton && _highlighted_point_id != 0) {
-        _dragged_point_id = _highlighted_point_id;
-    } else {
-        if (!_surf) {
+    if (!_point_collection || !_surf) return;
+
+    if (button == Qt::LeftButton) {
+        if (_highlighted_point_id != 0) {
+            _dragged_point_id = _highlighted_point_id;
             return;
         }
-        
+
         cv::Vec3f p, n;
-        if (!scene2vol(p, n, _surf, _surf_name, _surf_col, scene_loc, _vis_center, _scale))
+        if (!scene2vol(p, n, _surf, _surf_name, _surf_col, scene_loc, _vis_center, _scale)) {
             return;
-        
-        emit sendMousePressVolume(p, button, modifiers);
+        }
+
+        bool isShift = modifiers.testFlag(Qt::ShiftModifier);
+        bool isCtrl = modifiers.testFlag(Qt::ControlModifier);
+
+        if (isShift && isCtrl) {
+            // Add to selected collection
+            if (_selected_collection_id != 0) {
+                const auto& collections = _point_collection->getAllCollections();
+                auto it = collections.find(_selected_collection_id);
+                if (it != collections.end()) {
+                    _point_collection->addPoint(it->second.name, p);
+                }
+            }
+        } else if (isShift) {
+            // Add to a new or existing shift-group
+            if (_new_shift_group_required) {
+                std::string new_name = _point_collection->generateNewCollectionName();
+                ColPoint new_point = _point_collection->addPoint(new_name, p);
+                _current_shift_collection_id = new_point.collectionId;
+                _new_shift_group_required = false;
+            } else {
+                 const auto& collections = _point_collection->getAllCollections();
+                auto it = collections.find(_current_shift_collection_id);
+                if (it != collections.end()) {
+                    _point_collection->addPoint(it->second.name, p);
+                }
+            }
+        } else {
+            // Default: add to "default" collection
+            _point_collection->addPoint("default", p);
+        }
+
+    } else if (button == Qt::RightButton) {
+        if (_highlighted_point_id != 0) {
+            _point_collection->removePoint(_highlighted_point_id);
+        }
     }
 }
 
@@ -1524,5 +1534,17 @@ void CVolumeViewer::onPointRemoved(uint64_t pointId)
         fScene->removeItem(_points_items[pointId]);
         delete _points_items[pointId];
         _points_items.erase(pointId);
+    }
+}
+
+void CVolumeViewer::onCollectionSelected(uint64_t collectionId)
+{
+    _selected_collection_id = collectionId;
+}
+
+void CVolumeViewer::onKeyRelease(int key, Qt::KeyboardModifiers modifiers)
+{
+    if (key == Qt::Key_Shift) {
+        _new_shift_group_required = true;
     }
 }

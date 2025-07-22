@@ -77,6 +77,7 @@ public slots:
     void onVolumeClicked(QPointF scene_loc,Qt::MouseButton buttons, Qt::KeyboardModifiers modifiers);
     void onPanRelease(Qt::MouseButton buttons, Qt::KeyboardModifiers modifiers);
     void onPanStart(Qt::MouseButton buttons, Qt::KeyboardModifiers modifiers);
+    void onCollectionSelected(uint64_t collectionId);
     void onSurfaceChanged(std::string name, Surface *surf);
     void onPOIChanged(std::string name, POI *poi);
     void onIntersectionChanged(std::string a, std::string b, Intersection *intersection);
@@ -93,6 +94,7 @@ public slots:
     void onMouseMove(QPointF scene_loc, Qt::MouseButtons buttons, Qt::KeyboardModifiers modifiers);
     void onMouseRelease(QPointF scene_loc, Qt::MouseButton button, Qt::KeyboardModifiers modifiers);
     void onVolumeClosing(); // Clear surface pointers when volume is closing
+    void onKeyRelease(int key, Qt::KeyboardModifiers modifiers);
     void onDrawingModeActive(bool active, float brushSize = 3.0f, bool isSquare = false);
 
 signals:
@@ -175,6 +177,9 @@ protected:
     // Point interaction state
     uint64_t _highlighted_point_id = 0;
     uint64_t _dragged_point_id = 0;
+    uint64_t _selected_collection_id = 0;
+    uint64_t _current_shift_collection_id = 0;
+    bool _new_shift_group_required = true;
     
     QList<PathData> _paths;
     std::vector<QGraphicsItem*> _path_items;
