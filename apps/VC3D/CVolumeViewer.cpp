@@ -342,40 +342,31 @@ void CVolumeViewer::onVolumeClicked(QPointF scene_loc, Qt::MouseButton buttons, 
     if (!_surf)
         return;
 
+    // If a point was being dragged, don't do anything on release
+    if (_dragged_point_id != 0) {
+        return;
+    }
+
     cv::Vec3f p, n;
     if (!scene2vol(p, n, _surf, _surf_name, _surf_col, scene_loc, _vis_center, _scale))
         return;
 
     if (buttons == Qt::LeftButton) {
         bool isShift = modifiers.testFlag(Qt::ShiftModifier);
-        bool isCtrl = modifiers.testFlag(Qt::ControlModifier);
 
-        if (isShift && isCtrl) {
-            // Add to selected collection
+        if (isShift) {
+            // If a collection is selected, add to it.
             if (_selected_collection_id != 0) {
                 const auto& collections = _point_collection->getAllCollections();
                 auto it = collections.find(_selected_collection_id);
                 if (it != collections.end()) {
                     _point_collection->addPoint(it->second.name, p);
                 }
-            }
-        } else if (isShift) {
-            // Add to a new or existing shift-group
-            if (_new_shift_group_required) {
-                std::string new_name = _point_collection->generateNewCollectionName();
-                ColPoint new_point = _point_collection->addPoint(new_name, p);
-                _current_shift_collection_id = new_point.collectionId;
-                _new_shift_group_required = false;
             } else {
-                 const auto& collections = _point_collection->getAllCollections();
-                auto it = collections.find(_current_shift_collection_id);
-                if (it != collections.end()) {
-                    _point_collection->addPoint(it->second.name, p);
-                }
+                // Otherwise, create a new collection.
+                std::string new_name = _point_collection->generateNewCollectionName("New Collection");
+                _point_collection->addPoint(new_name, p);
             }
-        } else {
-            // Default: add to "default" collection
-            _point_collection->addPoint("default", p);
         }
     }
 
@@ -1273,7 +1264,7 @@ void CVolumeViewer::onMousePress(QPointF scene_loc, Qt::MouseButton button, Qt::
     if (button == Qt::LeftButton) {
         if (_highlighted_point_id != 0) {
             _dragged_point_id = _highlighted_point_id;
-            return;
+            // Do not return, allow forwarding for other widgets
         }
     } else if (button == Qt::RightButton) {
         if (_highlighted_point_id != 0) {
@@ -1293,14 +1284,13 @@ void CVolumeViewer::onMouseMove(QPointF scene_loc, Qt::MouseButtons buttons, Qt:
     onCursorMove(scene_loc); // Keep highlighting up to date
 
     if ((buttons & Qt::LeftButton) && _dragged_point_id != 0) {
-        if (auto point_opt = _point_collection->getPoint(_dragged_point_id)) {
-            ColPoint updated_point = *point_opt;
-            cv::Vec3f p, n;
-            if (!scene2vol(p, n, _surf, _surf_name, _surf_col, scene_loc, _vis_center, _scale))
-                return;
-            updated_point.p = p;
-            
-            _point_collection->updatePoint(updated_point);
+        cv::Vec3f p, n;
+        if (scene2vol(p, n, _surf, _surf_name, _surf_col, scene_loc, _vis_center, _scale)) {
+            if (auto point_opt = _point_collection->getPoint(_dragged_point_id)) {
+                ColPoint updated_point = *point_opt;
+                updated_point.p = p;
+                _point_collection->updatePoint(updated_point);
+            }
         }
     } else {
         if (!_surf) {
@@ -1321,16 +1311,17 @@ void CVolumeViewer::onMouseRelease(QPointF scene_loc, Qt::MouseButton button, Qt
         _dragged_point_id = 0;
         // Re-run highlight logic
         onCursorMove(scene_loc);
-    } else {
-        if (!_surf) {
-            return;
-        }
-        
-        cv::Vec3f p, n;
-        if (!scene2vol(p, n, _surf, _surf_name, _surf_col, scene_loc, _vis_center, _scale))
-            return;
-        
-        emit sendMouseReleaseVolume(p, button, modifiers);
+    }
+
+    // Forward for drawing widgets
+    cv::Vec3f p, n;
+    if (scene2vol(p, n, _surf, _surf_name, _surf_col, scene_loc, _vis_center, _scale)) {
+        if (dynamic_cast<PlaneSurface*>(_surf))
+            emit sendMouseReleaseVolume(p, button, modifiers);
+        else if (_surf_name == "segmentation")
+            emit sendMouseReleaseVolume(p, button, modifiers);
+        else
+            std::cout << "FIXME: onMouseRelease()" << std::endl;
     }
 }
 
