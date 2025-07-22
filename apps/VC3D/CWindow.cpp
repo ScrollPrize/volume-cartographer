@@ -370,6 +370,8 @@ void CWindow::CreateWidgets(void)
     for (auto& viewer : _viewers) {
         connect(_point_collection_widget, &CPointCollectionWidget::collectionSelected, viewer, &CVolumeViewer::onCollectionSelected);
         connect(viewer, &CVolumeViewer::sendCollectionSelected, _point_collection_widget, &CPointCollectionWidget::selectCollection);
+        connect(_point_collection_widget, &CPointCollectionWidget::pointSelected, viewer, &CVolumeViewer::onPointSelected);
+        connect(viewer, &CVolumeViewer::pointSelected, _point_collection_widget, &CPointCollectionWidget::selectPoint);
     }
 
     // Tab the docks - Drawing first, then Seeding, then Tools

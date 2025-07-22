@@ -12,6 +12,7 @@
 #include <QLineEdit>
 #include <QCheckBox>
 #include <QItemSelection>
+#include <QDoubleSpinBox>
 
 
 namespace ChaoVis {
@@ -27,9 +28,11 @@ public:
 
 signals:
     void collectionSelected(uint64_t collectionId);
+    void pointSelected(uint64_t pointId);
 
 public slots:
     void selectCollection(uint64_t collectionId);
+    void selectPoint(uint64_t pointId);
 
 private slots:
     void refreshTree();
@@ -46,6 +49,7 @@ private slots:
     void onNameEdited(const QString &name);
     void onAbsoluteWindingChanged(int state);
     void onColorButtonClicked();
+    void onWindingEdited(double value);
 
 private:
     void setupUi();
@@ -67,7 +71,7 @@ private:
     QPushButton *_color_button;
 
     QGroupBox *_point_metadata_group;
-    QLabel* _winding_label;
+    QDoubleSpinBox* _winding_spinbox;
 };
 
 }

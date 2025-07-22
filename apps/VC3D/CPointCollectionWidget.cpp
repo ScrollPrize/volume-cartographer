@@ -69,9 +69,19 @@ void CPointCollectionWidget::setupUi()
     // Point Metadata
     _point_metadata_group = new QGroupBox("Point Metadata");
     QVBoxLayout *point_layout = new QVBoxLayout(_point_metadata_group);
-    _winding_label = new QLabel("Winding: N/A");
-    point_layout->addWidget(_winding_label);
+    
+    QHBoxLayout *winding_layout = new QHBoxLayout();
+    winding_layout->addWidget(new QLabel("Winding:"));
+    _winding_spinbox = new QDoubleSpinBox();
+    _winding_spinbox->setRange(-1000, 1000);
+    _winding_spinbox->setDecimals(2);
+    _winding_spinbox->setSingleStep(0.1);
+    winding_layout->addWidget(_winding_spinbox);
+    point_layout->addLayout(winding_layout);
+
     layout->addWidget(_point_metadata_group);
+
+    connect(_winding_spinbox, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, &CPointCollectionWidget::onWindingEdited);
 
     layout->addStretch();
 
@@ -216,6 +226,9 @@ void CPointCollectionWidget::onSelectionChanged(const QItemSelection &selected, 
     }
     updateMetadataWidgets();
     emit collectionSelected(_selected_collection_id);
+    if (_selected_point_id != 0) {
+        emit pointSelected(_selected_point_id);
+    }
 }
 
 void CPointCollectionWidget::updateMetadataWidgets()
@@ -256,10 +269,14 @@ void CPointCollectionWidget::updateMetadataWidgets()
     if (point_selected) {
         auto point_opt = _point_collection->getPoint(_selected_point_id);
         if (point_opt) {
-            _winding_label->setText(QString("Winding: %1").arg(point_opt->winding_annotation));
+            _winding_spinbox->blockSignals(true);
+            _winding_spinbox->setValue(point_opt->winding_annotation);
+            _winding_spinbox->blockSignals(false);
         }
     } else {
-        _winding_label->setText("Winding: N/A");
+        _winding_spinbox->blockSignals(true);
+        _winding_spinbox->setValue(0);
+        _winding_spinbox->blockSignals(false);
     }
 }
 
@@ -306,6 +323,18 @@ void CPointCollectionWidget::onColorButtonClicked()
     }
 }
 
+void CPointCollectionWidget::onWindingEdited(double value)
+{
+    if (_selected_point_id != 0) {
+        auto point_opt = _point_collection->getPoint(_selected_point_id);
+        if (point_opt) {
+            ColPoint updated_point = *point_opt;
+            updated_point.winding_annotation = value;
+            _point_collection->updatePoint(updated_point);
+        }
+    }
+}
+
 void CPointCollectionWidget::selectCollection(uint64_t collectionId)
 {
     QStandardItem* item = findCollectionItem(collectionId);
@@ -325,6 +354,29 @@ QStandardItem* CPointCollectionWidget::findCollectionItem(uint64_t collectionId)
         }
     }
     return nullptr;
+}
+
+void CPointCollectionWidget::selectPoint(uint64_t pointId)
+{
+    if (_selected_point_id == pointId) {
+        return;
+    }
+
+    // Find the item corresponding to the pointId
+    for (int i = 0; i < _model->rowCount(); ++i) {
+        QStandardItem *collection_item = _model->item(i);
+        if (collection_item) {
+            for (int j = 0; j < collection_item->rowCount(); ++j) {
+                QStandardItem *point_item = collection_item->child(j);
+                if (point_item && point_item->data().toULongLong() == pointId) {
+                    _tree_view->selectionModel()->clearSelection();
+                    _tree_view->selectionModel()->select(point_item->index(), QItemSelectionModel::Select | QItemSelectionModel::Rows);
+                    _tree_view->scrollTo(point_item->index());
+                    return;
+                }
+            }
+        }
+    }
 }
 
 }

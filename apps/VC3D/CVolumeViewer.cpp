@@ -39,6 +39,7 @@ CVolumeViewer::CVolumeViewer(CSurfaceCollection *col, QWidget* parent)
     , fBaseImageItem(nullptr)
     , _surf_col(col)
     , _highlighted_point_id(0)
+    , _selected_point_id(0)
     , _dragged_point_id(0)
 {
     // Create graphics view
@@ -178,16 +179,14 @@ void CVolumeViewer::onCursorMove(QPointF scene_loc)
         const float highlight_dist_threshold = 10.0f; // pixels
         float min_dist_sq = highlight_dist_threshold * highlight_dist_threshold;
 
-        for (const auto& col_pair : _point_collection->getAllCollections()) {
-            for (const auto& point_pair : col_pair.second.points) {
-                const auto& point = point_pair.second;
-                QPointF point_scene_pos = volumeToScene(point.p);
-                QPointF diff = scene_loc - point_scene_pos;
-                float dist_sq = QPointF::dotProduct(diff, diff);
-                if (dist_sq < min_dist_sq) {
-                    min_dist_sq = dist_sq;
-                    _highlighted_point_id = point.id;
-                }
+        for (const auto& item_pair : _points_items) {
+            auto item = static_cast<QGraphicsEllipseItem*>(item_pair.second);
+            QPointF point_scene_pos = item->rect().center();
+            QPointF diff = scene_loc - point_scene_pos;
+            float dist_sq = QPointF::dotProduct(diff, diff);
+            if (dist_sq < min_dist_sq) {
+                min_dist_sq = dist_sq;
+                _highlighted_point_id = item_pair.first;
             }
         }
     }
@@ -1241,9 +1240,16 @@ void CVolumeViewer::renderOrUpdatePoint(const ColPoint& point)
         border_color = Qt::yellow;
         border_width = 2.5f;
     }
+ 
+    if (point.id == _selected_point_id) {
+        // Use a different border to indicate selection
+        border_color = QColor(255, 0, 255, 255); // Bright magenta for selection
+        border_width = 2.5f;
+        radius = 7.0f;
+    }
 
-    if (_points_items.count(point.id)) {
-        // Update existing item
+     if (_points_items.count(point.id)) {
+         // Update existing item
         QGraphicsEllipseItem* item = static_cast<QGraphicsEllipseItem*>(_points_items[point.id]);
         item->setRect(scene_pos.x() - radius, scene_pos.y() - radius, radius * 2, radius * 2);
         item->setPen(QPen(border_color, border_width));
@@ -1271,6 +1277,18 @@ void CVolumeViewer::onMousePress(QPointF scene_loc, Qt::MouseButton button, Qt::
 
     if (button == Qt::LeftButton) {
         if (_highlighted_point_id != 0) {
+           if (_selected_point_id != _highlighted_point_id) {
+               uint64_t old_selected_id = _selected_point_id;
+               _selected_point_id = _highlighted_point_id;
+               emit pointSelected(_selected_point_id);
+
+               if (auto old_point = _point_collection->getPoint(old_selected_id)) {
+                   renderOrUpdatePoint(*old_point);
+               }
+               if (auto new_point = _point_collection->getPoint(_selected_point_id)) {
+                   renderOrUpdatePoint(*new_point);
+               }
+           }
             _dragged_point_id = _highlighted_point_id;
             // Do not return, allow forwarding for other widgets
         }
@@ -1512,7 +1530,7 @@ void CVolumeViewer::refreshPointPositions()
     for (const auto& col_pair : _point_collection->getAllCollections()) {
         for (const auto& point_pair : col_pair.second.points) {
             if (_points_items.count(point_pair.first)) {
-                _points_items[point_pair.first]->setPos(volumeToScene(point_pair.second.p));
+                renderOrUpdatePoint(point_pair.second);
             }
         }
     }
@@ -1561,5 +1579,22 @@ void CVolumeViewer::onKeyRelease(int key, Qt::KeyboardModifiers modifiers)
 {
     if (key == Qt::Key_Shift) {
         _new_shift_group_required = true;
+    }
+}
+
+void CVolumeViewer::onPointSelected(uint64_t pointId)
+{
+    if (_selected_point_id == pointId) {
+        return;
+    }
+
+    uint64_t old_selected_id = _selected_point_id;
+    _selected_point_id = pointId;
+
+    if (auto old_point = _point_collection->getPoint(old_selected_id)) {
+        renderOrUpdatePoint(*old_point);
+    }
+    if (auto new_point = _point_collection->getPoint(_selected_point_id)) {
+        renderOrUpdatePoint(*new_point);
     }
 }

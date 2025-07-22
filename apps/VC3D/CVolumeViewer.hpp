@@ -89,6 +89,7 @@ public slots:
     void onPointChanged(const ColPoint& point);
     void onPointRemoved(uint64_t pointId);
     void onPathsChanged(const QList<PathData>& paths);
+    void onPointSelected(uint64_t pointId);
     
     // Mouse event handlers for drawing (transform coordinates)
     void onMousePress(QPointF scene_loc, Qt::MouseButton button, Qt::KeyboardModifiers modifiers);
@@ -110,6 +111,7 @@ signals:
     void sendMouseMoveVolume(cv::Vec3f vol_loc, Qt::MouseButtons buttons, Qt::KeyboardModifiers modifiers);
     void sendMouseReleaseVolume(cv::Vec3f vol_loc, Qt::MouseButton button, Qt::KeyboardModifiers modifiers);
     void sendCollectionSelected(uint64_t collectionId);
+    void pointSelected(uint64_t pointId);
 
 protected:
     void ScaleImage(double nFactor);
@@ -173,11 +175,12 @@ protected:
     
     CSurfaceCollection *_surf_col = nullptr;
     
-    VCCollection* _point_collection;
+    VCCollection* _point_collection = nullptr;
     std::unordered_map<uint64_t, QGraphicsItem*> _points_items;
     
     // Point interaction state
     uint64_t _highlighted_point_id = 0;
+    uint64_t _selected_point_id = 0;
     uint64_t _dragged_point_id = 0;
     uint64_t _selected_collection_id = 0;
     uint64_t _current_shift_collection_id = 0;
