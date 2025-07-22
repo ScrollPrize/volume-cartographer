@@ -174,9 +174,8 @@ void CVolumeViewer::onCursorMove(QPointF scene_loc)
         const float highlight_dist_threshold = 10.0f; // pixels
         float min_dist_sq = highlight_dist_threshold * highlight_dist_threshold;
 
-        for (const auto& pair : _point_collection->getAllCollections()) {
-            const auto& points = pair.second;
-            for (const auto& point_pair : points) {
+        for (const auto& col_pair : _point_collection->getAllCollections()) {
+            for (const auto& point_pair : col_pair.second.points) {
                 const auto& point = point_pair.second;
                 QPointF point_scene_pos = volumeToScene(point.p);
                 QPointF diff = scene_loc - point_scene_pos;
@@ -191,12 +190,10 @@ void CVolumeViewer::onCursorMove(QPointF scene_loc)
 
     if (old_highlighted_id != _highlighted_point_id) {
         if (auto old_point = _point_collection->getPoint(old_highlighted_id)) {
-            auto collection_name = _point_collection->getPointCollectionName(old_highlighted_id);
-            renderOrUpdatePoint(*collection_name, *old_point);
+            renderOrUpdatePoint(*old_point);
         }
         if (auto new_point = _point_collection->getPoint(_highlighted_point_id)) {
-            auto collection_name = _point_collection->getPointCollectionName(_highlighted_point_id);
-            renderOrUpdatePoint(*collection_name, *new_point);
+            renderOrUpdatePoint(*new_point);
         }
     }
 }
@@ -1190,23 +1187,19 @@ void CVolumeViewer::renderPaths()
     }
 }
 
-
-void CVolumeViewer::onPointChanged(const std::string& collectionName, const ColPoint& point)
+void CVolumeViewer::renderOrUpdatePoint(const ColPoint& point)
 {
-    renderOrUpdatePoint(collectionName, point);
-}
-
-void CVolumeViewer::onPointRemoved(const std::string& collectionName, uint64_t pointId)
-{
-    if (_points_items.count(pointId)) {
-        fScene->removeItem(_points_items[pointId]);
-        delete _points_items[pointId];
-        _points_items.erase(pointId);
+    if (!_point_collection) {
+        return;
     }
-}
 
-void CVolumeViewer::renderOrUpdatePoint(const std::string& collectionName, const ColPoint& point)
-{
+    std::string collectionName = "";
+    const auto& collections = _point_collection->getAllCollections();
+    auto it = collections.find(point.collectionId);
+    if (it != collections.end()) {
+        collectionName = it->second.name;
+    }
+
     // Define colors for different collections
     std::unordered_map<std::string, QColor> colors;
     colors["seeding_peaks"] = Qt::red;
@@ -1291,15 +1284,13 @@ void CVolumeViewer::onMouseMove(QPointF scene_loc, Qt::MouseButtons buttons, Qt:
 
     if ((buttons & Qt::LeftButton) && _dragged_point_id != 0) {
         if (auto point_opt = _point_collection->getPoint(_dragged_point_id)) {
-            auto collection_name_opt = _point_collection->getPointCollectionName(_dragged_point_id);
-            
             ColPoint updated_point = *point_opt;
             cv::Vec3f p, n;
             if (!scene2vol(p, n, _surf, _surf_name, _surf_col, scene_loc, _vis_center, _scale))
                 return;
             updated_point.p = p;
             
-            _point_collection->updatePoint(*collection_name_opt, updated_point);
+            _point_collection->updatePoint(updated_point);
         }
     } else {
         if (!_surf) {
@@ -1509,12 +1500,29 @@ void CVolumeViewer::refreshPointPositions()
         return;
     }
 
-    for (const auto& pair : _point_collection->getAllCollections()) {
-        const auto& points = pair.second;
-        for (const auto& point_pair : points) {
+    for (const auto& col_pair : _point_collection->getAllCollections()) {
+        for (const auto& point_pair : col_pair.second.points) {
             if (_points_items.count(point_pair.first)) {
                 _points_items[point_pair.first]->setPos(volumeToScene(point_pair.second.p));
             }
         }
+    }
+}
+void CVolumeViewer::onPointAdded(const ColPoint& point)
+{
+    renderOrUpdatePoint(point);
+}
+
+void CVolumeViewer::onPointChanged(const ColPoint& point)
+{
+    renderOrUpdatePoint(point);
+}
+
+void CVolumeViewer::onPointRemoved(uint64_t pointId)
+{
+    if (_points_items.count(pointId)) {
+        fScene->removeItem(_points_items[pointId]);
+        delete _points_items[pointId];
+        _points_items.erase(pointId);
     }
 }

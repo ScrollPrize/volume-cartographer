@@ -48,7 +48,10 @@ SeedingWidget::SeedingWidget(VCCollection* point_collection, CSurfaceCollection*
     setupUI();
 
     if (_point_collection) {
-        connect(_point_collection, &VCCollection::collectionNamesChanged, this, &SeedingWidget::onCollectionChanged);
+        connect(_point_collection, &VCCollection::collectionAdded, this, &SeedingWidget::onCollectionAdded);
+        connect(_point_collection, &VCCollection::collectionChanged, this, &SeedingWidget::onCollectionChanged);
+        connect(_point_collection, &VCCollection::collectionRemoved, this, &SeedingWidget::onCollectionRemoved);
+        onCollectionChanged(0); // Initial population
     }
     
     // Automatically find the executable path
@@ -240,15 +243,25 @@ void SeedingWidget::setCache(ChunkCache* cache)
 }
 
 
-void SeedingWidget::onCollectionChanged()
+void SeedingWidget::onCollectionAdded(uint64_t collectionId)
+{
+    onCollectionChanged(0);
+}
+
+void SeedingWidget::onCollectionChanged(uint64_t collectionId)
 {
     if (!_point_collection) return;
 
     collectionComboBox->clear();
-    auto names = _point_collection->getCollectionNames();
-    for (const auto& name : names) {
-        collectionComboBox->addItem(QString::fromStdString(name));
+    const auto& collections = _point_collection->getAllCollections();
+    for (const auto& pair : collections) {
+        collectionComboBox->addItem(QString::fromStdString(pair.second.name), QVariant::fromValue(pair.first));
     }
+}
+
+void SeedingWidget::onCollectionRemoved(uint64_t collectionId)
+{
+    onCollectionChanged(0);
 }
 
 void SeedingWidget::onVolumeChanged(std::shared_ptr<volcart::Volume> vol, const std::string& volumeId)
@@ -267,13 +280,13 @@ void SeedingWidget::updateCurrentZSlice(int z)
 
 void SeedingWidget::onClearPreviewClicked()
 {
-    _point_collection->clearCollection("ray_preview");
+    _point_collection->clearCollection(_point_collection->getCollectionId("ray_preview"));
     infoLabel->setText("Preview points cleared.");
 }
 
 void SeedingWidget::onClearPeaksClicked()
 {
-    _point_collection->clearCollection("seeding_peaks");
+    _point_collection->clearCollection(_point_collection->getCollectionId("seeding_peaks"));
     infoLabel->setText("Peak points cleared.");
 }
 
@@ -289,7 +302,7 @@ void SeedingWidget::onPreviewRaysClicked()
         return;
     }
 
-    _point_collection->clearCollection("ray_preview");
+    _point_collection->clearCollection(_point_collection->getCollectionId("ray_preview"));
 
     const double angleStep = angleStepSpinBox->value();
     const int numSteps = static_cast<int>(360.0 / angleStep);
@@ -328,7 +341,7 @@ void SeedingWidget::onCastRaysClicked()
         }
         
         // Reset previous peaks
-        _point_collection->clearCollection("seeding_peaks");
+        _point_collection->clearCollection(_point_collection->getCollectionId("seeding_peaks"));
         
         // Compute distance transform for the current slice
         computeDistanceTransform();
@@ -337,12 +350,12 @@ void SeedingWidget::onCastRaysClicked()
         castRays();
         
         // Enable segmentation button if we found peaks
-        runSegmentationButton->setEnabled(!_point_collection->getPoints("seeding_peaks").empty());
+        runSegmentationButton->setEnabled(!_point_collection->getAllCollections().at(_point_collection->getCollectionId("seeding_peaks")).points.empty());
         
         // Update UI with clearer instructions about the displayed points
-        infoLabel->setText(QString("Found %1 peaks (shown in red). Review points then click 'Run Segmentation'.").arg(_point_collection->getPoints("seeding_peaks").size()));
+        infoLabel->setText(QString("Found %1 peaks (shown in red). Review points then click 'Run Segmentation'.").arg(_point_collection->getAllCollections().at(_point_collection->getCollectionId("seeding_peaks")).points.size()));
         emit sendStatusMessageAvailable(
-            QString("Cast %1 rays and found %2 intensity peaks. Points are displayed for review.").arg(360.0 / angleStepSpinBox->value()).arg(_point_collection->getPoints("seeding_peaks").size()),
+            QString("Cast %1 rays and found %2 intensity peaks. Points are displayed for review.").arg(360.0 / angleStepSpinBox->value()).arg(_point_collection->getAllCollections().at(_point_collection->getCollectionId("seeding_peaks")).points.size()),
             5000);
     } else {
         // Draw mode - analyze paths
@@ -710,8 +723,8 @@ void SeedingWidget::onRunSegmentationClicked()
 void SeedingWidget::onResetPointsClicked()
 {
     if (_point_collection) {
-        _point_collection->clearCollection("seeding_peaks");
-        _point_collection->clearCollection("seeding_seeds");
+        _point_collection->clearCollection(_point_collection->getCollectionId("seeding_peaks"));
+        _point_collection->clearCollection(_point_collection->getCollectionId("seeding_seeds"));
     }
     
     // Clear paths
@@ -752,7 +765,7 @@ void SeedingWidget::updateParameterPreview()
     auto& center_point = focus_points[0].p;
 
     // Clear previous preview points
-    _point_collection->clearCollection("seeding_preview");
+    _point_collection->clearCollection(_point_collection->getCollectionId("seeding_preview"));
     
     // Get parameters
     const double angleStep = angleStepSpinBox->value();
@@ -827,7 +840,7 @@ void SeedingWidget::analyzePaths()
     }
     
     // Reset previous peaks
-    _point_collection->clearCollection("seeding_peaks");
+    _point_collection->clearCollection(_point_collection->getCollectionId("seeding_peaks"));
     
     // Compute distance transform once
     computeDistanceTransform();

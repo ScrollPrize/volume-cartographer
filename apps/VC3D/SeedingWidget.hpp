@@ -47,7 +47,9 @@ signals:
     
 public slots:
     void onSurfacesLoaded();  // Called when surfaces have been loaded/reloaded
-    void onCollectionChanged();
+    void onCollectionAdded(uint64_t collectionId);
+    void onCollectionChanged(uint64_t collectionId);
+    void onCollectionRemoved(uint64_t collectionId);
     
 public slots:
     void onVolumeChanged(std::shared_ptr<volcart::Volume> vol, const std::string& volumeId);

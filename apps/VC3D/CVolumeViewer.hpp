@@ -83,8 +83,9 @@ public slots:
     void onScrolled();
     void onZoom(int steps, QPointF scene_point, Qt::KeyboardModifiers modifiers);
     void onCursorMove(QPointF);
-    void onPointChanged(const std::string& collectionName, const ChaoVis::ColPoint& point);
-    void onPointRemoved(const std::string& collectionName, uint64_t pointId);
+    void onPointAdded(const ColPoint& point);
+    void onPointChanged(const ColPoint& point);
+    void onPointRemoved(uint64_t pointId);
     void onPathsChanged(const QList<PathData>& paths);
     
     // Mouse event handlers for drawing (transform coordinates)
@@ -111,7 +112,7 @@ protected:
     void CenterOn(const QPointF& point);
     QPointF volumeToScene(const cv::Vec3f& vol_point);
     void refreshPointPositions();
-    void renderOrUpdatePoint(const std::string& collectionName, const ColPoint& point);
+    void renderOrUpdatePoint(const ColPoint& point);
 
 protected:
     // widget components

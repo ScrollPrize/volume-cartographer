@@ -205,6 +205,7 @@ CVolumeViewer *CWindow::newConnectedCVolumeViewer(std::string surfaceName, QStri
     volView->setCache(chunk_cache);
     connect(this, &CWindow::sendVolumeChanged, volView, &CVolumeViewer::OnVolumeChanged);
     volView->setPointCollection(_point_collection);
+    connect(_point_collection, &VCCollection::pointAdded, volView, &CVolumeViewer::onPointAdded);
     connect(_point_collection, &VCCollection::pointChanged, volView, &CVolumeViewer::onPointChanged);
     connect(_point_collection, &VCCollection::pointRemoved, volView, &CVolumeViewer::onPointRemoved);
     connect(_surf_col, &CSurfaceCollection::sendSurfaceChanged, volView, &CVolumeViewer::onSurfaceChanged);
@@ -363,8 +364,7 @@ void CWindow::CreateWidgets(void)
     }
     
     // Create and add the point collection widget
-    _point_collection_widget = new CPointCollectionWidget(this);
-    _point_collection_widget->setPointCollection(_point_collection);
+    _point_collection_widget = new CPointCollectionWidget(_point_collection, this);
     addDockWidget(Qt::RightDockWidgetArea, _point_collection_widget);
 
     // Tab the docks - Drawing first, then Seeding, then Tools
