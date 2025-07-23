@@ -374,7 +374,6 @@ void CVolumeViewer::setIntersects(const std::set<std::string> &set)
     renderIntersections();
 }
 
-
 void CVolumeViewer::fitSurfaceInView()
 {
     if (!_surf || !fGraphicsView) {
@@ -405,10 +404,11 @@ void CVolumeViewer::fitSurfaceInView()
         return;
     }
 
-    float worldWidth = bbox.high[0] - bbox.low[0];
-    float worldHeight = bbox.high[1] - bbox.low[1];
+    // Calculate the actual dimensions of the bounding box
+    float bboxWidth = bbox.high[0] - bbox.low[0];
+    float bboxHeight = bbox.high[1] - bbox.low[1];
 
-    if (worldWidth <= 0 || worldHeight <= 0) {
+    if (bboxWidth <= 0 || bboxHeight <= 0) {
         return;
     }
 
@@ -420,15 +420,12 @@ void CVolumeViewer::fitSurfaceInView()
         return;
     }
 
-    // Calculate what scale factor would fit the surface in the viewport
-    // We want: surface_size_in_scene * viewport_transform_scale = viewport_size * fit_factor
-    // surface_size_in_scene = world_size * _scale
-    // So: world_size * _scale * viewport_transform_scale = viewport_size * fit_factor
-    // We'll use a fit_factor of 0.8 to leave some padding
-
+    // Calculate scale factor based on actual bbox dimensions
     float fit_factor = 0.8f;
-    float required_scale_x = (viewportWidth * fit_factor) / worldWidth;
-    float required_scale_y = (viewportHeight * fit_factor) / worldHeight;
+    float required_scale_x = (viewportWidth * fit_factor) / bboxWidth;
+    float required_scale_y = (viewportHeight * fit_factor) / bboxHeight;
+
+    // Use the smaller scale to ensure the entire bbox fits
     float required_scale = std::min(required_scale_x, required_scale_y);
 
     _scale = required_scale;
@@ -436,11 +433,9 @@ void CVolumeViewer::fitSurfaceInView()
     recalcScales();
 
     fGraphicsView->resetTransform();
-
     fGraphicsView->centerOn(0, 0);
 
     _lbl->setText(QString("%1x %2").arg(_scale).arg(_z_off));
-
     curr_img_area = {0,0,0,0};
 }
 
