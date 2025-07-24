@@ -2,6 +2,10 @@
 set(target VC3D)
 set(CMAKE_AUTORCC ON)
 
+
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -ggdb -Og -Wno-narrowing -g3  ")
+set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -g3  ")
+
 set(srcs
     VCAppMain.cpp
     CMesh.cpp
