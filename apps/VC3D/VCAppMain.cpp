@@ -22,7 +22,7 @@ auto main(int argc, char* argv[]) -> int
     QApplication::setOrganizationName("EduceLab");
     QApplication::setApplicationName("VC3D");
     QApplication::setWindowIcon(QIcon(":/images/logo.png"));
-    QApplication::setApplicationVersion(QString::fromStdString(vc::ProjectInfo::VersionString()));
+    QApplication::setApplicationVersion(QString::fromStdString("1.2.3"));
 
     CWindow aWin;
     aWin.show();

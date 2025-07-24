@@ -15,6 +15,8 @@
 
 using namespace ChaoVis;
 
+#define BGND_RECT_MARGIN 8
+
 double CVolumeViewerView::chooseNiceLength(double nominal) const
 {
     double expn = std::floor(std::log10(nominal));
@@ -196,4 +198,51 @@ void CVolumeViewerView::mouseMoveEvent(QMouseEvent *event)
         }
     }
     event->ignore();
+}
+
+
+void CVolumeViewerView::showCurrentImpactRange(int range)
+{
+    showTextAboveCursor(QString::number(range), "", QColor(255, 120, 110)); // tr("Impact Range")
+}
+
+
+void CVolumeViewerView::showCurrentScanRange(int range)
+{
+    showTextAboveCursor(QString::number(range), "", QColor(160, 180, 255)); // tr("Scan Range")
+}
+
+void CVolumeViewerView::showCurrentSliceIndex(int slice, bool highlight)
+{
+    showTextAboveCursor(QString::number(slice), "", (highlight ? QColor(255, 50, 20) : QColor(255, 220, 30))); // tr("Slice")
+}
+
+
+void CVolumeViewerView::showTextAboveCursor(const QString& value, const QString& label, const QColor& color)
+{
+    // Without this check, when you start VC with auto-load the initial slice will not be in the center of
+    // volume viewer, because during loading the initilization of the impact range slider and its callback slots
+    // will already move the position/scrollbars of the viewer and therefore the image is no longer centered.
+    if (!isVisible()) {
+        return;
+    }
+
+    timerTextAboveCursor->start(150);
+
+    QFontMetrics fm(textAboveCursor->font());
+    QPointF p = mapToScene(mapFromGlobal(QPoint(QCursor::pos().x() + 10, QCursor::pos().y())));
+
+    textAboveCursor->setVisible(true);
+    textAboveCursor->setHtml("<b>" + value + "</b><br>" + label);
+    textAboveCursor->setPos(p);
+    textAboveCursor->setDefaultTextColor(color);
+
+    backgroundBehindText->setVisible(true);
+    backgroundBehindText->setPos(p);
+    backgroundBehindText->setRect(0, 0, fm.horizontalAdvance((label.isEmpty() ? value : label)) + BGND_RECT_MARGIN, fm.height() * (label.isEmpty() ? 1 : 2) + BGND_RECT_MARGIN);
+    backgroundBehindText->setBrush(QBrush(QColor(
+        (2 * 125 + color.red())   / 3,
+        (2 * 125 + color.green()) / 3,
+        (2 * 125 + color.blue())  / 3,
+    200)));
 }

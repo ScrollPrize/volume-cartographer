@@ -2,6 +2,7 @@
 
 #include <QUndoCommand>
 
+#include "CVolumeViewerWithCurve.hpp"
 #include "MathUtils.hpp"
 
 namespace ChaoVis

@@ -20,6 +20,13 @@ public:
     /// Set physical voxel size (units per scene-unit, e.g. µm/pixel).
     /// Call this after you load your Zarr spacing metadata.
     void setVoxelSize(double sx, double sy) { m_vx = sx; m_vy = sy; update(); }
+    bool isCurvePanKeyPressed() { return curvePanKeyPressed; }
+    void showCurrentImpactRange(int range);
+    void showCurrentScanRange(int range);
+    void showCurrentSliceIndex(int slice, bool highlight);
+
+    void showTextAboveCursor(const QString& value, const QString& label, const QColor& color);
+    void hideTextAboveCursor();
 
 signals:
     void sendScrolled();
@@ -33,8 +40,14 @@ signals:
     void sendMouseRelease(QPointF, Qt::MouseButton, Qt::KeyboardModifiers);
     
 protected:
+    bool rangeKeyPressed{false};
+    bool curvePanKeyPressed{false};
+    bool rotateKeyPressed{false};
     bool _regular_pan = false;
     QPoint _last_pan_position;
+    QGraphicsTextItem* textAboveCursor;
+    QGraphicsRectItem* backgroundBehindText;
+    QTimer* timerTextAboveCursor;
     bool _left_button_pressed = false;
     /// Draw our scalebar on every repaint
     void drawForeground(QPainter* painter, const QRectF& sceneRect) override;

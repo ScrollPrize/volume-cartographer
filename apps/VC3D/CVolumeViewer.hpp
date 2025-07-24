@@ -8,6 +8,12 @@
 #include <set>
 #include "PathData.hpp"
 
+enum EViewState {
+    ViewStateEdit,  // edit mode
+    ViewStateDraw,  // draw mode
+    ViewStateIdle   // idle mode
+};
+
 class ChunkCache;
 class Surface;
 class SurfacePointer;
@@ -32,6 +38,7 @@ class CVolumeViewer : public QWidget
     Q_OBJECT
 
 public:
+    QPushButton* fNextBtn;
     CVolumeViewer(CSurfaceCollection *col, QWidget* parent = 0);
     ~CVolumeViewer(void);
 
@@ -97,6 +104,7 @@ signals:
     void sendVolumeClicked(cv::Vec3f vol_loc, cv::Vec3f normal, Surface *surf, Qt::MouseButton buttons, Qt::KeyboardModifiers modifiers);
     void sendShiftNormal(cv::Vec3f step);
     void sendZSliceChanged(int z_value);
+    void SendSignalOnLoadAnyImage(int nImageIndex);
     
     // Mouse event signals with transformed volume coordinates
     void sendMousePressVolume(cv::Vec3f vol_loc, Qt::MouseButton button, Qt::KeyboardModifiers modifiers);
@@ -114,9 +122,16 @@ protected:
     // data
     QImage* fImgQImage;
     bool fSkipImageFormatConv;
-
+    QHBoxLayout* fButtonsLayout;
+    int fScanRange;  // how many slices a mouse wheel step will jump
+    EViewState fViewState;
+    QPushButton* fResetBtn;
+    QPushButton* fZoomInBtn;
+    QPushButton* fZoomOutBtn;
+    double fScaleFactor;
+    int fImageIndex;
     QGraphicsPixmapItem* fBaseImageItem;
-    
+    int sliceIndexToolStart{-1};
     std::shared_ptr<volcart::Volume> volume = nullptr;
     Surface *_surf = nullptr;
     SurfacePointer *_ptr = nullptr;
@@ -168,11 +183,12 @@ protected:
     
     QList<PathData> _paths;
     std::vector<QGraphicsItem*> _path_items;
-    
+    QSpinBox* fImageIndexSpin;
     // Drawing mode state
     bool _drawingModeActive = false;
     float _brushSize = 3.0f;
     bool _brushIsSquare = false;
+    QPushButton* fPrevBtn;
 };  // class CVolumeViewer
 
 }  // namespace ChaoVis

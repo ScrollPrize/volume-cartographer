@@ -1,5 +1,7 @@
 // CVolumeViewerWithCurve.cpp
 // Chao Du 2015 April
+#include "CVolumeViewerView.hpp"
+
 #include "CVolumeViewerWithCurve.hpp"
 
 #include <cstddef>
@@ -9,12 +11,12 @@
 #include "ColorFrame.hpp"
 
 #include <QCoreApplication> // To use QCoreApplication::sendEvent()
-
 using namespace ChaoVis;
 
 // Constructor
 CVolumeViewerWithCurve::CVolumeViewerWithCurve(std::unordered_map<std::string, SegmentationStruct>& nSegStructMapRef)
-    : fShowCurveBox(nullptr)
+    : CVolumeViewer(nullptr, nullptr)
+    , fShowCurveBox(nullptr)
     , showCurve(true)
     , fSplineCurveRef(nullptr)
     , fIntersectionCurveRef(nullptr)
