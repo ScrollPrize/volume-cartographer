@@ -47,7 +47,7 @@ target_link_libraries(vc_surface
     PRIVATE
         VC::slicing
         OpenMP::OpenMP_CXX
-        ceres
+        Ceres::ceres
     PUBLIC
         opencv_core
         opencv_video
