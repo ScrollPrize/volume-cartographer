@@ -365,6 +365,7 @@ void CWindow::CreateWidgets(void)
     
     // Create and add the point collection widget
     _point_collection_widget = new CPointCollectionWidget(_point_collection, this);
+    _point_collection_widget->setObjectName("pointCollectionDock");
     addDockWidget(Qt::RightDockWidgetArea, _point_collection_widget);
 
     for (auto& viewer : _viewers) {
