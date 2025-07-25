@@ -52,7 +52,9 @@ private slots:
     void onWindingEdited(double value);
     void onWindingEnabledChanged(int state);
     void onAutoFillWindingClicked();
-
+    void onSaveClicked();
+    void onLoadClicked();
+ 
 private:
     void setupUi();
     void updateMetadataWidgets();
@@ -64,8 +66,11 @@ private:
 
     QTreeView *_tree_view;
     QStandardItemModel *_model;
+ 
+    QPushButton *_load_button;
+    QPushButton *_save_button;
     QPushButton *_reset_button;
-
+ 
     QGroupBox *_collection_metadata_group;
     QLineEdit *_collection_name_edit;
     QPushButton *_new_name_button;

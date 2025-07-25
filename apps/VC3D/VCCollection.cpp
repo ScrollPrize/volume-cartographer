@@ -2,10 +2,77 @@
 #include <QDebug>
 #include <algorithm>
 #include <vector>
+#include <fstream>
+#include <nlohmann/json.hpp>
 
+NLOHMANN_JSON_NAMESPACE_BEGIN
+template <>
+struct adl_serializer<cv::Vec3f> {
+    static void to_json(json& j, const cv::Vec3f& v) {
+        j = {v[0], v[1], v[2]};
+    }
+
+    static void from_json(const json& j, cv::Vec3f& v) {
+        j.at(0).get_to(v[0]);
+        j.at(1).get_to(v[1]);
+        j.at(2).get_to(v[2]);
+    }
+};
+NLOHMANN_JSON_NAMESPACE_END
+ 
 namespace ChaoVis
 {
 
+using json = nlohmann::json;
+ 
+void to_json(json& j, const ColPoint& p) {
+    j = json{
+        {"id", p.id},
+        {"p", p.p},
+    };
+    if (!std::isnan(p.winding_annotation)) {
+        j["wind_a"] = p.winding_annotation;
+    } else {
+        j["wind_a"] = nullptr;
+    }
+}
+ 
+void from_json(const json& j, ColPoint& p) {
+    j.at("id").get_to(p.id);
+    j.at("p").get_to(p.p);
+    if (j.contains("wind_a") && !j.at("wind_a").is_null()) {
+        j.at("wind_a").get_to(p.winding_annotation);
+    } else {
+        p.winding_annotation = std::nan("");
+    }
+}
+ 
+void to_json(json& j, const CollectionMetadata& m) {
+    j = json{
+        {"absolute_winding_number", m.absolute_winding_number}
+    };
+}
+ 
+void from_json(const json& j, CollectionMetadata& m) {
+    j.at("absolute_winding_number").get_to(m.absolute_winding_number);
+}
+ 
+void to_json(json& j, const VCCollection::Collection& c) {
+    j = json{
+        {"id", c.id},
+        {"points", c.points},
+        {"metadata", c.metadata},
+        {"color", c.color}
+    };
+}
+ 
+void from_json(const json& j, VCCollection::Collection& c) {
+    j.at("id").get_to(c.id);
+    j.at("points").get_to(c.points);
+    j.at("metadata").get_to(c.metadata);
+    j.at("color").get_to(c.color);
+}
+ 
 VCCollection::VCCollection(QObject* parent)
     : QObject(parent)
 {
@@ -193,7 +260,83 @@ void VCCollection::autoFillWindingNumbers(uint64_t collectionId)
         }
     }
 }
+ 
+bool VCCollection::saveToJSON(const std::string& filename) const
+{
+    json j;
+    json collections_obj = json::object();
+    for(const auto& pair : _collections) {
+        collections_obj[pair.second.name] = pair.second;
+    }
+    j["collections"] = collections_obj;
+    j["next_point_id"] = _next_point_id;
+    j["next_collection_id"] = _next_collection_id;
+ 
+    std::ofstream o(filename);
+    if (!o.is_open()) {
+        qWarning() << "Failed to open file for writing: " << QString::fromStdString(filename);
+        return false;
+    }
+    o << j.dump(4);
+    o.close();
+    return true;
+}
+ 
+bool VCCollection::loadFromJSON(const std::string& filename)
+{
+    std::ifstream i(filename);
+    if (!i.is_open()) {
+        qWarning() << "Failed to open file for reading: " << QString::fromStdString(filename);
+        return false;
+    }
+ 
+    json j;
+    try {
+        i >> j;
+    } catch (json::parse_error& e) {
+        qWarning() << "Failed to parse JSON: " << e.what();
+        return false;
+    }
+ 
+    clearAll();
+ 
+    try {
+        json collections_obj = j.at("collections");
+        if (!collections_obj.is_object()) {
+            return false;
+        }
 
+        for (auto& [name, col_json] : collections_obj.items()) {
+            Collection col = col_json.get<Collection>();
+            col.name = name;
+            _collections[col.id] = col;
+            for (auto& point_pair : _collections.at(col.id).points) {
+                point_pair.second.collectionId = col.id;
+            }
+        }
+
+        _next_point_id = j.at("next_point_id").get<uint64_t>();
+        _next_collection_id = j.at("next_collection_id").get<uint64_t>();
+    } catch (json::exception& e) {
+        qWarning() << "Failed to extract data from JSON: " << e.what();
+        return false;
+    }
+ 
+    // Rebuild the _points map
+    _points.clear();
+    for (const auto& col_pair : _collections) {
+        for (const auto& point_pair : col_pair.second.points) {
+            _points[point_pair.first] = point_pair.second;
+        }
+    }
+ 
+    for (const auto& pair : _collections) {
+        emit collectionAdded(pair.first);
+    }
+ 
+    return true;
+}
+ 
 uint64_t VCCollection::getNextPointId()
 {
     return _next_point_id++;

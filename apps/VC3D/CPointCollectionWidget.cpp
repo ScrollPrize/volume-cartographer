@@ -3,9 +3,10 @@
 #include <QStandardItem>
 #include <stdexcept>
 #include <QColorDialog>
-
+#include <QFileDialog>
+ 
 #include "VCCollection.hpp"
-
+ 
 namespace ChaoVis {
 
 CPointCollectionWidget::CPointCollectionWidget(VCCollection *collection, QWidget *parent)
@@ -91,12 +92,20 @@ void CPointCollectionWidget::setupUi()
     connect(_winding_spinbox, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, &CPointCollectionWidget::onWindingEdited);
 
     layout->addStretch();
-
+ 
+    QHBoxLayout *file_layout = new QHBoxLayout();
+    _load_button = new QPushButton("Load");
+    file_layout->addWidget(_load_button);
+    _save_button = new QPushButton("Save");
+    file_layout->addWidget(_save_button);
     _reset_button = new QPushButton("Clear All Points");
-    layout->addWidget(_reset_button);
-
+    file_layout->addWidget(_reset_button);
+    layout->addLayout(file_layout);
+ 
+    connect(_load_button, &QPushButton::clicked, this, &CPointCollectionWidget::onLoadClicked);
+    connect(_save_button, &QPushButton::clicked, this, &CPointCollectionWidget::onSaveClicked);
     connect(_reset_button, &QPushButton::clicked, this, &CPointCollectionWidget::onResetClicked);
-
+ 
     setWidget(main_widget);
 
     updateMetadataWidgets();
@@ -381,7 +390,33 @@ void CPointCollectionWidget::onAutoFillWindingClicked()
         _point_collection->autoFillWindingNumbers(_selected_collection_id);
     }
 }
-
+ 
+void CPointCollectionWidget::onSaveClicked()
+{
+    QString fileName = QFileDialog::getSaveFileName(this, tr("Save Point Collection"), "", tr("JSON Files (*.json)"));
+    if (fileName.isEmpty()) {
+        return;
+    }
+ 
+    if (_point_collection) {
+        _point_collection->saveToJSON(fileName.toStdString());
+    }
+}
+ 
+void CPointCollectionWidget::onLoadClicked()
+{
+    QString fileName = QFileDialog::getOpenFileName(this, tr("Load Point Collection"), "", tr("JSON Files (*.json)"));
+    if (fileName.isEmpty()) {
+        return;
+    }
+ 
+    if (_point_collection) {
+        if (_point_collection->loadFromJSON(fileName.toStdString())) {
+            refreshTree();
+        }
+    }
+}
+ 
 void CPointCollectionWidget::selectCollection(uint64_t collectionId)
 {
     QStandardItem* item = findCollectionItem(collectionId);

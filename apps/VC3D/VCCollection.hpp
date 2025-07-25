@@ -8,9 +8,11 @@
 #include <cmath>
 #include <optional>
 
+#include <nlohmann/json.hpp>
+ 
 namespace ChaoVis
 {
-
+ 
 struct ColPoint
 {
     uint64_t id;
@@ -18,12 +20,12 @@ struct ColPoint
     cv::Vec3f p = {0,0,0};
     float winding_annotation = NAN;
 };
-
+ 
 struct CollectionMetadata
 {
     bool absolute_winding_number = false;
 };
-
+ 
 class VCCollection : public QObject
 {
     Q_OBJECT
@@ -60,9 +62,11 @@ public:
     std::string generateNewCollectionName(const std::string& prefix = "col") const;
     void autoFillWindingNumbers(uint64_t collectionId);
 
+   bool saveToJSON(const std::string& filename) const;
+   bool loadFromJSON(const std::string& filename);
 
 signals:
-    void collectionChanged(uint64_t collectionId); // Generic signal for name/metadata changes
+   void collectionChanged(uint64_t collectionId); // Generic signal for name/metadata changes
     void collectionAdded(uint64_t collectionId);
     void collectionRemoved(uint64_t collectionId);
 
@@ -83,5 +87,14 @@ private:
     uint64_t _next_point_id = 1;
     uint64_t _next_collection_id = 1;
 };
-
+ 
+void to_json(nlohmann::json& j, const ColPoint& p);
+void from_json(const nlohmann::json& j, ColPoint& p);
+ 
+void to_json(nlohmann::json& j, const CollectionMetadata& m);
+void from_json(const nlohmann::json& j, CollectionMetadata& m);
+ 
+void to_json(nlohmann::json& j, const VCCollection::Collection& c);
+void from_json(const nlohmann::json& j, VCCollection::Collection& c);
+ 
 } // namespace ChaoVis
