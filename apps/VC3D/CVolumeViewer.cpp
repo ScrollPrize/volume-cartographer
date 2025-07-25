@@ -10,6 +10,7 @@
 #include "CVolumeViewerView.hpp"
 #include "CSurfaceCollection.hpp"
 #include "VCCollection.hpp"
+#include "COutlinedTextItem.hpp"
 
 #include "vc/core/types/VolumePkg.hpp"
 #include "vc/core/util/Surface.hpp"
@@ -1272,7 +1273,8 @@ void CVolumeViewer::renderOrUpdatePoint(const ColPoint& point)
         pg.text->setPos(scene_pos.x() + radius, scene_pos.y() - radius);
         pg.text->setVisible(has_winding);
     } else {
-        pg.text = fScene->addText("");
+        pg.text = new COutlinedTextItem();
+        fScene->addItem(pg.text);
         pg.text->setZValue(11); // Above points
         pg.text->setDefaultTextColor(Qt::white);
         pg.text->setPos(scene_pos.x() + radius, scene_pos.y() - radius);
@@ -1281,13 +1283,20 @@ void CVolumeViewer::renderOrUpdatePoint(const ColPoint& point)
     
     if (has_winding) {
         bool absolute = col_it != collections.end() ? col_it->second.metadata.absolute_winding_number : false;
-        QString text;
-        if (absolute) {
-            text = QString::number(point.winding_annotation, 'f', 2);
-        } else {
-            text = QString("%1%2").arg(point.winding_annotation >= 0 ? "+" : "").arg(point.winding_annotation, 0, 'f', 2);
+        
+        // Adaptive decimal formatting
+        QString num_text = QString::number(point.winding_annotation, 'g');
+
+        if (!absolute) {
+            if (point.winding_annotation >= 0) {
+                num_text.prepend("+");
+            }
         }
-        pg.text->setPlainText(text);
+        
+        pg.text->setPlainText(num_text);
+
+        // Fixed positioning
+        pg.text->setPos(scene_pos.x() + radius, scene_pos.y() - radius);
     }
 
     if (!exists) {

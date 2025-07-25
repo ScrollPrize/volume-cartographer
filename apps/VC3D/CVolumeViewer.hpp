@@ -8,6 +8,7 @@
 #include <set>
 #include "PathData.hpp"
 #include "VCCollection.hpp"
+#include "COutlinedTextItem.hpp"
 
 class ChunkCache;
 class Surface;
@@ -178,7 +179,7 @@ protected:
     VCCollection* _point_collection = nullptr;
     struct PointGraphics {
         QGraphicsEllipseItem* circle;
-        QGraphicsTextItem* text;
+        COutlinedTextItem* text;
     };
     std::unordered_map<uint64_t, PointGraphics> _points_items;
     
