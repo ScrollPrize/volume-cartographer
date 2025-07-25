@@ -63,7 +63,12 @@ SeedingWidget::SeedingWidget(VCCollection* point_collection, CSurfaceCollection*
     }
 }
 
-SeedingWidget::~SeedingWidget() = default;
+SeedingWidget::~SeedingWidget()
+{
+    if (jobsRunning) {
+        onCancelClicked();
+    }
+}
 
 void SeedingWidget::setupUI()
 {
