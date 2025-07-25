@@ -895,8 +895,7 @@ void CVolumeViewer::renderIntersections()
             
             std::unordered_map<cv::Vec3f,cv::Vec3f,vec3f_hash> location_cache;
             std::vector<cv::Vec3f> src_locations;
-            SurfacePointer *ptrs[omp_get_max_threads()] = {};
-            
+
             for (auto seg : _surf_col->intersection(pair.first, pair.second)->lines)
                 for (auto wp : seg)
                     src_locations.push_back(wp);

@@ -14,6 +14,33 @@
 #include <unordered_map>
 #include <nlohmann/json.hpp>
 
+void write_overlapping_json(const fs::path& seg_path, const std::set<std::string>& overlapping_names) {
+    nlohmann::json overlap_json;
+    overlap_json["overlapping"] = std::vector<std::string>(overlapping_names.begin(), overlapping_names.end());
+
+    std::ofstream o(seg_path / "overlapping.json");
+    o << std::setw(4) << overlap_json << std::endl;
+}
+
+std::set<std::string> read_overlapping_json(const fs::path& seg_path) {
+    std::set<std::string> overlapping;
+    fs::path json_path = seg_path / "overlapping.json";
+
+    if (fs::exists(json_path)) {
+        std::ifstream i(json_path);
+        nlohmann::json overlap_json;
+        i >> overlap_json;
+
+        if (overlap_json.contains("overlapping")) {
+            for (const auto& name : overlap_json["overlapping"]) {
+                overlapping.insert(name.get<std::string>());
+            }
+        }
+    }
+
+    return overlapping;
+}
+
 namespace fs = std::filesystem;
 
 cv::Vec2f offsetPoint2d(TrivialSurfacePointer *ptr, const cv::Vec3f &offset)
@@ -1523,9 +1550,13 @@ SurfaceMeta::~SurfaceMeta()
 
 void SurfaceMeta::readOverlapping()
 {
-    if (std::filesystem::exists(path / "overlapping"))
-        for (const auto& entry : fs::directory_iterator(path / "overlapping"))
-            overlapping_str.insert(entry.path().filename());
+    if (std::filesystem::exists(path / "overlapping")) {
+        throw std::runtime_error(
+            "Found overlapping directory at: " + (path / "overlapping").string() +
+            "\nPlease run overlapping_to_json.py on " +  path.parent_path().string() + " to convert it to JSON format"
+        );
+    }
+    overlapping_str = read_overlapping_json(path);
 }
 
 QuadSurface *SurfaceMeta::surface()
