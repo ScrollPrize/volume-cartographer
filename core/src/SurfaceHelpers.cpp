@@ -11,7 +11,8 @@
 #include "vc/core/types/ChunkedTensor.hpp"
 
 
-#include <xtensor/xview.hpp>
+#include "vc/core/util/xtensor_include.hpp"
+#include XTENSORINCLUDE(views, xview.hpp)
 
 #include <fstream>
 #include <iostream>

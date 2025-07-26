@@ -2,11 +2,12 @@
 
 #include <nlohmann/json.hpp>
 
-#include <xtensor/xarray.hpp>
-#include <xtensor/xaxis_slice_iterator.hpp>
-#include <xtensor/xio.hpp>
-#include <xtensor/xbuilder.hpp>
-#include <xtensor/xview.hpp>
+#include "vc/core/util/xtensor_include.hpp"
+#include XTENSORINCLUDE(containers, xarray.hpp)
+#include XTENSORINCLUDE(views, xaxis_slice_iterator.hpp)
+#include XTENSORINCLUDE(io, xio.hpp)
+#include XTENSORINCLUDE(generators, xbuilder.hpp)
+#include XTENSORINCLUDE(views, xview.hpp)
 
 #include "z5/factory.hxx"
 #include "z5/filesystem/handle.hxx"

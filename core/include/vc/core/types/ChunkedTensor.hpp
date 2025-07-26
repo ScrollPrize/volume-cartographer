@@ -5,9 +5,10 @@
 #include <opencv2/core.hpp>
 #include "z5/dataset.hxx"
 
-#include <xtensor/xtensor.hpp>
-#include <xtensor/xadapt.hpp>
-#include <xtensor/xview.hpp>
+#include "vc/core/util/xtensor_include.hpp"
+#include XTENSORINCLUDE(containers, xtensor.hpp)
+#include XTENSORINCLUDE(containers, xadapt.hpp)
+#include XTENSORINCLUDE(views, xview.hpp)
 
 #include "z5/multiarray/xtensor_access.hxx"
 

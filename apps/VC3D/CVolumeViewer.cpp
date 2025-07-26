@@ -86,8 +86,11 @@ CVolumeViewer::~CVolumeViewer(void)
 
 void round_scale(float &scale)
 {
-    if (abs(scale-round(log2(scale))) < 0.02)
+    if (abs(scale-round(log2(scale))) < 0.02f)
         scale = pow(2,round(log2(scale)));
+    // the most reduced OME zarr projection is 32x so make the min zoom out 1/32 = 0.03125
+    if (scale < 0.03125f) scale = 0.03125f;
+    if (scale > 4.0f) scale = 4.0f;
 }
 
 //get center of current visible area in scene coordinates
