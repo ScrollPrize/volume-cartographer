@@ -47,12 +47,12 @@ void from_json(const json& j, ColPoint& p) {
  
 void to_json(json& j, const CollectionMetadata& m) {
     j = json{
-        {"absolute_winding_number", m.absolute_winding_number}
+        {"winding_is_absolute", m.absolute_winding_number}
     };
 }
  
 void from_json(const json& j, CollectionMetadata& m) {
-    j.at("absolute_winding_number").get_to(m.absolute_winding_number);
+    j.at("winding_is_absolute").get_to(m.absolute_winding_number);
 }
  
 void to_json(json& j, const VCCollection::Collection& c) {
