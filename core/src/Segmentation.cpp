@@ -1,10 +1,10 @@
-#include "vc/core/types/Segmentation.hpp"
+#include "../include/vc/Segmentation.hpp"
 
-#include "vc/core/io/PointSetIO.hpp"
+#include "../include/vc/PointSetIO.hpp"
 
 using namespace volcart;
 
-namespace fs = volcart::filesystem;
+namespace fs = std::filesystem;
 
 // Load a Segmentation directory from disk
 // Reads and verifies metadata

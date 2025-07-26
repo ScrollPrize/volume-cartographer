@@ -4,11 +4,11 @@
 #include <QScreen>
 #include <qapplication.h>
 
+#include "../../core/include/vc/Version.hpp"
 #include "CWindow.hpp"
-#include "vc/core/Version.hpp"
 
-#include <opencv2/core.hpp>
 #include <thread>
+#include <opencv2/core.hpp>
 
 using namespace ChaoVis;
 

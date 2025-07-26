@@ -1,4 +1,4 @@
-#include "../include/GeneralOptions.hpp"
+#include "../../core/include/vc/GeneralOptions.hpp"
 
 namespace po = boost::program_options;
 

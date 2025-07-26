@@ -1,6 +1,6 @@
 #pragma once
 
-#include "vc/core/util/Surface.hpp"
+#include "../../core/include/vc/Surface.hpp"
 
 #include <set>
 

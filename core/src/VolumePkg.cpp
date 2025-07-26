@@ -1,16 +1,16 @@
-#include "vc/core/types/VolumePkg.hpp"
+#include "../include/vc/VolumePkg.hpp"
 
 #include <functional>
 #include <set>
 #include <utility>
 
-#include "vc/core/util/DateTime.hpp"
-#include "vc/core/util/Logging.hpp"
-#include "vc/core/util/String.hpp"
+#include "../include/vc/DateTime.hpp"
+#include "../include/vc/Logging.hpp"
+#include "../include/vc/String.hpp"
 
 using namespace volcart;
 
-namespace fs = volcart::filesystem;
+namespace fs = std::filesystem;
 
 namespace
 {
@@ -37,12 +37,12 @@ inline auto TfmDir(const fs::path& baseDir) -> fs::path
     return baseDir / "transforms";
 }
 
-inline auto PreviewDirs(const fs::path& baseDir) -> std::vector<filesystem::path>
+inline auto PreviewDirs(const fs::path& baseDir) -> std::vector<std::filesystem::path>
 {
     return { baseDir / "volumes_preview_half", baseDir / "volumes_masked", baseDir / "volumes_previews"};
 }
 
-inline auto ReqDirs(const fs::path& baseDir) -> std::vector<filesystem::path>
+inline auto ReqDirs(const fs::path& baseDir) -> std::vector<std::filesystem::path>
 {
     return {
         baseDir, ::VolsDir(baseDir), ::SegsDir(baseDir), ::RendDir(baseDir),

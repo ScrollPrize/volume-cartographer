@@ -5,7 +5,7 @@
 #include <opencv2/core.hpp> 
 #include <nlohmann/json_fwd.hpp>
 
-#include "SurfaceDef.hpp"
+#include "vc/SurfaceDef.hpp"
 
 #define Z_DBG_GEN_PREFIX "z_dbg_gen_"
 

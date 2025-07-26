@@ -1,6 +1,6 @@
-#include "vc/core/util/Slicing.hpp"
-#include "vc/core/util/Surface.hpp"
 #include <nlohmann/json.hpp>
+#include "../../core/include/vc/Slicing.hpp"
+#include "../../core/include/vc/Surface.hpp"
 
 #include <fstream>
 

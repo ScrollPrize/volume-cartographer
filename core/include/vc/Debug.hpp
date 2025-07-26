@@ -2,7 +2,7 @@
 
 /** @file */
 
-#include "vc/core/types/OrderedPointSet.hpp"
+#include "vc/OrderedPointSet.hpp"
 
 namespace volcart::debug
 {

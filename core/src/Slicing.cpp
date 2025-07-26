@@ -1,4 +1,4 @@
-#include "vc/core/util/Slicing.hpp"
+#include "../include/vc/Slicing.hpp"
 
 #include <nlohmann/json.hpp>
 

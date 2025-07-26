@@ -5,11 +5,10 @@
 #include <opencv2/imgproc.hpp>
 #include <opencv2/video/tracking.hpp>
 
-#include "vc/core/util/Slicing.hpp"
-#include "vc/core/util/Surface.hpp"
-#include "vc/core/util/SurfaceModeling.hpp"
-#include "vc/core/types/ChunkedTensor.hpp"
-
+#include "../include/vc/ChunkedTensor.hpp"
+#include "../include/vc/Slicing.hpp"
+#include "../include/vc/Surface.hpp"
+#include "../include/vc/SurfaceModeling.hpp"
 
 #include <xtensor/views/xview.hpp>
 

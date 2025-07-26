@@ -6,7 +6,7 @@
  *          http://creativecommons.org/licenses/by/3.0/deed.en_US
  */
 
-#include "../include/GetMemorySize.hpp"
+#include "vc/GetMemorySize.hpp"
 
 #include <cstdint>
 #include <cstddef>

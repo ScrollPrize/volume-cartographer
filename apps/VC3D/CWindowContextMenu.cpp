@@ -4,8 +4,8 @@
 #include <QSettings>
 #include <QMessageBox>
 
-#include "vc/core/types/VolumePkg.hpp"
-#include "vc/core/util/Surface.hpp"
+#include "../../core/include/vc/Surface.hpp"
+#include "../../core/include/vc/VolumePkg.hpp"
 
 namespace vc = volcart;
 using namespace ChaoVis;

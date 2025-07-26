@@ -10,8 +10,7 @@
 #include "vc/app_support/GetMemorySize.hpp"
 #include "vc/app_support/ProgressIndicator.hpp"
 #include "vc/apps/render/RenderTexturing.hpp"
-#include "vc/core/filesystem.hpp"
-#include "vc/core/io/ImageIO.hpp"
+#include <filesystem>#include "vc/core/io/ImageIO.hpp"
 #include "vc/core/io/PointSetIO.hpp"
 #include "vc/core/neighborhood/CuboidGenerator.hpp"
 #include "vc/core/neighborhood/LineGenerator.hpp"
@@ -27,7 +26,7 @@
 #include "vc/texturing/ThicknessTexture.hpp"
 
 using namespace volcart;
-namespace fs = volcart::filesystem;
+namespace fs = std::filesystem;
 namespace po = boost::program_options;
 namespace vct = volcart::texturing;
 

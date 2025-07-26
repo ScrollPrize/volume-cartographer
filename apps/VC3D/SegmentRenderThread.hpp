@@ -1,9 +1,9 @@
 #pragma once
 
-#include <QThread>
-#include <QString>
 #include <QProcess>
-#include "vc/core/util/SurfaceDef.hpp"
+#include <QString>
+#include <QThread>
+#include "../../core/include/vc/SurfaceDef.hpp"
 
 class SegmentRenderThread : public QThread
 {

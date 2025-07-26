@@ -1,4 +1,4 @@
-#include "vc/core/types/ChunkedTensor.hpp"
+#include "../include/vc/ChunkedTensor.hpp"
 
 #include <iostream>
 

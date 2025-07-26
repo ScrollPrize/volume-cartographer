@@ -3,22 +3,13 @@
 #include "CWindow.hpp"
 
 #include <QKeySequence>
-#include <QKeyEvent>
-#include <QProgressBar>
-#include <QSettings>
-#include <QMdiArea>
-#include <QMenu>
 #include <QAction>
 #include <QApplication>
 #include <QClipboard>
-#include <QTimer>
 #include <QDateTime>
-#include <QFileDialog>
 #include <QTextStream>
 #include <QFileInfo>
-#include <QProgressDialog>
 #include <QMessageBox>
-#include <QThread>
 #include <QtConcurrent/QtConcurrent>
 #include <QFutureWatcher>
 #include <atomic>
@@ -35,22 +26,18 @@
 #include "OpsList.hpp"
 #include "OpsSettings.hpp"
 #include "SurfaceTreeWidget.hpp"
-#include "CSegmentationEditorWindow.hpp"
 #include "SeedingWidget.hpp"
 #include "DrawingWidget.hpp"
 
-#include "vc/core/types/Color.hpp"
-#include "vc/core/types/Exceptions.hpp"
-#include "vc/core/util/Iteration.hpp"
-#include "vc/core/util/Logging.hpp"
-#include "vc/core/types/Volume.hpp"
-#include "vc/core/types/VolumePkg.hpp"
+#include "vc/Exceptions.hpp"
+#include "vc/Iteration.hpp"
+#include "vc/Logging.hpp"
+#include "vc/Volume.hpp"
+#include "vc/VolumePkg.hpp"
 
-#include "vc/core/util/Surface.hpp"
-#include "vc/core/util/Slicing.hpp"
-#include "vc/core/util/SurfaceVoxelizer.hpp"
-
-
+#include "vc/Surface.hpp"
+#include "vc/SurfaceVoxelizer.hpp"
+#include "vc/Slicing.hpp"
 
 namespace vc = volcart;
 using namespace ChaoVis;

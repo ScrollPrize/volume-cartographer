@@ -1,6 +1,6 @@
 #pragma once
 
-#include "vc/core/util/CostFunctions.hpp"
+#include "CostFunctions.hpp"
 
 #define OPTIMIZE_ALL 1
 #define SURF_LOSS 2

@@ -1,8 +1,8 @@
-#include "vc/core/util/Surface.hpp"
+#include "../include/vc/Surface.hpp"
 
-#include "vc/core/io/PointSetIO.hpp"
-#include "vc/core/util/Slicing.hpp"
-#include "vc/core/types/ChunkedTensor.hpp"
+#include "../include/vc/ChunkedTensor.hpp"
+#include "../include/vc/PointSetIO.hpp"
+#include "../include/vc/Slicing.hpp"
 
 #include "SurfaceHelpers.hpp"
 

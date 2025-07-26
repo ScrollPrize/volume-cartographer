@@ -12,15 +12,15 @@
 
 #include <opencv2/imgproc.hpp>
 
-#include "vc/core/types/Volume.hpp"
-#include "vc/core/types/VolumePkg.hpp"
-#include "vc/core/util/Slicing.hpp"
-#include "vc/core/util/Logging.hpp"
+#include "vc/Logging.hpp"
+#include "vc/Volume.hpp"
+#include "vc/VolumePkg.hpp"
+#include "vc/Slicing.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <filesystem>
 #include <fstream>
-#include <algorithm>
 #include <functional>
 
 namespace fs = std::filesystem;

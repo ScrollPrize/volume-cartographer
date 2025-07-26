@@ -1,10 +1,10 @@
 #pragma once
 
-#include <string>
 #include <map>
+#include <string>
 #include <opencv2/core.hpp>
 #include <xtensor/containers/xarray.hpp>
-#include "vc/core/util/Surface.hpp"
+#include "Surface.hpp"
 
 namespace z5 {
 namespace filesystem {

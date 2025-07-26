@@ -1,4 +1,4 @@
-#include "vc/core/util/Logging.hpp"
+#include "../include/vc/Logging.hpp"
 
 #include <memory>
 
@@ -6,9 +6,9 @@
 #include <spdlog/sinks/dist_sink.h>
 #include <spdlog/sinks/stdout_sinks.h>
 
-#include "vc/core/util/String.hpp"
+#include "../include/vc/String.hpp"
 
-namespace fs = volcart::filesystem;
+namespace fs = std::filesystem;
 namespace vcl = volcart::logging;
 
 auto DistSink() -> std::shared_ptr<spdlog::sinks::dist_sink_mt>;

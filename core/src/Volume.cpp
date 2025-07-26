@@ -1,4 +1,4 @@
-#include "vc/core/types/Volume.hpp"
+#include "../include/vc/Volume.hpp"
 
 #include <iomanip>
 #include <sstream>
@@ -20,7 +20,7 @@
 
 #include "xtensor/containers/xarray.hpp"
 
-namespace fs = volcart::filesystem;
+namespace fs = std::filesystem;
 
 using namespace volcart;
 

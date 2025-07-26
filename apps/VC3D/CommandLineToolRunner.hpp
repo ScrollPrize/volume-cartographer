@@ -13,9 +13,9 @@
 #include <QFile>
 #include <memory>
 
-#include "ProgressUtil.hpp"
+#include "../../core/include/vc/SurfaceDef.hpp"
 #include "ConsoleOutputWidget.hpp"
-#include "vc/core/util/SurfaceDef.hpp"
+#include "ProgressUtil.hpp"
 
 namespace ChaoVis {
 

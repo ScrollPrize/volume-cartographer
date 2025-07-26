@@ -18,9 +18,9 @@
 #include "ui_VCMain.h"
 #include "FittedCurve.hpp"
 
-#include "vc/core/types/VolumePkg.hpp"
-#include "vc/core/types/VolumeMask.hpp"
-#include "vc/core/util/Debug.hpp"
+#include "vc/VolumePkg.hpp"
+#include "vc/VolumeMask.hpp"
+#include "vc/Debug.hpp"
 
 #include <thread>
 #include <condition_variable>

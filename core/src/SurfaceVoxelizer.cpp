@@ -1,5 +1,5 @@
-#include "vc/core/util/SurfaceVoxelizer.hpp"
-#include "vc/core/util/Surface.hpp"
+#include "vc/SurfaceVoxelizer.hpp"
+#include "vc/Surface.hpp"
 #include <z5/factory.hxx>
 #include <z5/filesystem/handle.hxx>
 #include <z5/multiarray/xtensor_access.hxx>

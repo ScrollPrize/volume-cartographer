@@ -8,7 +8,7 @@
 #include <Eigen/SparseCore>
 #include <opencv2/core.hpp>
 
-#include "vc/core/types/NDArray.hpp"
+#include "vc/NDArray.hpp"
 
 namespace volcart
 {

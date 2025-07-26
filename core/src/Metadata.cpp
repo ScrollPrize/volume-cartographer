@@ -1,8 +1,8 @@
-#include "vc/core/types/Metadata.hpp"
+#include "../include/vc/Metadata.hpp"
 
-#include "vc/core/types/Exceptions.hpp"
+#include "../include/vc/Exceptions.hpp"
 
-namespace fs = volcart::filesystem;
+namespace fs = std::filesystem;
 
 using namespace volcart;
 

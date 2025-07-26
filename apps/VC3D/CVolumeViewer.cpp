@@ -10,9 +10,9 @@
 #include "CVolumeViewerView.hpp"
 #include "CSurfaceCollection.hpp"
 
-#include "vc/core/types/VolumePkg.hpp"
-#include "vc/core/util/Surface.hpp"
-#include "vc/core/util/Slicing.hpp"
+#include "vc/Surface.hpp"
+#include "vc/VolumePkg.hpp"
+#include "vc/Slicing.hpp"
 
 #include <omp.h>
 

@@ -7,7 +7,7 @@
 
 #include "vc/apps/packager/SliceImage.hpp"
 #include "vc/core/io/FileFilters.hpp"
-#include "vc/core/util/String.hpp"
+#include "vc/String.hpp"
 
 static const double MAX_16BPC = std::numeric_limits<std::uint16_t>::max();
 
@@ -37,8 +37,8 @@ auto SliceImage::operator<(const SliceImage& b) const -> bool
 auto SliceImage::analyze() -> bool
 {
     // return if the path is wrong or if this isn't a regular file
-    if (!(volcart::filesystem::exists(path)) ||
-        !(volcart::filesystem::is_regular_file(path))) {
+    if (!(std::filesystem::exists(path)) ||
+        !(std::filesystem::is_regular_file(path))) {
         return false;
     }
 

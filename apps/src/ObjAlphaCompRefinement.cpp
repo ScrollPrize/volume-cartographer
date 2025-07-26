@@ -17,12 +17,12 @@
 #include <opencv2/core.hpp>
 #include <opencv2/imgproc.hpp>
 
-#include "vc/core/util/Slicing.hpp"
-#include "vc/core/util/Surface.hpp"
-#include "vc/core/io/PointSetIO.hpp"
+#include "../../core/include/vc/PointSetIO.hpp"
+#include "../../core/include/vc/Slicing.hpp"
+#include "../../core/include/vc/Surface.hpp"
 
-#include <unordered_map>
 #include <filesystem>
+#include <unordered_map>
 
 using shape = z5::types::ShapeType;
 using namespace xt::placeholders;

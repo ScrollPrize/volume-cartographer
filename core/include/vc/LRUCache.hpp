@@ -9,7 +9,7 @@
 #include <unordered_map>
 #include <mutex>
 
-#include "vc/core/types/Cache.hpp"
+#include "Cache.hpp"
 
 namespace volcart
 {

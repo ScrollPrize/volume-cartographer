@@ -1,6 +1,6 @@
 #pragma once
 
-#include "vc/core/types/ChunkedTensor.hpp"
+#include "ChunkedTensor.hpp"
 
 #include <opencv2/core.hpp>
 

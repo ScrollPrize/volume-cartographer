@@ -1,9 +1,9 @@
-#include "vc/core/util/Slicing.hpp"
-#include "vc/core/util/Surface.hpp"
-#include "vc/core/types/ChunkedTensor.hpp"
+#include "../../core/include/vc/ChunkedTensor.hpp"
+#include "../../core/include/vc/Slicing.hpp"
+#include "../../core/include/vc/Surface.hpp"
 
-#include "z5/factory.hxx"
 #include <nlohmann/json.hpp>
+#include "z5/factory.hxx"
 
 #include <opencv2/highgui.hpp>
 #include <opencv2/imgproc.hpp>

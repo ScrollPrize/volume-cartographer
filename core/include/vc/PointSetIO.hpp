@@ -11,12 +11,11 @@
 #include <string>
 #include <vector>
 
-#include "vc/core/filesystem.hpp"
-#include "vc/core/types/Exceptions.hpp"
-#include "vc/core/types/OrderedPointSet.hpp"
-#include "vc/core/types/PointSet.hpp"
-#include "vc/core/util/String.hpp"
-
+#include "Exceptions.hpp"
+#include "OrderedPointSet.hpp"
+#include "PointSet.hpp"
+#include "String.hpp"
+#include <filesystem>
 namespace volcart
 {
 
@@ -63,7 +62,7 @@ public:
      * parameter T.
      */
     static OrderedPointSet<T> ReadOrderedPointSet(
-        const volcart::filesystem::path& path, IOMode mode = IOMode::BINARY)
+        const std::filesystem::path& path, IOMode mode = IOMode::BINARY)
     {
         switch (mode) {
             case IOMode::BINARY:
@@ -80,7 +79,7 @@ public:
      * @copydetails PointSetIO::ReadOrderedPointSet()
      */
     static PointSet<T> ReadPointSet(
-        const volcart::filesystem::path& path, IOMode mode = IOMode::BINARY)
+        const std::filesystem::path& path, IOMode mode = IOMode::BINARY)
     {
         switch (mode) {
             case IOMode::BINARY:
@@ -96,7 +95,7 @@ public:
     /**@{*/
     /** @brief Write an OrderedPointSet to disk */
     static void WriteOrderedPointSet(
-        const volcart::filesystem::path& path,
+        const std::filesystem::path& path,
         const OrderedPointSet<T>& ps,
         IOMode mode = IOMode::BINARY)
     {
@@ -110,7 +109,7 @@ public:
 
     /** @brief Write a PointSet to disk */
     static void WritePointSet(
-        const volcart::filesystem::path& path,
+        const std::filesystem::path& path,
         const PointSet<T>& ps,
         IOMode mode = IOMode::BINARY)
     {
@@ -339,7 +338,7 @@ public:
 private:
     /**@{*/
     /** @brief Read an ASCII PointSet */
-    static PointSet<T> ReadPointSetAscii(const volcart::filesystem::path& path)
+    static PointSet<T> ReadPointSetAscii(const std::filesystem::path& path)
     {
         std::ifstream infile{path.string()};
         if (!infile.is_open()) {
@@ -364,7 +363,7 @@ private:
 
     /** @brief Read an ASCII OrderedPointSet */
     static OrderedPointSet<T> ReadOrderedPointSetAscii(
-        const volcart::filesystem::path& path)
+        const std::filesystem::path& path)
     {
         std::ifstream infile{path.string()};
         if (!infile.is_open()) {
@@ -394,7 +393,7 @@ private:
     }
 
     /** @brief Read a binary PointSet */
-    static PointSet<T> ReadPointSetBinary(const volcart::filesystem::path& path)
+    static PointSet<T> ReadPointSetBinary(const std::filesystem::path& path)
     {
         std::ifstream infile{path.string(), std::ios::binary};
         if (!infile.is_open()) {
@@ -427,7 +426,7 @@ private:
 
     /** @brief Read a binary OrderedPointSet */
     static OrderedPointSet<T> ReadOrderedPointSetBinary(
-        const volcart::filesystem::path& path)
+        const std::filesystem::path& path)
     {
         std::ifstream infile{path.string(), std::ios::binary};
         if (!infile.is_open()) {
@@ -462,7 +461,7 @@ private:
     /**@{*/
     /** @brief Write an ASCII PointSet */
     static void WritePointSetAscii(
-        const volcart::filesystem::path& path, PointSet<T> ps)
+        const std::filesystem::path& path, PointSet<T> ps)
     {
         std::ofstream outfile{path.string()};
         if (!outfile.is_open()) {
@@ -489,7 +488,7 @@ private:
 
     /** @brief Write a binary PointSet */
     static void WritePointSetBinary(
-        const volcart::filesystem::path& path, PointSet<T> ps)
+        const std::filesystem::path& path, PointSet<T> ps)
     {
         std::ofstream outfile{path.string(), std::ios::binary};
         if (!outfile.is_open()) {
@@ -515,7 +514,7 @@ private:
 
     /** @brief Write an ASCII OrderedPointSet */
     static void WriteOrderedPointSetAscii(
-        const volcart::filesystem::path& path, OrderedPointSet<T> ps)
+        const std::filesystem::path& path, OrderedPointSet<T> ps)
     {
         std::ofstream outfile{path.string()};
         if (!outfile.is_open()) {
@@ -542,7 +541,7 @@ private:
 
     /** @brief Write a binary OrderedPointSet */
     static void WriteOrderedPointSetBinary(
-        const volcart::filesystem::path& path, OrderedPointSet<T> ps)
+        const std::filesystem::path& path, OrderedPointSet<T> ps)
     {
         std::ofstream outfile{path.string(), std::ios::binary};
         if (!outfile.is_open()) {
