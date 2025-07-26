@@ -9,10 +9,8 @@
 #include "vc/meshing/OrderedPointSetMesher.hpp"
 #include "vc/meshing/OrientNormals.hpp"
 
-namespace fs = std::filesystem;
-namespace po = boost::program_options;
-namespace vc = volcart;
-namespace vcm = volcart::meshing;
+namespace boost::program_options = boost::program_options;
+namespace vcm = vc::meshing;
 
 using psio = vc::PointSetIO<cv::Vec3d>;
 
@@ -20,22 +18,22 @@ auto main(int argc, char* argv[]) -> int
 {
     ///// Parse the command line options /////
     // clang-format off
-    po::options_description all("Usage");
+    boost::program_options::options_description all("Usage");
     all.add_options()
         ("help,h", "Show this message")
-        ("input-cloud,i", po::value<std::string>()->required(),
+        ("input-cloud,i", boost::program_options::value<std::string>()->required(),
             "Path to the input Ordered Point Set")
-        ("output-mesh,o", po::value<std::string>()->required(),
+        ("output-mesh,o", boost::program_options::value<std::string>()->required(),
             "Path for the output mesh")
-        ("mode,m", po::value<int>()->default_value(1),
+        ("mode,m", boost::program_options::value<int>()->default_value(1),
             "Reading mode: 0 = ASCII, 1 = Binary")
         ("disable-triangulation", "Disable vertex triangulation")
         ("orient-normals", "Auto-orient surface normals towards the mesh centroid");
     // clang-format on
 
     // parsed will hold the values of all parsed options as a Map
-    po::variables_map parsed;
-    po::store(po::command_line_parser(argc, argv).options(all).run(), parsed);
+    boost::program_options::variables_map parsed;
+    boost::program_options::store(po::command_line_parser(argc, argv).options(all).run(), parsed);
 
     // Show the help message
     if (parsed.count("help") > 0 || argc < 2) {
@@ -51,8 +49,8 @@ auto main(int argc, char* argv[]) -> int
         return EXIT_FAILURE;
     }
 
-    fs::path inputPath = parsed["input-cloud"].as<std::string>();
-    fs::path outputPath = parsed["output-mesh"].as<std::string>();
+    std::filesystem::path inputPath = parsed["input-cloud"].as<std::string>();
+    std::filesystem::path outputPath = parsed["output-mesh"].as<std::string>();
     auto mode = static_cast<vc::IOMode>(parsed["mode"].as<int>());
 
     // Load the file

@@ -1,22 +1,20 @@
-#include "../include/vc/DiskBasedObjectBaseClass.hpp"
+#include "vc/DiskBasedObjectBaseClass.hpp"
 
-using namespace volcart;
+using namespace vc;
 
-namespace fs = std::filesystem;
-
-static const fs::path METADATA_FILE = "meta.json";
+static const std::filesystem::path METADATA_FILE = "meta.json";
 
 // Load file from disk
 DiskBasedObjectBaseClass::DiskBasedObjectBaseClass(
     std::filesystem::path path)
     : path_(std::move(path))
 {
-    metadata_ = volcart::Metadata(path_ / METADATA_FILE);
+    metadata_ = vc::Metadata(path_ / METADATA_FILE);
 }
 
 // Create new file on disk
 DiskBasedObjectBaseClass::DiskBasedObjectBaseClass(
-    fs::path path, Identifier uuid, std::string name)
+    std::filesystem::path path, Identifier uuid, std::string name)
     : path_(std::move(path))
 {
     metadata_.setPath((path_ / METADATA_FILE));
@@ -27,5 +25,5 @@ DiskBasedObjectBaseClass::DiskBasedObjectBaseClass(
 //return wether dir could be a volume
 bool DiskBasedObjectBaseClass::checkDir(std::filesystem::path path)
 {
-    return fs::is_directory(path) && fs::exists(path / METADATA_FILE);
+    return std::filesystem::is_directory(path) && std::filesystem::exists(path / METADATA_FILE);
 }

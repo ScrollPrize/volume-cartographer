@@ -10,7 +10,7 @@
 
 #include "Json.hpp"
 #include <filesystem>
-namespace volcart
+namespace vc
 {
 /**
  * @class Metadata
@@ -35,7 +35,7 @@ public:
     /**
      * @brief Read a metadata file from disk
      *
-     * @throws volcart::IOException
+     * @throws vc::IOException
      */
     explicit Metadata(std::filesystem::path fileLocation);
     /**@}*/
@@ -50,7 +50,7 @@ public:
     /**
      * @brief Save the metadata file to the stored path
      *
-     * @throws volcart::IOException 
+     * @throws vc::IOException
      */
     void save() { save(path_); }
 
@@ -111,4 +111,4 @@ protected:
     /** Location where the JSON file will be stored*/
     std::filesystem::path path_;
 };
-}  // namespace volcart
+}  // namespace vc

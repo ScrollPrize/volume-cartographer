@@ -17,14 +17,14 @@
 #include <map>
 #include "PathData.hpp"
 
-namespace volcart {
+namespace vc {
     class Volume;
     class VolumePkg;
 }
 
 class ChunkCache;
 
-namespace ChaoVis {
+
 
 class SeedingWidget : public QWidget {
     Q_OBJECT
@@ -33,8 +33,8 @@ public:
     explicit SeedingWidget(QWidget* parent = nullptr);
     ~SeedingWidget();
     
-    void setVolumePkg(std::shared_ptr<volcart::VolumePkg> vpkg);
-    void setCurrentVolume(std::shared_ptr<volcart::Volume> volume);
+    void setVolumePkg(std::shared_ptr<vc::VolumePkg> vpkg);
+    void setCurrentVolume(std::shared_ptr<vc::Volume> volume);
     void setCache(ChunkCache* cache);
     
 signals:
@@ -47,7 +47,7 @@ public slots:
     
 public slots:
     void onPointSelected(cv::Vec3f point, cv::Vec3f normal);
-    void onVolumeChanged(std::shared_ptr<volcart::Volume> vol, const std::string& volumeId);
+    void onVolumeChanged(std::shared_ptr<vc::Volume> vol, const std::string& volumeId);
     void updateCurrentZSlice(int z);
     void onUserPointAdded(cv::Vec3f point);
     void onMousePress(cv::Vec3f vol_point, Qt::MouseButton button, Qt::KeyboardModifiers modifiers);
@@ -117,8 +117,8 @@ private:
     QProgressBar* progressBar;
     
     // Data
-    std::shared_ptr<volcart::VolumePkg> fVpkg;
-    std::shared_ptr<volcart::Volume> currentVolume;
+    std::shared_ptr<vc::VolumePkg> fVpkg;
+    std::shared_ptr<vc::Volume> currentVolume;
     std::string currentVolumeId;
     ChunkCache* chunkCache;
     cv::Vec3f selectedPoint;
@@ -141,4 +141,3 @@ private:
     bool jobsRunning;
 };
 
-} // namespace ChaoVis

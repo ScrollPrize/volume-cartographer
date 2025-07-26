@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.22 FATAL_ERROR)
 project(VC3D VERSION 4.0.0)
 
 
-set(CMAKE_CXX_FLAGS "-ggdb -Og -g3 -w -Wno-narrowing -std=c++20")
+set(CMAKE_CXX_FLAGS "-ggdb -Og -g3 -w -Wno-narrowing -std=c++23")
 
 set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fuse-ld=lld ")
 set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -fuse-ld=lld")
@@ -16,7 +16,7 @@ endif()
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS on)
 
-option(VC_WITH_CUDA_SPARSE "use cudss" ON)
+option(VC_WITH_CUDA_SPARSE "use cudss" OFF)
 if (VC_WITH_CUDA_SPARSE)
     add_definitions(-DVC_USE_CUDA_SPARSE=1)
 endif()
@@ -26,7 +26,8 @@ set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC ON)
 
 find_package(Qt6 REQUIRED COMPONENTS Widgets Gui Core Network)
-find_package(OpenCV  REQUIRED)
+find_package(OpenEXR REQUIRED)
+find_package(OpenCV REQUIRED PATHS "${CMAKE_PREFIX_PATH}" NO_DEFAULT_PATH)
 find_package(OpenMP REQUIRED)
 find_package(CURL REQUIRED)
 find_package(spdlog REQUIRED)

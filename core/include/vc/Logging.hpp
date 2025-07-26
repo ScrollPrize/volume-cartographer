@@ -10,10 +10,10 @@
 
 #include <filesystem>
 /**
- * @namespace volcart::logging
+ * @namespace vc::logging
  * @brief Logging utilities
  */
-namespace volcart
+namespace vc
 {
 namespace logging
 {
@@ -31,4 +31,4 @@ void SetLogLevel(const std::string& s);
 /** @brief Volume Cartographer global logger */
 auto Logger() -> std::shared_ptr<spdlog::logger>;
 
-}  // namespace volcart
+}  // namespace vc

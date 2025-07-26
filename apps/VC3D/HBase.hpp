@@ -5,8 +5,7 @@
 #include <math.h>
 #include <stdlib.h>
 
-namespace ChaoVis
-{
+
 
 #define USHORT_SIZE 65536
 
@@ -21,14 +20,6 @@ inline static void deleteNULL(T*& nPtr, bool nIsArray = false)
         }
         nPtr = NULL;
     }
-}
-
-template <typename T>
-inline static void swap(T& nVal1, T& nVal2)
-{
-    T aTmp = nVal1;
-    nVal1 = nVal2;
-    nVal2 = aTmp;
 }
 
 inline bool IsPowerOfTwo(int n) { return ((n & (n - 1)) == 0); }
@@ -73,4 +64,3 @@ inline double QuadraticImpactFunc(double nStartVal, double nCurrentPos, double n
     return nStartVal * (1.0 - x * x);
 }
 
-}  // namespace ChaoVis

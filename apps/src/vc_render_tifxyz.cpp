@@ -1,6 +1,6 @@
-#include "../../core/include/vc/ChunkedTensor.hpp"
-#include "../../core/include/vc/Slicing.hpp"
-#include "../../core/include/vc/Surface.hpp"
+#include "vc/ChunkedTensor.hpp"
+#include "vc/Slicing.hpp"
+#include "vc/Surface.hpp"
 
 #include <nlohmann/json.hpp>
 #include "z5/factory.hxx"
@@ -8,7 +8,7 @@
 #include <opencv2/highgui.hpp>
 #include <opencv2/imgproc.hpp>
 
-namespace fs = std::filesystem;
+
 
 using json = nlohmann::json;
 
@@ -158,15 +158,6 @@ void flipImage(cv::Mat& img, int flipType)
     }
 }
 
-std::ostream& operator<< (std::ostream& out, const xt::svector<size_t> &v) {
-    if ( !v.empty() ) {
-        out << '[';
-        for(auto &v : v)
-            out << v << ",";
-        out << "\b]";
-    }
-    return out;
-}
 
 void printUsage(const char* programName)
 {
@@ -186,9 +177,9 @@ int main(int argc, char *argv[])
     }
     
     // Parse basic arguments
-    fs::path vol_path = argv[1];
+    std::filesystem::path vol_path = argv[1];
     const char *tgt_ptn = argv[2];
-    fs::path seg_path = argv[3];
+    std::filesystem::path seg_path = argv[3];
     float tgt_scale = atof(argv[4]);
     int group_idx = atoi(argv[5]);
     
@@ -237,8 +228,6 @@ int main(int argc, char *argv[])
     z5::filesystem::handle::Dataset ds_handle(group, std::to_string(group_idx), json::parse(std::ifstream(vol_path/std::to_string(group_idx)/".zarray")).value<std::string>("dimension_separator","."));
     std::unique_ptr<z5::Dataset> ds = z5::filesystem::openDataset(ds_handle);
 
-    std::cout << "zarr dataset size for scale group " << group_idx << ds->shape() << std::endl;
-    std::cout << "chunk shape shape " << ds->chunking().blockShape() << std::endl;
     std::cout << "saving output to " << tgt_ptn << std::endl;
     
     if (std::abs(rotate_angle) > 1e-6) {
@@ -248,8 +237,8 @@ int main(int argc, char *argv[])
         std::cout << "Flip: " << (flip_axis == 0 ? "Vertical" : flip_axis == 1 ? "Horizontal" : "Both") << std::endl;
     }
     
-    fs::path output_path(tgt_ptn);
-    fs::create_directories(output_path.parent_path());
+    std::filesystem::path output_path(tgt_ptn);
+    std::filesystem::create_directories(output_path.parent_path());
     
     ChunkCache chunk_cache(16e9);
 

@@ -56,12 +56,12 @@ std::ostream& operator<< (std::ostream& out, const xt::svector<size_t> &v) {
 }
 
 
-void throw_run_path(const fs::path &path, const std::string msg)
+void throw_run_path(const std::filesystem::path &path, const std::string msg)
 {
   throw std::runtime_error(msg + " for " + path.string());
 }
 
-cv::Mat read_jxl(const fs::path &path)
+cv::Mat read_jxl(const std::filesystem::path &path)
 {
   //adapted from https://github.com/libjxl/libjxl/blob/main/examples/decode_oneshot.cc
 

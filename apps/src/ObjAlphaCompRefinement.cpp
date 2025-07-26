@@ -17,28 +17,19 @@
 #include <opencv2/core.hpp>
 #include <opencv2/imgproc.hpp>
 
-#include "../../core/include/vc/PointSetIO.hpp"
-#include "../../core/include/vc/Slicing.hpp"
-#include "../../core/include/vc/Surface.hpp"
+#include "vc/PointSetIO.hpp"
+#include "vc/Slicing.hpp"
+#include "vc/Surface.hpp"
 
 #include <filesystem>
 #include <unordered_map>
 
 using shape = z5::types::ShapeType;
 using namespace xt::placeholders;
-namespace fs = std::filesystem; 
+
 
 using json = nlohmann::json;
 
-std::ostream& operator<< (std::ostream& out, const xt::svector<size_t> &v) {
-    if ( !v.empty() ) {
-        out << '[';
-        for(auto &v : v)
-            out << v << ",";
-        out << "\b]"; // use ANSI backspace character '\b' to overwrite final ", "
-    }
-    return out;
-}
 
 cv::Vec3f parse_vec3f(std::string line, std::string type = "")
 {
@@ -223,9 +214,6 @@ int main(int argc, char *argv[])
     z5::filesystem::handle::Group group(vol_path, z5::FileMode::FileMode::r);
     z5::filesystem::handle::Dataset ds_handle(group, "1", "/");
     std::unique_ptr<z5::Dataset> ds = z5::filesystem::openDataset(ds_handle);
-
-    std::cout << "zarr dataset size for scale group 1 " << ds->shape() << std::endl;
-    std::cout << "chunk shape shape " << ds->chunking().blockShape() << std::endl;
     
     ChunkCache chunk_cache(10e9);
 

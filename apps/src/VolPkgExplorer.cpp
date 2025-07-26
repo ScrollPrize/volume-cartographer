@@ -7,9 +7,7 @@
 #include "vc/core/util/Logging.hpp"
 #include "vc/graph.hpp"
 
-namespace fs = std::filesystem;
-namespace po = boost::program_options;
-namespace vc = volcart;
+namespace boost::program_options = boost::program_options;
 
 // Volpkg version required by this app
 static constexpr int VOLPKG_MIN_VERSION = 6;
@@ -18,18 +16,18 @@ auto main(int argc, char* argv[]) -> int
 {
     ///// Parse the command line options /////
     // clang-format off
-    po::options_description required("General Options");
+    boost::program_options::options_description required("General Options");
     required.add_options()
         ("help,h", "Show this message")
-        ("volpkg,v", po::value<std::string>()->required(), "VolumePkg path");
+        ("volpkg,v", boost::program_options::value<std::string>()->required(), "VolumePkg path");
 
-    po::options_description all("Usage");
+    boost::program_options::options_description all("Usage");
     all.add(required);
     // clang-format on
 
     // Parse the cmd line
-    po::variables_map parsed;
-    po::store(po::command_line_parser(argc, argv).options(all).run(), parsed);
+    boost::program_options::variables_map parsed;
+    boost::program_options::store(po::command_line_parser(argc, argv).options(all).run(), parsed);
 
     // Show the help message
     if (parsed.count("help") > 0 || argc < 3) {
@@ -49,7 +47,7 @@ auto main(int argc, char* argv[]) -> int
     vc::RegisterNodes();
 
     // Get the parsed options
-    fs::path volpkgPath = parsed["volpkg"].as<std::string>();
+    std::filesystem::path volpkgPath = parsed["volpkg"].as<std::string>();
 
     ///// Load the volume package /////
     vc::VolumePkg vpkg(volpkgPath);

@@ -25,22 +25,21 @@
 #include "vc/texturing/IntersectionTexture.hpp"
 #include "vc/texturing/ThicknessTexture.hpp"
 
-using namespace volcart;
-namespace fs = std::filesystem;
-namespace po = boost::program_options;
-namespace vct = volcart::texturing;
+using namespace vc;
+namespace boost::program_options = boost::program_options;
+namespace vct = vc::texturing;
 
 // Volpkg version required by this app
 static constexpr int VOLPKG_MIN_VERSION = 6;
 
 namespace
 {
-auto GetTransformOpts() -> po::options_description
+auto GetTransformOpts() -> boost::program_options::options_description
 {
     // clang-format off
-    po::options_description opts("Transform Options");
+    boost::program_options::options_description opts("Transform Options");
     opts.add_options()
-        ("transform", po::value<std::string>(), "The ID of a transform in the "
+        ("transform", boost::program_options::value<std::string>(), "The ID of a transform in the "
             "VolumePkg or a path to a Transform3D .json file. If provided, "
             "perform coordinate transforms with the given transform.")
         ("invert-transform", "When provided, invert the transform.");
@@ -54,9 +53,9 @@ auto main(int argc, char* argv[]) -> int
 {
     ///// Parse the command line options /////
     // clang-format off
-    po::options_description ioOpts("Input/Output Options");
+    boost::program_options::options_description ioOpts("Input/Output Options");
     ioOpts.add_options()
-        ("volpkg,v", po::value<std::string>()->required(), "VolumePkg path")
+        ("volpkg,v", boost::program_options::value<std::string>()->required(), "VolumePkg path")
         ("ppm,p", po::value<std::string>()->required(), "Input PPM file")
         ("volume", po::value<std::string>(),
             "Volume to use for texturing. Default: First volume.")
@@ -100,10 +99,10 @@ auto main(int argc, char* argv[]) -> int
     logging::SetLogLevel(logLevel);
 
     // Get the parsed options
-    const fs::path volpkgPath = parsed["volpkg"].as<std::string>();
-    const fs::path inputPPMPath = parsed["ppm"].as<std::string>();
+    const std::filesystem::path volpkgPath = parsed["volpkg"].as<std::string>();
+    const std::filesystem::path inputPPMPath = parsed["ppm"].as<std::string>();
     const auto method = static_cast<Method>(parsed["method"].as<int>());
-    const fs::path outputPath = parsed["output-file"].as<std::string>();
+    const std::filesystem::path outputPath = parsed["output-file"].as<std::string>();
 
     ///// Load the volume package /////
     auto vpkg = VolumePkg::New(volpkgPath);
@@ -184,7 +183,7 @@ auto main(int argc, char* argv[]) -> int
     auto clampToMax = parsed.count("clamp-to-max") > 0;
 
     ///// Thickness options /////
-    fs::path maskPath;
+    std::filesystem::path maskPath;
     if (parsed.count("volume-mask") > 0) {
         maskPath = parsed["volume-mask"].as<std::string>();
     }
@@ -338,7 +337,7 @@ auto main(int argc, char* argv[]) -> int
 
     if (parsed.count("output-ppm") > 0) {
         Logger()->info("Writing output PPM...");
-        const fs::path outputPPMPath = parsed["output-ppm"].as<std::string>();
+        const std::filesystem::path outputPPMPath = parsed["output-ppm"].as<std::string>();
         PerPixelMap::WritePPM(outputPPMPath, *ppm);
     }
 

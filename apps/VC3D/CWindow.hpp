@@ -6,7 +6,7 @@
 #include <opencv2/core.hpp>
 #include "ui_VCMain.h"
 
-#include "../../core/include/vc/SurfaceDef.hpp"
+#include "vc/SurfaceDef.hpp"
 #include "CommandLineToolRunner.hpp"
 
 #include <QShortcut>
@@ -24,7 +24,7 @@ class QuadSurface;
 class SurfaceMeta;
 class OpChain;
 
-namespace volcart {
+namespace vc {
     class Volume;
     class VolumePkg;
 }
@@ -36,8 +36,7 @@ class OpsSettings;
 class SurfaceTreeWidget;
 class SurfaceTreeWidgetItem;
 
-namespace ChaoVis
-{
+
 
 class CVolumeViewer;
 class CSurfaceCollection;
@@ -56,7 +55,7 @@ public:
 
 signals:
     void sendLocChanged(int x, int y, int z);
-    void sendVolumeChanged(std::shared_ptr<volcart::Volume> vol, const std::string& volumeId);
+    void sendVolumeChanged(std::shared_ptr<vc::Volume> vol, const std::string& volumeId);
     void sendSliceChanged(std::string,Surface*);
     void sendOpChainSelected(OpChain*);
     void sendPointsChanged(const std::vector<cv::Vec3f> red, const std::vector<cv::Vec3f> blue);
@@ -115,7 +114,7 @@ private:
     void setWidgetsEnabled(bool state);
 
     bool InitializeVolumePkg(const std::string& nVpkgPath);
-    void setDefaultWindowWidth(std::shared_ptr<volcart::Volume> volume);
+    void setDefaultWindowWidth(std::shared_ptr<vc::Volume> volume);
 
     void OpenVolume(const QString& path);
     void CloseVolume(void);
@@ -134,7 +133,7 @@ private:
     static void audio_callback(void *user_data, uint8_t *raw_buffer, int bytes);
     void playPing();
 
-    void setVolume(std::shared_ptr<volcart::Volume> newvol);
+    void setVolume(std::shared_ptr<vc::Volume> newvol);
 
 private slots:
     void Open(void);
@@ -156,12 +155,12 @@ private slots:
 
 private:
     bool appInitComplete{false};
-    std::shared_ptr<volcart::VolumePkg> fVpkg;
+    std::shared_ptr<vc::VolumePkg> fVpkg;
     Surface *_seg_surf;
     QString fVpkgPath;
     std::string fVpkgName;
 
-    std::shared_ptr<volcart::Volume> currentVolume;
+    std::shared_ptr<vc::Volume> currentVolume;
     std::string currentVolumeId;
     int loc[3] = {0,0,0};
 
@@ -249,4 +248,3 @@ private:
     QShortcut* fCompositeViewShortcut;
 };  // class CWindow
 
-}  // namespace ChaoVis

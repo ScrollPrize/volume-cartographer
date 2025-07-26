@@ -6,7 +6,7 @@
 
 #include <opencv2/core.hpp>
 
-namespace volcart
+namespace vc
 {
 
 /**
@@ -101,4 +101,4 @@ private:
     /** Upper bound */
     Point p1_{0, 0, 0};
 };
-}  // namespace volcart
+}  // namespace vc

@@ -3,7 +3,6 @@
 #include <QProcess>
 #include <QString>
 #include <QThread>
-#include "../../core/include/vc/SurfaceDef.hpp"
 
 class SegmentRenderThread : public QThread
 {

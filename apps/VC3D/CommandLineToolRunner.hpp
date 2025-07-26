@@ -1,23 +1,14 @@
 #pragma once
 
-#include <QObject>
-#include <QString>
-#include <QStringList>
 #include <QProcess>
-#include <QMessageBox>
-#include <QApplication>
 #include <QClipboard>
-#include <QDialog>
 #include <QJsonDocument>
-#include <QJsonObject>
 #include <QFile>
-#include <memory>
 
-#include "../../core/include/vc/SurfaceDef.hpp"
 #include "ConsoleOutputWidget.hpp"
 #include "ProgressUtil.hpp"
 
-namespace ChaoVis {
+
 
 // Forward declaration
 class CWindow;
@@ -112,4 +103,3 @@ private:
     Tool _currentTool;
 };
 
-} // namespace ChaoVis

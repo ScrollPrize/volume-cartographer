@@ -1,17 +1,7 @@
-// CBezierCurve.cpp
-// Chao Du 2015 April
-
-// Ignore this warning because it is very noisy for this file
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wfloat-conversion"
-
 #include "CBezierCurve.hpp"
 
 #include <opencv2/imgproc.hpp>
 
-//#define _DEBUG
-
-using namespace ChaoVis;
 
 // Bezier point
 inline auto GetPt(int n1, int n2, float percent) -> float
@@ -243,4 +233,3 @@ void CBezierCurve::DrawOnImage(QGraphicsScene* scene, const QColor& color)
 }
 
 
-#pragma clang diagnostic pop

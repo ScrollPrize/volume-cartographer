@@ -10,10 +10,9 @@
 #include "vc/core/util/Logging.hpp"
 #include "vc/texturing/ProjectMesh.hpp"
 
-namespace vc = volcart;
-namespace fs = vc::filesystem;
+namespace std::filesystem = vc::filesystem;
 namespace vct = vc::texturing;
-namespace po = boost::program_options;
+namespace boost::program_options = boost::program_options;
 
 using CompositeTransform = itk::CompositeTransform<double, 2>;
 
@@ -22,28 +21,28 @@ auto main(int argc, char* argv[]) -> int
     ///// Parse the command line options /////
     // All command line options
     // clang-format off
-    po::options_description general("General Options");
+    boost::program_options::options_description general("General Options");
     general.add_options()
         ("help,h", "Show this message")
-        ("input-mesh,i", po::value<std::string>()->required(),
+        ("input-mesh,i", boost::program_options::value<std::string>()->required(),
             "Input mesh with reordered texture")
-        ("output-ppm,o", po::value<std::string>()->required(),
+        ("output-ppm,o", boost::program_options::value<std::string>()->required(),
             "Output PPM file")
-        ("target-image,t", po::value<std::string>(),
+        ("target-image,t", boost::program_options::value<std::string>(),
             "Input target (fixed) image")
-        ("tfm", po::value<std::string>(),
+        ("tfm", boost::program_options::value<std::string>(),
             "Transform file that maps the texture image onto the target image")
         ("use-first-intersection",
             "Use the ray's first intersection with the mesh rather than the last")
         ("inverse", "If enabled, try to use the inverse transform");
 
-    po::options_description all("Usage");
+    boost::program_options::options_description all("Usage");
     all.add(general);
     // clang-format on
 
     // Parse the cmd line
-    po::variables_map parsed;
-    po::store(po::command_line_parser(argc, argv).options(all).run(), parsed);
+    boost::program_options::variables_map parsed;
+    boost::program_options::store(boost::program_options::command_line_parser(argc, argv).options(all).run(), parsed);
 
     // Show the help message
     if (parsed.count("help") > 0 || argc < 2) {
@@ -60,16 +59,16 @@ auto main(int argc, char* argv[]) -> int
     }
 
     // Get cmd line params
-    fs::path meshPath = parsed["input-mesh"].as<std::string>();
-    fs::path targetPath;
+    std::filesystem::path meshPath = parsed["input-mesh"].as<std::string>();
+    std::filesystem::path targetPath;
     if (parsed.count("target-image") > 0) {
         targetPath = parsed["target-image"].as<std::string>();
     }
-    fs::path tfmPath;
+    std::filesystem::path tfmPath;
     if (parsed.count("tfm") > 0) {
         tfmPath = parsed["tfm"].as<std::string>();
     }
-    fs::path outPath = parsed["output-ppm"].as<std::string>();
+    std::filesystem::path outPath = parsed["output-ppm"].as<std::string>();
     auto useFirstIntersection = parsed.count("use-first-intersection") > 0;
     auto useInverse = parsed.count("inverse") > 0;
 

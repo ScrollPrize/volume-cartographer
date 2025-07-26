@@ -6,8 +6,7 @@
 
 #include <vector>
 
-namespace ChaoVis
-{
+
 
 class CXCurve
 {
@@ -61,4 +60,3 @@ private:
 
 };  // class CXCurve
 
-}  // namespace ChaoVis

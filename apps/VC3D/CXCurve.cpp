@@ -3,7 +3,6 @@
 #include "CXCurve.hpp"
 #include <omp.h>
 
-using namespace ChaoVis;
 
 // Constructor
 CXCurve::CXCurve(void) {}

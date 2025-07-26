@@ -28,7 +28,7 @@ namespace z5
 }
 
 
-namespace volcart
+namespace vc
 {
     struct KeyHasher {
         // Taken from https://stackoverflow.com/a/72073933
@@ -52,7 +52,7 @@ namespace volcart
  * @brief Volumetric image data
  *
  * Provides access to a volumetric dataset, such as a CT scan. By default,
- * slices are cached in memory using volcart::LRUCache.
+ * slices are cached in memory using vc::LRUCache.
  *
  * @ingroup Types
  */
@@ -280,4 +280,4 @@ protected:
     mutable std::shared_mutex print_mutex_;
     void zarrOpen();
 };
-}  // namespace volcart
+}  // namespace vc

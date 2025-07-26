@@ -1,5 +1,3 @@
-// CBSpline.cpp
-// Chao Du 2015 April
 #include "CBSpline.hpp"
 
 #include <opencv2/imgproc.hpp>
@@ -7,9 +5,6 @@
 #include "CMatrixMN.hpp"
 #include "UVecMatOperations.hpp"
 
-//#define _DEBUG
-
-using namespace ChaoVis;
 
 // Constructor
 CBSpline::CBSpline(void) {}

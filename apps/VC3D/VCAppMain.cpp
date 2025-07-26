@@ -1,18 +1,12 @@
-// main.cpp
-// Chao Du 2014 Dec
-
-#include <QScreen>
 #include <qapplication.h>
 
-#include "../../core/include/vc/Version.hpp"
+#include "vc/Version.hpp"
 #include "CWindow.hpp"
 
 #include <thread>
 #include <opencv2/core.hpp>
 
-using namespace ChaoVis;
 
-namespace vc = volcart;
 
 auto main(int argc, char* argv[]) -> int
 {

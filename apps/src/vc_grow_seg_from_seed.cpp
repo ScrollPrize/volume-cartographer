@@ -1,6 +1,6 @@
-#include "../../core/include/vc/ChunkedTensor.hpp"
-#include "../../core/include/vc/Slicing.hpp"
-#include "../../core/include/vc/Surface.hpp"
+#include "vc/ChunkedTensor.hpp"
+#include "vc/Slicing.hpp"
+#include "vc/Surface.hpp"
 
 #include <nlohmann/json.hpp>
 #include "z5/factory.hxx"
@@ -8,19 +8,10 @@
 #include <omp.h>
 
 using shape = z5::types::ShapeType;
-namespace fs = std::filesystem;
+
 
 using json = nlohmann::json;
 
-std::ostream& operator<< (std::ostream& out, const xt::svector<size_t> &v) {
-    if ( !v.empty() ) {
-        out << '[';
-        for(auto &v : v)
-            out << v << ",";
-        out << "\b]";
-    }
-    return out;
-}
 
 std::string time_str()
 {
@@ -44,10 +35,10 @@ float get_val(I &interp, cv::Vec3d l) {
     return v;
 }
 
-bool check_existing_segments(const fs::path& tgt_dir, const cv::Vec3d& origin, 
+bool check_existing_segments(const std::filesystem::path& tgt_dir, const cv::Vec3d& origin,
                            const std::string& name_prefix, int search_effort) {
-    for (const auto& entry : fs::directory_iterator(tgt_dir)) {
-        if (!fs::is_directory(entry)) {
+    for (const auto& entry : std::filesystem::directory_iterator(tgt_dir)) {
+        if (!std::filesystem::is_directory(entry)) {
             continue;
         }
 
@@ -56,8 +47,8 @@ bool check_existing_segments(const fs::path& tgt_dir, const cv::Vec3d& origin,
             continue;
         }
 
-        fs::path meta_fn = entry.path() / "meta.json";
-        if (!fs::exists(meta_fn)) {
+        std::filesystem::path meta_fn = entry.path() / "meta.json";
+        if (!std::filesystem::exists(meta_fn)) {
             continue;
         }
 
@@ -85,8 +76,8 @@ int main(int argc, char *argv[])
         return EXIT_SUCCESS;
     }
 
-    fs::path vol_path = argv[1];
-    fs::path tgt_dir = argv[2];
+    std::filesystem::path vol_path = argv[1];
+    std::filesystem::path tgt_dir = argv[2];
     const char *params_path = argv[3];
 
     std::ifstream params_f(params_path);
@@ -95,9 +86,6 @@ int main(int argc, char *argv[])
     z5::filesystem::handle::Group group(vol_path, z5::FileMode::FileMode::r);
     z5::filesystem::handle::Dataset ds_handle(group, "0", json::parse(std::ifstream(vol_path/"0/.zarray")).value<std::string>("dimension_separator","."));
     std::unique_ptr<z5::Dataset> ds = z5::filesystem::openDataset(ds_handle);
-
-    std::cout << "zarr dataset size for scale group 0 " << ds->shape() << std::endl;
-    std::cout << "chunk shape shape " << ds->chunking().blockShape() << std::endl;
 
     ChunkCache chunk_cache(params.value("cache_size", 1e9));
 
@@ -147,16 +135,16 @@ int main(int argc, char *argv[])
             //if both still have less than N then grow a seg from the seed
             //after growing, check locations on the new seg agains all existing segs
 
-        for (const auto& entry : fs::directory_iterator(tgt_dir))
-            if (fs::is_directory(entry)) {
+        for (const auto& entry : std::filesystem::directory_iterator(tgt_dir))
+            if (std::filesystem::is_directory(entry)) {
                 std::string name = entry.path().filename();
                 if (name.compare(0, name_prefix.size(), name_prefix))
                     continue;
 
                 std::cout << entry.path() << entry.path().filename() << std::endl;
 
-                fs::path meta_fn = entry.path() / "meta.json";
-                if (!fs::exists(meta_fn))
+                std::filesystem::path meta_fn = entry.path() / "meta.json";
+                if (!std::filesystem::exists(meta_fn))
                     continue;
 
                 std::ifstream meta_f(meta_fn);
@@ -326,7 +314,7 @@ int main(int argc, char *argv[])
     if (mode == "expansion")
         (*surf->meta)["seed_overlap"] = count_overlap;
     std::string uuid = name_prefix + time_str();
-    fs::path seg_dir = tgt_dir / uuid;
+    std::filesystem::path seg_dir = tgt_dir / uuid;
     std::cout << "saving " << seg_dir << std::endl;
     surf->save(seg_dir, uuid);
 
@@ -337,25 +325,25 @@ int main(int argc, char *argv[])
         current.setSurface(surf);
         current.bbox = surf->bbox();
 
-        fs::path overlap_dir = current.path / "overlapping";
-        fs::create_directory(overlap_dir);
+        std::filesystem::path overlap_dir = current.path / "overlapping";
+        std::filesystem::create_directory(overlap_dir);
 
         {std::ofstream touch(overlap_dir/src->name());}
 
-        fs::path overlap_src = src->path / "overlapping";
-        fs::create_directory(overlap_src);
+        std::filesystem::path overlap_src = src->path / "overlapping";
+        std::filesystem::create_directory(overlap_src);
         {std::ofstream touch(overlap_src/current.name());}
 
         for(auto &s : surfs_v)
             if (overlap(current, *s, search_effort)) {
                 std::ofstream touch_me(overlap_dir/s->name());
-                fs::path overlap_other = s->path / "overlapping";
-                fs::create_directory(overlap_other);
+                std::filesystem::path overlap_other = s->path / "overlapping";
+                std::filesystem::create_directory(overlap_other);
                 std::ofstream touch_you(overlap_other/current.name());
             }
 
-        for (const auto& entry : fs::directory_iterator(tgt_dir))
-            if (fs::is_directory(entry) && !surfs.count(entry.path().filename()))
+        for (const auto& entry : std::filesystem::directory_iterator(tgt_dir))
+            if (std::filesystem::is_directory(entry) && !surfs.count(entry.path().filename()))
             {
                 std::string name = entry.path().filename();
                 if (name.compare(0, name_prefix.size(), name_prefix))
@@ -364,8 +352,8 @@ int main(int argc, char *argv[])
                 if (name == current.name())
                     continue;
 
-                fs::path meta_fn = entry.path() / "meta.json";
-                if (!fs::exists(meta_fn))
+                std::filesystem::path meta_fn = entry.path() / "meta.json";
+                if (!std::filesystem::exists(meta_fn))
                     continue;
 
                 std::ifstream meta_f(meta_fn);
@@ -382,8 +370,8 @@ int main(int argc, char *argv[])
 
                 if (overlap(current, other, search_effort)) {
                     std::ofstream touch_me(overlap_dir/other.name());
-                    fs::path overlap_other = other.path / "overlapping";
-                    fs::create_directory(overlap_other);
+                    std::filesystem::path overlap_other = other.path / "overlapping";
+                    std::filesystem::create_directory(overlap_other);
                     std::ofstream touch_you(overlap_other/current.name());
                 }
             }

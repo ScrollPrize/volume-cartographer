@@ -13,7 +13,6 @@
 #include "vc/core/types/VolumePkg.hpp"
 #include "vc/core/util/Logging.hpp"
 
-namespace vc = volcart;
 
 vc::VolumeClient::VolumeClient(const QString& ip, quint16 port, QObject* parent)
     : QObject{parent}

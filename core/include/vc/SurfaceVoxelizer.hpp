@@ -14,7 +14,7 @@ class File;
 }
 }
 
-namespace volcart {
+namespace vc {
 
 /**
  * @brief Voxelizes quadmesh surfaces into a multi-resolution zarr array
@@ -114,4 +114,4 @@ private:
     );
 };
 
-} // namespace volcart
+} // namespace vc

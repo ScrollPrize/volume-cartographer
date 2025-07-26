@@ -1,13 +1,10 @@
-// UVecMatOperations.h
-// Chao Du 2015 Mar
 #pragma once
 
 #include "CMatrixMN.hpp"
 #include "CVectorN.hpp"
 #include "MathUtils.hpp"
 
-namespace ChaoVis
-{
+
 
 // O. individual operations
 template <typename T>
@@ -890,4 +887,3 @@ inline void ThomasTriDiagonal(
     }
 }
 
-}  // namespace ChaoVis

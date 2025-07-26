@@ -1,6 +1,6 @@
-#include "../../core/include/vc/ChunkedTensor.hpp"
-#include "../../core/include/vc/Slicing.hpp"
-#include "../../core/include/vc/Surface.hpp"
+#include "vc/ChunkedTensor.hpp"
+#include "vc/Slicing.hpp"
+#include "vc/Surface.hpp"
 
 #include <nlohmann/json.hpp>
 #include "z5/factory.hxx"
@@ -9,7 +9,7 @@
 
 #include <iomanip>
 
-namespace fs = std::filesystem;
+
 
 using json = nlohmann::json;
 
@@ -40,7 +40,7 @@ int get_add_vertex(std::ofstream &out, cv::Mat_<cv::Vec3f> &points,
     return idxs(loc);
 }
 
-void surf_write_obj(QuadSurface *surf, const fs::path &out_fn,
+void surf_write_obj(QuadSurface *surf, const std::filesystem::path &out_fn,
                     bool normalize_uv)
 {
     cv::Mat_<cv::Vec3f> points = surf->rawPoints();
@@ -77,8 +77,8 @@ int main(int argc, char *argv[])
         return EXIT_SUCCESS;
     }
 
-    fs::path seg_path = argv[1];
-    fs::path obj_path = argv[2];
+    std::filesystem::path seg_path = argv[1];
+    std::filesystem::path obj_path = argv[2];
 
     // Default behaviour: (un-normalized UVs)
     bool normalize_uv = false;

@@ -1,9 +1,6 @@
-// CVolumeViewer.h
-// Chao Du 2015 April
 #pragma once
 
 #include <QtWidgets>
-#include <opencv2/core/core.hpp>
 
 #include <set>
 #include "PathData.hpp"
@@ -20,12 +17,11 @@ class SurfacePointer;
 
 class QGraphicsScene;
 
-namespace volcart {
+namespace vc {
     class Volume;
 }
 
-namespace ChaoVis
-{
+
 
 class CVolumeViewerView;
 class CSurfaceCollection;
@@ -78,7 +74,7 @@ public:
     CVolumeViewerView* fGraphicsView;
 
 public slots:
-    void OnVolumeChanged(std::shared_ptr<volcart::Volume> vol);
+    void OnVolumeChanged(std::shared_ptr<vc::Volume> vol);
     void onVolumeClicked(QPointF scene_loc,Qt::MouseButton buttons, Qt::KeyboardModifiers modifiers);
     void onPanRelease(Qt::MouseButton buttons, Qt::KeyboardModifiers modifiers);
     void onPanStart(Qt::MouseButton buttons, Qt::KeyboardModifiers modifiers);
@@ -132,7 +128,7 @@ protected:
     int fImageIndex;
     QGraphicsPixmapItem* fBaseImageItem;
     int sliceIndexToolStart{-1};
-    std::shared_ptr<volcart::Volume> volume = nullptr;
+    std::shared_ptr<vc::Volume> volume = nullptr;
     Surface *_surf = nullptr;
     SurfacePointer *_ptr = nullptr;
     cv::Vec2f _vis_center = {0,0};
@@ -191,4 +187,3 @@ protected:
     QPushButton* fPrevBtn;
 };  // class CVolumeViewer
 
-}  // namespace ChaoVis

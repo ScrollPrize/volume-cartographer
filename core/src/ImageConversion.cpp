@@ -1,8 +1,6 @@
-#include "../include/vc/ImageConversion.hpp"
+#include "vc/ImageConversion.hpp"
 
-#include <cstdint>
 
-namespace vc = volcart;
 
 namespace
 {

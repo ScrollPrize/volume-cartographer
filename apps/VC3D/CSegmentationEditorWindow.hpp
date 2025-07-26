@@ -1,4 +1,3 @@
-// CSegmentationEditorWindow.hpp
 #pragma once
 
 #include <QMainWindow>
@@ -8,7 +7,7 @@
 #include <QLabel>
 #include <opencv2/core/core.hpp>
 
-namespace ChaoVis {
+
 
 class CVolumeViewer;
 class CSurfaceCollection;
@@ -51,4 +50,3 @@ private:
     float stepSize = 1.0f;
 };
 
-} // namespace ChaoVis

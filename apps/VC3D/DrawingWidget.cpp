@@ -28,10 +28,9 @@
 #include <filesystem>
 #include <fstream>
 
-namespace fs = std::filesystem;
-namespace vc = volcart;
 
-namespace ChaoVis {
+
+
 
 DrawingWidget::DrawingWidget(QWidget* parent)
     : QWidget(parent)
@@ -197,13 +196,13 @@ void DrawingWidget::setupUI()
     
 }
 
-void DrawingWidget::setVolumePkg(std::shared_ptr<volcart::VolumePkg> vpkg)
+void DrawingWidget::setVolumePkg(std::shared_ptr<vc::VolumePkg> vpkg)
 {
     fVpkg = vpkg;
     updateUI();
 }
 
-void DrawingWidget::setCurrentVolume(std::shared_ptr<volcart::Volume> volume)
+void DrawingWidget::setCurrentVolume(std::shared_ptr<vc::Volume> volume)
 {
     currentVolume = volume;
     updateUI();
@@ -214,12 +213,12 @@ void DrawingWidget::setCache(ChunkCache* cache)
     chunkCache = cache;
 }
 
-void DrawingWidget::onVolumeChanged(std::shared_ptr<volcart::Volume> vol)
+void DrawingWidget::onVolumeChanged(std::shared_ptr<vc::Volume> vol)
 {
     setCurrentVolume(vol);
 }
 
-void DrawingWidget::onVolumeChanged(std::shared_ptr<volcart::Volume> vol, const std::string& volumeId)
+void DrawingWidget::onVolumeChanged(std::shared_ptr<vc::Volume> vol, const std::string& volumeId)
 {
     currentVolume = vol;
     currentVolumeId = volumeId;
@@ -752,4 +751,3 @@ QList<PathData> DrawingWidget::processPathsWithErasers(const QList<PathData>& ra
     return processedPaths;
 }
 
-} // namespace ChaoVis

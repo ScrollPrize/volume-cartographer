@@ -1,19 +1,13 @@
-// CVolumeViewer.cpp
-// Chao Du 2015 April
 #include "CVolumeViewerView.hpp"
 #include "CVolumeViewer.hpp"
 
 #include <QGraphicsView>
 #include <QMouseEvent>
 #include <QScrollBar>
-#include <QKeyEvent>
 #include <QPainter>
 #include <cmath>
-#include <QPixmap>
-#include <QPainter>
 #include <QCursor>
 
-using namespace ChaoVis;
 
 #define BGND_RECT_MARGIN 8
 

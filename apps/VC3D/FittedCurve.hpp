@@ -11,7 +11,7 @@
 using Voxel = cv::Vec3d;
 using Pixel = cv::Vec2d;
 
-namespace volcart::segmentation
+namespace vc::segmentation
 {
 /**
  * @class FittedCurve
@@ -87,4 +87,4 @@ public:
     /**@brief Calculate the arc length of the curve  */
     double arclength() const;
 };
-}  // namespace volcart::segmentation
+}  // namespace vc::segmentation

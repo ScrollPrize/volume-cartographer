@@ -7,7 +7,7 @@
 #include <iostream>
 #include <type_traits>
 
-namespace volcart
+namespace vc
 {
 
 /**
@@ -392,7 +392,7 @@ inline EnumerateIterable<std::vector<std::common_type_t<Args...>>> enumerate(
 /**
  * Iterable wrapper for enumerating elements of a container by index and value
  *
- * Use volcart::enumerate, which provides a convenient method for constructing
+ * Use vc::enumerate, which provides a convenient method for constructing
  * an EnumerateIterable.
  *
  * @ingroup Util
@@ -554,4 +554,4 @@ inline EnumerateIterable<std::vector<std::common_type_t<Args...>>> enumerate(
     return EnumerateIterable<Iterable>(std::forward<Args>(args)...);
 }
 
-}  // namespace volcart
+}  // namespace vc

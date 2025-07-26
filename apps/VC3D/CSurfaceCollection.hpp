@@ -5,8 +5,7 @@
 
 class Surface;
 
-namespace ChaoVis
-{
+
     
 struct POI
 {
@@ -65,4 +64,4 @@ protected:
     std::unordered_map<std::pair<std::string,std::string>, Intersection*, string_pair_hash> _intersections;
 };
 
-}
+

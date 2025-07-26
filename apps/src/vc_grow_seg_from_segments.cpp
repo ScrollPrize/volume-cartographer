@@ -17,31 +17,22 @@
 #include <opencv2/core.hpp>
 #include <opencv2/imgproc.hpp>
 
-#include "../../core/include/vc/PointSetIO.hpp"
-#include "../../core/include/vc/Slicing.hpp"
-#include "../../core/include/vc/Surface.hpp"
+#include "vc/PointSetIO.hpp"
+#include "vc/Slicing.hpp"
+#include "vc/Surface.hpp"
 
 #include <filesystem>
 #include <unordered_map>
 #include <omp.h>
 
-#include "../../core/include/vc/ChunkedTensor.hpp"
+#include "vc/ChunkedTensor.hpp"
 
 using shape = z5::types::ShapeType;
 using namespace xt::placeholders;
-namespace fs = std::filesystem;
+
 
 using json = nlohmann::json;
 
-std::ostream& operator<< (std::ostream& out, const xt::svector<size_t> &v) {
-    if ( !v.empty() ) {
-        out << '[';
-        for(auto &v : v)
-            out << v << ",";
-        out << "\b]"; // use ANSI backspace character '\b' to overwrite final ", "
-    }
-    return out;
-}
 
 class MeasureLife
 {
@@ -99,11 +90,11 @@ int main(int argc, char *argv[])
         return EXIT_SUCCESS;
     }
 
-    fs::path vol_path = argv[1];
-    fs::path src_dir = argv[2];
-    fs::path tgt_dir = argv[3];
-    fs::path params_path = argv[4];
-    fs::path src_path = argv[5];
+    std::filesystem::path vol_path = argv[1];
+    std::filesystem::path src_dir = argv[2];
+    std::filesystem::path tgt_dir = argv[3];
+    std::filesystem::path params_path = argv[4];
+    std::filesystem::path src_path = argv[5];
     while (src_path.filename().empty())
         src_path = src_path.parent_path();
 
@@ -115,15 +106,12 @@ int main(int argc, char *argv[])
     z5::filesystem::handle::Dataset ds_handle(group, "0", json::parse(std::ifstream(vol_path/"0/.zarray")).value<std::string>("dimension_separator","."));
     std::unique_ptr<z5::Dataset> ds = z5::filesystem::openDataset(ds_handle);
 
-    std::cout << "zarr dataset size for scale group 0 " << ds->shape() << std::endl;
-    std::cout << "chunk shape shape " << ds->chunking().blockShape() << std::endl;
-
     float voxelsize = json::parse(std::ifstream(vol_path/"meta.json"))["voxelsize"];
 
     std::string name_prefix = "auto_grown_";
     std::vector<SurfaceMeta*> surfaces;
 
-    fs::path meta_fn = src_path / "meta.json";
+    std::filesystem::path meta_fn = src_path / "meta.json";
     std::ifstream meta_f(meta_fn);
     json meta = json::parse(meta_f);
     SurfaceMeta *src = new SurfaceMeta(src_path, meta);
@@ -131,8 +119,8 @@ int main(int argc, char *argv[])
 
     // Remove debug output folders from previous runs
     std::string debug_prefix = Z_DBG_GEN_PREFIX;
-    for (const auto& entry : fs::directory_iterator(tgt_dir)) {
-        if (fs::is_directory(entry)) {
+    for (const auto& entry : std::filesystem::directory_iterator(tgt_dir)) {
+        if (std::filesystem::is_directory(entry)) {
             std::string name = entry.path().filename();
             if (name.compare(0, debug_prefix.size(), debug_prefix) == 0) {
                 std::filesystem::remove_all(entry.path());
@@ -140,14 +128,14 @@ int main(int argc, char *argv[])
         }
     }
 
-    for (const auto& entry : fs::directory_iterator(src_dir))
-        if (fs::is_directory(entry)) {
+    for (const auto& entry : std::filesystem::directory_iterator(src_dir))
+        if (std::filesystem::is_directory(entry)) {
             std::string name = entry.path().filename();
             if (name.compare(0, name_prefix.size(), name_prefix))
                 continue;
 
-            fs::path meta_fn = entry.path() / "meta.json";
-            if (!fs::exists(meta_fn))
+            std::filesystem::path meta_fn = entry.path() / "meta.json";
+            if (!std::filesystem::exists(meta_fn))
                 continue;
 
             std::ifstream meta_f(meta_fn);
@@ -178,7 +166,7 @@ int main(int argc, char *argv[])
     (*surf->meta)["source"] = "vc_grow_seg_from_segments";
     (*surf->meta)["vc_grow_seg_from_segments_params"] = params;
     std::string uuid = "auto_trace_" + time_str();;
-    fs::path seg_dir = tgt_dir / uuid;
+    std::filesystem::path seg_dir = tgt_dir / uuid;
     surf->save(seg_dir, uuid);
 
     delete surf;

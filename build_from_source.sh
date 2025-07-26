@@ -270,6 +270,47 @@ ninja -j$JOBS
 ninja install
 cd "$BUILD_DIR"
 
+rm -rf opencv
+git clone --depth 1 https://github.com/opencv/opencv.git
+cd opencv
+mkdir -p build && cd build
+cmake .. -G Ninja \
+    -DCMAKE_INSTALL_PREFIX="$INSTALL_PREFIX" \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_C_COMPILER=clang \
+    -DCMAKE_CXX_COMPILER=clang++ \
+    -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+    -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+    -DCMAKE_C_FLAGS="${COMMON_FLAGS}" \
+    -DCMAKE_CXX_FLAGS="${COMMON_FLAGS}" \
+    -DCMAKE_EXE_LINKER_FLAGS="${COMMON_LDFLAGS}" \
+    -DCMAKE_SHARED_LINKER_FLAGS="${COMMON_LDFLAGS}" \
+    -DCMAKE_MODULE_LINKER_FLAGS="${COMMON_LDFLAGS}" \
+    -DBUILD_SHARED_LIBS=OFF \
+    -DBUILD_opencv_apps=OFF \
+    -DBUILD_opencv_python2=OFF \
+    -DBUILD_opencv_python3=OFF \
+    -DBUILD_TESTS=OFF \
+    -DBUILD_PERF_TESTS=OFF \
+    -DBUILD_EXAMPLES=OFF \
+    -DBUILD_DOCS=OFF \
+    -DWITH_CUDA=OFF \
+    -DWITH_OPENMP=ON \
+    -DWITH_TBB=OFF \
+    -DWITH_IPP=OFF \
+    -DWITH_VTK=OFF \
+    -DWITH_FFMPEG=ON \
+    -DWITH_GSTREAMER=OFF \
+    -DWITH_V4L=ON \
+    -DWITH_QT=OFF \
+    -DWITH_GTK=OFF \
+    -DWITH_OPENCL=ON \
+    -DWITH_OPENEXR=OFF \
+    -DOPENCV_ENABLE_NONFREE=ON
+ninja -j$JOBS
+ninja install
+cd "$BUILD_DIR"
+
 rm -rf ceres-solver
 git clone --depth 1 --recurse-submodules --shallow-submodules https://github.com/ceres-solver/ceres-solver.git
 cd ceres-solver

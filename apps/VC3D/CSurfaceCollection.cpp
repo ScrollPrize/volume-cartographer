@@ -3,7 +3,6 @@
 #include "vc/Slicing.hpp"
 #include "vc/Surface.hpp"
 
-using namespace ChaoVis;
 
 CSurfaceCollection::~CSurfaceCollection()
 {

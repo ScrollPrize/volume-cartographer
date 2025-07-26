@@ -13,7 +13,7 @@
 #include "VolumePkgVersion.hpp"
 #include "vc/Segmentation.hpp"
 
-namespace volcart
+namespace vc
 {
 
 /**
@@ -85,7 +85,7 @@ public:
     /**
      * @brief Returns the VolumePkg version.
      *
-     * Use in conjunction with volcart::VERSION_LIBRARY to verify the presence
+     * Use in conjunction with vc::VERSION_LIBRARY to verify the presence
      * of
      * specific VolumePkg metadata keys.
      *
@@ -268,18 +268,18 @@ private:
     std::map<Segmentation::Identifier, std::string> segmentationDirectories_;
 
     /**
-     * @brief Populates an empty VolumePkg::config from a volcart::Dictionary
+     * @brief Populates an empty VolumePkg::config from a vc::Dictionary
      * template
      *
      * The configuration is populated with all keys found in `dict`. This is not
      * validated against what is expected for the passed `version` number.
      * @param dict Metadata template
      * @param version Version number of the passed Dictionary
-     * @return volcart::Metadata populated with default keys
+     * @return vc::Metadata populated with default keys
      */
     static auto InitConfig(const Dictionary& dict, int version) -> Metadata;
     
     /** @brief Load segmentations from the specified directory */
     void loadSegmentationsFromDirectory(const std::string& dirName);
 };
-}  // namespace volcart
+}  // namespace vc

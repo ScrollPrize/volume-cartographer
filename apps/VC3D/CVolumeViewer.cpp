@@ -1,5 +1,3 @@
-// CVolumeViewer.cpp
-// Chao Du 2015 April
 #include "CVolumeViewer.hpp"
 #include "UDataManipulateUtils.hpp"
 #include "HBase.hpp"
@@ -16,9 +14,6 @@
 
 #include <omp.h>
 
-#include "OpChain.hpp"
-
-using namespace ChaoVis;
 using qga = QGuiApplication;
 
 #define BGND_RECT_MARGIN 8
@@ -245,7 +240,7 @@ void CVolumeViewer::onZoom(int steps, QPointF scene_loc, Qt::KeyboardModifiers m
     renderIntersections();
 }
 
-void CVolumeViewer::OnVolumeChanged(volcart::Volume::Pointer volume_)
+void CVolumeViewer::OnVolumeChanged(vc::Volume::Pointer volume_)
 {
     volume = volume_;
     

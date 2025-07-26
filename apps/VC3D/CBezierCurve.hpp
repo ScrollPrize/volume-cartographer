@@ -1,5 +1,3 @@
-// CBezierCurve.h
-// Chao Du 2015 April
 #pragma once
 
 #include <vector>
@@ -9,10 +7,6 @@
 #include "MathUtils.hpp"
 #include <QGraphicsEllipseItem>
 #include <QGraphicsView>
-#include <QGraphicsScene>
-
-namespace ChaoVis
-{
 
 // REVISIT - NOTE - we use order 3 Bezier curve, which has 4 control points and
 // 3 convex line segments
@@ -41,4 +35,3 @@ private:
 
 };  // class CBezierCurve
 
-}  // namespace ChaoVis

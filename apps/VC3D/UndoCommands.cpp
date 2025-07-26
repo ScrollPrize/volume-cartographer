@@ -1,9 +1,5 @@
-// UndoCommands.cpp
-// Philip Allgaier 2023 October
-
 #include "UndoCommands.hpp"
 
-using namespace ChaoVis;
 
 PathChangeCommand::PathChangeCommand(CVolumeViewerWithCurve* viewer, SegmentationStruct* segStruct,
     const PathChangePointVector before, const PathChangePointVector after, QUndoCommand* parent)

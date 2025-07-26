@@ -1,5 +1,3 @@
-// UDataManipulateUtils.cpp
-// Chao Du 2014 Dec
 #include <cstddef>
 #include <cstdint>
 
@@ -9,8 +7,7 @@
 #include "HBase.hpp"
 #include "UDataManipulateUtils.hpp"
 
-namespace ChaoVis
-{
+
 
 // Split vertex and face to memory chunk that can fit into OpenGL
 auto SplitVertexAndElementBuffer(
@@ -133,4 +130,3 @@ auto Mat2QImage(const cv::Mat& nSrc) -> QImage
     return result;
 }
 
-}  // namespace ChaoVis

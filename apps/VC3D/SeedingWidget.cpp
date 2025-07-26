@@ -23,10 +23,9 @@
 #include <fstream>
 #include <functional>
 
-namespace fs = std::filesystem;
-namespace vc = volcart;
 
-namespace ChaoVis {
+
+
 
 SeedingWidget::SeedingWidget(QWidget* parent)
     : QWidget(parent)
@@ -197,14 +196,14 @@ void SeedingWidget::setupUI()
     setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);
 }
 
-void SeedingWidget::setVolumePkg(std::shared_ptr<volcart::VolumePkg> vpkg)
+void SeedingWidget::setVolumePkg(std::shared_ptr<vc::VolumePkg> vpkg)
 {
     std::cout << "SeedingWidget::setVolumePkg called - vpkg: " << (vpkg ? "valid" : "null") << std::endl;
     fVpkg = vpkg;
     updateButtonStates();
 }
 
-void SeedingWidget::setCurrentVolume(std::shared_ptr<volcart::Volume> volume)
+void SeedingWidget::setCurrentVolume(std::shared_ptr<vc::Volume> volume)
 {
     currentVolume = volume;
     updateButtonStates();
@@ -215,7 +214,7 @@ void SeedingWidget::setCache(ChunkCache* cache)
     chunkCache = cache;
 }
 
-void SeedingWidget::onVolumeChanged(std::shared_ptr<volcart::Volume> vol, const std::string& volumeId)
+void SeedingWidget::onVolumeChanged(std::shared_ptr<vc::Volume> vol, const std::string& volumeId)
 {
     std::cout << "SeedingWidget::onVolumeChanged called - volume: " << (vol ? "valid" : "null") 
               << ", volumeId: " << volumeId << std::endl;
@@ -515,8 +514,8 @@ void SeedingWidget::onRunSegmentationClicked()
     const int totalPoints = static_cast<int>(allPoints.size());
     
     // Get paths
-    fs::path pathsDir;
-    fs::path seedJsonPath;
+    std::filesystem::path pathsDir;
+    std::filesystem::path seedJsonPath;
     
     if (fVpkg->hasSegmentations() && !fVpkg->segmentationIDs().empty()) {
         auto segID = fVpkg->segmentationIDs()[0];
@@ -532,11 +531,11 @@ void SeedingWidget::onRunSegmentationClicked()
         }
         
         auto vol = fVpkg->volume();
-        fs::path vpkgPath = vol->path().parent_path().parent_path();
+        std::filesystem::path vpkgPath = vol->path().parent_path().parent_path();
         pathsDir = vpkgPath / "paths";
         seedJsonPath = vpkgPath / "seed.json";
         
-        if (!fs::exists(pathsDir)) {
+        if (!std::filesystem::exists(pathsDir)) {
             QMessageBox::warning(this, "Error", "Segmentation paths directory not found in volume package.");
             progressBar->setVisible(false);
             runSegmentationButton->setEnabled(true);
@@ -544,7 +543,7 @@ void SeedingWidget::onRunSegmentationClicked()
         }
     }
     
-    if (!fs::exists(seedJsonPath)) {
+    if (!std::filesystem::exists(seedJsonPath)) {
         QMessageBox::warning(this, "Error", "seed.json not found in volume package.");
         progressBar->setVisible(false);
         runSegmentationButton->setEnabled(true);
@@ -558,7 +557,7 @@ void SeedingWidget::onRunSegmentationClicked()
         return;
     }
     
-    fs::path volumePath = currentVolume->path();
+    std::filesystem::path volumePath = currentVolume->path();
     QString workingDir = QString::fromStdString(pathsDir.parent_path().string());
     
     // Track completion
@@ -1163,8 +1162,8 @@ void SeedingWidget::onExpandSeedsClicked()
     const int expansionIterations = expansionIterationsSpinBox->value();
     
     // Get paths
-    fs::path pathsDir;
-    fs::path expandJsonPath;
+    std::filesystem::path pathsDir;
+    std::filesystem::path expandJsonPath;
     
     if (fVpkg->hasSegmentations() && !fVpkg->segmentationIDs().empty()) {
         auto segID = fVpkg->segmentationIDs()[0];
@@ -1180,11 +1179,11 @@ void SeedingWidget::onExpandSeedsClicked()
         }
         
         auto vol = fVpkg->volume();
-        fs::path vpkgPath = vol->path().parent_path().parent_path();
+        std::filesystem::path vpkgPath = vol->path().parent_path().parent_path();
         pathsDir = vpkgPath / "paths";
         expandJsonPath = vpkgPath / "expand.json";
         
-        if (!fs::exists(pathsDir)) {
+        if (!std::filesystem::exists(pathsDir)) {
             QMessageBox::warning(this, "Error", "Segmentation paths directory not found in volume package.");
             progressBar->setVisible(false);
             expandSeedsButton->setEnabled(true);
@@ -1192,14 +1191,14 @@ void SeedingWidget::onExpandSeedsClicked()
         }
     }
     
-    if (!fs::exists(expandJsonPath)) {
+    if (!std::filesystem::exists(expandJsonPath)) {
         QMessageBox::warning(this, "Error", "expand.json not found in volume package.");
         progressBar->setVisible(false);
         expandSeedsButton->setEnabled(true);
         return;
     }
     
-    fs::path volumePath = currentVolume->path();
+    std::filesystem::path volumePath = currentVolume->path();
     QString workingDir = QString::fromStdString(pathsDir.parent_path().string());
     
     // Track completion
@@ -1342,4 +1341,3 @@ void SeedingWidget::onSurfacesLoaded()
     updateButtonStates();
 }
 
-} // namespace ChaoVis

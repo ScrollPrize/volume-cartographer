@@ -8,31 +8,30 @@
 #include <filesystem>#include "vc/core/types/VolumePkg.hpp"
 #include "vc/core/types/VolumePkgVersion.hpp"
 
-namespace po = boost::program_options;
-namespace fs = std::filesystem;
-namespace vc = volcart;
+namespace boost::program_options = boost::program_options;
+
 
 auto main(int argc, char* argv[]) -> int
 {
     // clang-format off
-    po::options_description options{"options arguments"};
+    boost::program_options::options_description options{"options arguments"};
     options.add_options()
         ("help,h", "Show this message")
         ("print,p", "Print current metadata")
         ("test,t", "Test metadata changes but do not write to file")
         ("write,w", "Write metadata changes to file")
-        ("volpkg,v", po::value<fs::path>()->required(), "Path to volumepkg")
-        ("configs", po::value<std::vector<std::string>>(),
+        ("volpkg,v", boost::program_options::value<std::filesystem::path>()->required(), "Path to volumepkg")
+        ("configs", boost::program_options::value<std::vector<std::string>>(),
             "New metadata key/value pairs");
-    po::positional_options_description positional;
+    boost::program_options::positional_options_description positional;
     positional.add("configs", -1);
     // clang-format on
 
-    po::command_line_parser parser{argc, argv};
+    boost::program_options::command_line_parser parser{argc, argv};
     parser.options(options).positional(positional).allow_unregistered();
     auto parsed = parser.run();
-    po::variables_map opts;
-    po::store(parsed, opts);
+    boost::program_options::variables_map opts;
+    boost::program_options::store(parsed, opts);
 
     // Print help
     if (argc == 1 || opts.count("help")) {
@@ -59,7 +58,7 @@ auto main(int argc, char* argv[]) -> int
     }
 
     // Build volumepkg
-    vc::VolumePkg volpkg{opts["volpkg"].as<fs::path>()};
+    vc::VolumePkg volpkg{opts["volpkg"].as<std::filesystem::path>()};
 
     // Print metadata
     if (opts.count("print")) {

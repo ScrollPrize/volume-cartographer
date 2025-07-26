@@ -1,5 +1,3 @@
-// CWindow.cpp
-// Chao Du 2014 Dec
 #include "CWindow.hpp"
 
 #include <QKeySequence>
@@ -8,8 +6,6 @@
 #include <QClipboard>
 #include <QDateTime>
 #include <QTextStream>
-#include <QFileInfo>
-#include <QMessageBox>
 #include <QtConcurrent/QtConcurrent>
 #include <QFutureWatcher>
 #include <atomic>
@@ -39,10 +35,8 @@
 #include "vc/SurfaceVoxelizer.hpp"
 #include "vc/Slicing.hpp"
 
-namespace vc = volcart;
-using namespace ChaoVis;
 using qga = QGuiApplication;
-namespace fs = std::filesystem;
+
 
 // Constructor
 CWindow::CWindow() :
@@ -201,7 +195,7 @@ CVolumeViewer *CWindow::newConnectedCVolumeViewer(std::string surfaceName, QStri
     return volView;
 }
 
-void CWindow::setVolume(std::shared_ptr<volcart::Volume> newvol)
+void CWindow::setVolume(std::shared_ptr<vc::Volume> newvol)
 {
     currentVolume = newvol;
     
@@ -284,7 +278,7 @@ void CWindow::CreateWidgets(void)
     ui.dockWidgetDrawing->setWidget(_drawingWidget);
 
     connect(this, &CWindow::sendVolumeChanged, _drawingWidget, 
-            static_cast<void (DrawingWidget::*)(std::shared_ptr<volcart::Volume>, const std::string&)>(&DrawingWidget::onVolumeChanged));
+            static_cast<void (DrawingWidget::*)(std::shared_ptr<vc::Volume>, const std::string&)>(&DrawingWidget::onVolumeChanged));
     connect(_drawingWidget, &DrawingWidget::sendStatusMessageAvailable, this, &CWindow::onShowStatusMessage);
     connect(this, &CWindow::sendSurfacesLoaded, _drawingWidget, &DrawingWidget::onSurfacesLoaded);
 
@@ -295,7 +289,7 @@ void CWindow::CreateWidgets(void)
     ui.dockWidgetDistanceTransform->setWidget(_seedingWidget);
     
     connect(this, &CWindow::sendVolumeChanged, _seedingWidget, 
-            static_cast<void (SeedingWidget::*)(std::shared_ptr<volcart::Volume>, const std::string&)>(&SeedingWidget::onVolumeChanged));
+            static_cast<void (SeedingWidget::*)(std::shared_ptr<vc::Volume>, const std::string&)>(&SeedingWidget::onVolumeChanged));
     connect(_seedingWidget, &SeedingWidget::sendStatusMessageAvailable, this, &CWindow::onShowStatusMessage);
     connect(this, &CWindow::sendSurfacesLoaded, _seedingWidget, &SeedingWidget::onSurfacesLoaded);
     
@@ -792,7 +786,7 @@ void CWindow::onShowStatusMessage(QString text, int timeout)
     statusBar->showMessage(text, timeout);
 }
 
-fs::path seg_path_name(const fs::path &path)
+std::filesystem::path seg_path_name(const std::filesystem::path &path)
 {
     std::string name;
     bool store = false;
@@ -1425,7 +1419,7 @@ void CWindow::onSurfaceSelected()
             if (seg->metadata().hasKey("vcps"))
                 _opchains[_surfID] = new OpChain(load_quad_from_vcps(seg->path()/seg->metadata().get<std::string>("vcps")));
             //TODO fix these
-            // else if (fs::path(surf_path).extension() == ".obj") {
+            // else if (std::filesystem::path(surf_path).extension() == ".obj") {
             //     QuadSurface *quads = load_quad_from_obj(surf_path);
             //     if (quads)
             //         _opchains[surf_path] = new OpChain(quads);
@@ -1662,9 +1656,9 @@ void CWindow::onEditMaskPressed(void)
     
     cv::Mat_<cv::Vec3f> points = _surf->rawPoints();
 
-    fs::path path = _surf->path/"mask.tif";
+    std::filesystem::path path = _surf->path/"mask.tif";
     
-    if (!fs::exists(path)) {
+    if (!std::filesystem::exists(path)) {
         cv::Mat_<uint8_t> img;
         cv::Mat_<uint8_t> mask;
         //TODO make this aim for some target size instead of a hardcoded decision
@@ -2219,7 +2213,7 @@ void CWindow::onVoxelizePaths()
     }
     
     // Set up volume info from current volume
-    volcart::SurfaceVoxelizer::VolumeInfo volumeInfo;
+    vc::SurfaceVoxelizer::VolumeInfo volumeInfo;
     volumeInfo.width = currentVolume->sliceWidth();
     volumeInfo.height = currentVolume->sliceHeight();
     volumeInfo.depth = currentVolume->numSlices();
@@ -2236,7 +2230,7 @@ void CWindow::onVoxelizePaths()
     volumeInfo.voxelSize = voxelSize;
     
     // Set up parameters
-    volcart::SurfaceVoxelizer::VoxelizationParams params;
+    vc::SurfaceVoxelizer::VoxelizationParams params;
     params.voxelSize = volumeInfo.voxelSize; // Match volume voxel size
     params.samplingDensity = 0.5f; // Sample every 0.5 surface units
     params.fillGaps = true;
@@ -2264,7 +2258,7 @@ void CWindow::onVoxelizePaths()
     
     QFuture<void> future = QtConcurrent::run([this, outputStr, surfaces, volumeInfo, params, progress, &cancelled]() {
         try {
-            volcart::SurfaceVoxelizer::voxelizeSurfaces(
+            vc::SurfaceVoxelizer::voxelizeSurfaces(
                 outputStr,
                 surfaces,
                 volumeInfo,

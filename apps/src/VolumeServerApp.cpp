@@ -12,9 +12,7 @@
 #include "vc/core/util/Logging.hpp"
 #include "vc/core/util/MemorySizeStringParser.hpp"
 
-namespace fs = std::filesystem;
-namespace po = boost::program_options;
-namespace vc = volcart;
+namespace boost::program_options = boost::program_options;
 
 // Volpkg version required by this app
 static constexpr int VOLPKG_MIN_VERSION = 6;
@@ -24,19 +22,19 @@ auto main(int argc, char* argv[]) -> int
     // Add CLI arguments
     // clang-format off
     std::vector<std::string> volpkgPaths;
-    po::options_description required("General Options");
+    boost::program_options::options_description required("General Options");
     required.add_options()
         ("help,h", "Show this message")
-        ("port,p", po::value<quint16>()->default_value(8087), "Port to listen on")
-        ("memory,m", po::value<std::string>()->required(), "Memory to reserve for the server in bytes (accepts K, M, G, T suffixes)")
-        ("volpkg,v", po::value(&volpkgPaths)->multitoken()->required(), "VolumePkg path (required, repeatable option)");
+        ("port,p", boost::program_options::value<quint16>()->default_value(8087), "Port to listen on")
+        ("memory,m", boost::program_options::value<std::string>()->required(), "Memory to reserve for the server in bytes (accepts K, M, G, T suffixes)")
+        ("volpkg,v", boost::program_options::value(&volpkgPaths)->multitoken()->required(), "VolumePkg path (required, repeatable option)");
 
-    po::options_description all("Usage");
+    boost::program_options::options_description all("Usage");
     all.add(required);
     // clang-format on
 
     // Parse the cmd line
-    po::variables_map parsed;
+    boost::program_options::variables_map parsed;
     po::store(po::command_line_parser(argc, argv).options(all).run(), parsed);
 
     // Show the help message

@@ -17,9 +17,7 @@
 #include "vc/segmentation/LocalResliceParticleSim.hpp"
 #include "vc/segmentation/ThinnedFloodFillSegmentation.hpp"
 
-namespace fs = std::filesystem;
-namespace po = boost::program_options;
-namespace vc = volcart;
+namespace boost::program_options = boost::program_options;
 namespace vs = vc::segmentation;
 
 // Volpkg version required by this app
@@ -55,16 +53,16 @@ auto main(int argc, char* argv[]) -> int
 {
     // Set up options
     // clang-format off
-    po::options_description required("Required arguments");
+    boost::program_options::options_description required("Required arguments");
     required.add_options()
-        ("volpkg,v", po::value<std::string>()->required(), "VolumePkg path")
-        ("seg,s", po::value<std::string>()->required(), "Segmentation ID")
-        ("method,m", po::value<std::string>()->required(),
+        ("volpkg,v", boost::program_options::value<std::string>()->required(), "VolumePkg path")
+        ("seg,s", boost::program_options::value<std::string>()->required(), "Segmentation ID")
+        ("method,m", boost::program_options::value<std::string>()->required(),
             "Segmentation method: LRPS, TFF")
-        ("volume", po::value<std::string>(),
+        ("volume", boost::program_options::value<std::string>(),
             "Volume to use for texturing. Default: Segmentation's associated "
             "volume or the first volume in the volume package.")
-        ("start-index", po::value<std::size_t>(),
+        ("start-index", boost::program_options::value<std::size_t>(),
             "Starting slice index. Default to highest z-index in path")
         ("end-index", po::value<std::size_t>(),
             "Ending slice index. Mutually exclusive with 'stride'")
@@ -172,8 +170,8 @@ auto main(int argc, char* argv[]) -> int
     }
 
     ///// Load the volume package /////
-    fs::path volpkgPath = parsed["volpkg"].as<std::string>();
-    if (not fs::exists(volpkgPath)) {
+    std::filesystem::path volpkgPath = parsed["volpkg"].as<std::string>();
+    if (not std::filesystem::exists(volpkgPath)) {
         vc::Logger()->error("VolPkg does not exist: {}", volpkgPath.string());
         return EXIT_FAILURE;
     }

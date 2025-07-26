@@ -5,7 +5,7 @@
 #include <opencv2/core.hpp>
 #include <opencv2/imgproc.hpp>
 
-namespace volcart
+namespace vc
 {
 
 /** @brief Convert an OpenCV depth enum value to a human-readable string */
@@ -31,4 +31,4 @@ auto QuantizeImage(
  */
 auto ColorConvertImage(const cv::Mat& m, int channels = 1) -> cv::Mat;
 
-}  // namespace volcart
+}  // namespace vc

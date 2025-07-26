@@ -4,7 +4,7 @@
 
 #include "vc/OrderedPointSet.hpp"
 
-namespace volcart::debug
+namespace vc::debug
 {
 
     void PrintPointCloud(OrderedPointSet<cv::Vec3d> points, std::string label = "",  bool withCoordinates = false);

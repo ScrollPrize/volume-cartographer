@@ -2,7 +2,7 @@
 
 #include <QTreeWidget>
 
-#include "../../core/include/vc/SurfaceDef.hpp"
+#include "vc/SurfaceDef.hpp"
 
 #define SURFACE_ID_COLUMN 1
 

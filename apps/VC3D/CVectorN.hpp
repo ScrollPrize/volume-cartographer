@@ -1,5 +1,3 @@
-// CVectorN.h
-// Chao Du 2015 Jan
 #pragma once
 
 #include <assert.h>
@@ -8,8 +6,7 @@
 #include <string.h>
 #include "HBase.hpp"
 
-namespace ChaoVis
-{
+
 
 template <typename T>
 class CVectorN
@@ -211,4 +208,3 @@ inline void CVectorN<T>::Dump(void) const
     printf("\n");
 }
 
-}  // namespace ChaoVis

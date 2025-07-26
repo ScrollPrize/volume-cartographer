@@ -14,7 +14,7 @@
 #include <sstream>
 #include <omp.h>
 
-using namespace volcart;
+using namespace vc;
 
 void SurfaceVoxelizer::voxelizeSurfaces(
     const std::string& outputPath,

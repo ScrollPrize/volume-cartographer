@@ -8,7 +8,7 @@
 
 #include <opencv2/core.hpp>
 
-namespace volcart
+namespace vc
 {
 /**
  * @brief Color type
@@ -18,7 +18,7 @@ namespace volcart
 using Color = cv::Vec3b;
 
 /**
- * @namespace volcart::color
+ * @namespace vc::color
  * @brief Color constants
  */
 namespace color
@@ -32,4 +32,4 @@ static const Color CYAN{255, 255, 0};
 static const Color LIGHT_GRAY{200, 200, 200};
 static const Color DARK_GRAY{68, 68, 68};
 }  // namespace color
-}  // namespace volcart
+}  // namespace vc

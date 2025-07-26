@@ -11,7 +11,7 @@
 
 static const double MAX_16BPC = std::numeric_limits<std::uint16_t>::max();
 
-namespace volcart
+namespace vc
 {
 
 auto SliceImage::operator==(const SliceImage& b) const -> bool
@@ -86,4 +86,4 @@ auto SliceImage::conformedImage() -> cv::Mat
     return image;
 }
 
-}  // namespace volcart
+}  // namespace vc

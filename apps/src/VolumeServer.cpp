@@ -10,7 +10,6 @@
 #include "vc/core/neighborhood/CuboidGenerator.hpp"
 #include "vc/core/util/Logging.hpp"
 
-namespace vc = volcart;
 
 auto vc::VolumeServer::socketStr_(QTcpSocket* socket) -> std::string
 {

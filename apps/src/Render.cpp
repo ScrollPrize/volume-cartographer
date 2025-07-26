@@ -16,11 +16,9 @@
 #include "vc/core/util/String.hpp"
 #include "vc/graph.hpp"
 
-namespace vc = volcart;
-namespace fs = std::filesystem;
-namespace po = boost::program_options;
+namespace boost::program_options = boost::program_options;
 
-using namespace volcart;
+using namespace vc;
 
 // Volpkg version required by this app
 static constexpr int VOLPKG_MIN_VERSION = 6;
@@ -40,28 +38,28 @@ enum class TransformInput { Raw = 0, Resampled, PerPixelMap };
 namespace
 {
 
-auto GetGeneralOpts() -> po::options_description
+auto GetGeneralOpts() -> boost::program_options::options_description
 {
     // clang-format off
-    po::options_description opts("General Options");
+    boost::program_options::options_description opts("General Options");
     opts.add_options()
         ("help,h", "Show this message")
-        ("cache-memory-limit", po::value<std::string>(),
+        ("cache-memory-limit", boost::program_options::value<std::string>(),
          "Maximum size of the slice cache in bytes. Accepts the suffixes: "
          "(K|M|G|T)(B). Default: 50% of the total system memory.")
-        ("log-level", po::value<std::string>()->default_value("info"),
+        ("log-level", boost::program_options::value<std::string>()->default_value("info"),
          "Options: off, critical, error, warn, info, debug");
     // clang-format on
     return opts;
 }
 
-auto GetIOOpts() -> po::options_description
+auto GetIOOpts() -> boost::program_options::options_description
 {
     // clang-format off
-    po::options_description opts("Input/Output Options");
+    boost::program_options::options_description opts("Input/Output Options");
     opts.add_options()
-    ("volpkg,v", po::value<std::string>()->required(), "VolumePkg path")
-    ("seg,s", po::value<std::string>(), "Segmentation ID")
+    ("volpkg,v", boost::program_options::value<std::string>()->required(), "VolumePkg path")
+    ("seg,s", boost::program_options::value<std::string>(), "Segmentation ID")
     ("input-mesh", po::value<std::string>(), "Path to input OBJ or PLY")
     ("volume", po::value<std::string>(),
         "Volume to use for texturing. Default: Segmentation's associated "
@@ -324,10 +322,10 @@ auto main(int argc, char* argv[]) -> int
     vc::RegisterNodes();
 
     ///// Load the volume package /////
-    fs::path volpkgPath = parsed["volpkg"].as<std::string>();
+    std::filesystem::path volpkgPath = parsed["volpkg"].as<std::string>();
     Logger()->info(
         "Loading VolumePkg: {}",
-        fs::weakly_canonical(volpkgPath).filename().string());
+        std::filesystem::weakly_canonical(volpkgPath).filename().string());
     VolumePkg::Pointer vpkg;
     try {
         vpkg = VolumePkg::New(volpkgPath);
@@ -363,7 +361,7 @@ auto main(int argc, char* argv[]) -> int
             {"git-url", ProjectInfo::RepositoryURL()},
             {"git-hash", ProjectInfo::RepositoryHash()},
             {"volpkg", {
-                {"path", fs::weakly_canonical(volpkgPath).filename().string()},
+                {"path", std::filesystem::weakly_canonical(volpkgPath).filename().string()},
                 {"name", vpkg->name()}
             }}
         }}
@@ -404,7 +402,7 @@ auto main(int argc, char* argv[]) -> int
         results["mesh"] = &mesher->mesh;
     } else {
         Logger()->debug("Loading mesh");
-        const fs::path inputPath = parsed["input-mesh"].as<std::string>();
+        const std::filesystem::path inputPath = parsed["input-mesh"].as<std::string>();
         outStem = inputPath.stem().string();
 
         auto reader = graph->insertNode<LoadMeshNode>();
@@ -417,12 +415,12 @@ auto main(int argc, char* argv[]) -> int
     }
 
     //// Setup the output file path ////
-    fs::path outDir;
-    fs::path outputPath;
+    std::filesystem::path outDir;
+    std::filesystem::path outputPath;
     bool userOutFile{false};
     if (parsed.count("output-file") > 0) {
         auto p = parsed["output-file"].as<std::string>();
-        if (fs::is_directory(fs::weakly_canonical(p))) {
+        if (std::filesystem::is_directory(std::filesystem::weakly_canonical(p))) {
             outDir = p;
         } else {
             Logger()->debug("Saving to user-provided output file");
@@ -673,7 +671,7 @@ auto main(int argc, char* argv[]) -> int
     ///// Save the intermediate mesh /////
     if (parsed.count("intermediate-mesh") > 0) {
         Logger()->debug("Adding node to save intermediate mesh");
-        const fs::path meshPath = parsed["intermediate-mesh"].as<std::string>();
+        const std::filesystem::path meshPath = parsed["intermediate-mesh"].as<std::string>();
         auto writer = graph->insertNode<WriteMeshNode>();
         writer->path = meshPath;
         writer->mesh = *results["mesh"];
@@ -839,7 +837,7 @@ auto main(int argc, char* argv[]) -> int
 
         // Save the images
         Logger()->debug("Adding UV error writer nodes");
-        const fs::path baseName = parsed["uv-plot-error"].as<std::string>();
+        const std::filesystem::path baseName = parsed["uv-plot-error"].as<std::string>();
         auto l2File =
             baseName.stem().string() + "_l2" + baseName.extension().string();
         auto writerL2 = graph->insertNode<WriteImageNode>();
@@ -1065,7 +1063,7 @@ void validate(
     v = boost::any(boost::lexical_cast<UVMap::AlignmentAxis>(s));
 }
 
-namespace volcart
+namespace vc
 {
 auto operator>>(std::istream& is, UVMap::AlignmentAxis& v) -> std::istream&
 {
@@ -1103,7 +1101,7 @@ auto operator>>(std::istream& is, UVMap::AlignmentAxis& v) -> std::istream&
     }
     return is;
 }
-}  // namespace volcart
+}  // namespace vc
 
 // TransformInput
 // NOLINTNEXTLINE(readability-identifier-naming): Must be exact signature

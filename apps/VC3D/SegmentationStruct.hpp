@@ -1,18 +1,7 @@
 #pragma once
 
-#include <QCloseEvent>
-#include <QComboBox>
 #include <QMessageBox>
 #include <QObject>
-#include <QRect>
-#include <QShortcut>
-#include <QSpinBox>
-#include <QThread>
-#include <QTimer>
-#include <QtWidgets>
-
-#include "BlockingDialog.hpp"
-#include "CBSpline.hpp"
 #include "CXCurve.hpp"
 #include "MathUtils.hpp"
 #include "ui_VCMain.h"
@@ -23,15 +12,11 @@
 #include "vc/Debug.hpp"
 
 #include <thread>
-#include <condition_variable>
 #include <atomic>
-#include <SDL2/SDL.h>
 #include <cmath>
-#include <unordered_map>
 #include <set>
 
-namespace ChaoVis
-{
+
 
 struct AnnotationStruct {
     bool anchor{false};
@@ -64,18 +49,18 @@ struct PathChangePoint {
 typedef std::vector<PathChangePoint> PathChangePointVector;
 
 struct SegmentationStruct {
-    volcart::VolumePkg::Pointer fVpkg;
+    vc::VolumePkg::Pointer fVpkg;
     std::string fSegmentationId;
-    volcart::Segmentation::Pointer fSegmentation;
-    volcart::Volume::Pointer currentVolume = nullptr;
+    vc::Segmentation::Pointer fSegmentation;
+    vc::Volume::Pointer currentVolume = nullptr;
     std::vector<CXCurve> fIntersections;
     std::map<int, CXCurve> fIntersectionsChanged; // manually changed curves that were not saved yet into the master cloud (key = slice index)
     CXCurve fIntersectionCurve; // current active/shown curve
     int fMaxSegIndex = 0; // index on which the segment ends
     int fMinSegIndex = 0; // index on which the segment starts
-    volcart::Segmentation::PointSet fMasterCloud;
-    volcart::Segmentation::PointSet fUpperPart;
-    volcart::Segmentation::AnnotationSet fAnnotationCloud;
+    vc::Segmentation::PointSet fMasterCloud;
+    vc::Segmentation::PointSet fUpperPart;
+    vc::Segmentation::AnnotationSet fAnnotationCloud;
     std::vector<cv::Vec3d> fStartingPath;
     std::map<int, AnnotationStruct> fAnnotations; // decoded annotations per slice
     std::set<int> fBufferedChangedPoints; // values are in range [0..(number of points on curve - 1)] (not global cloud index, but locally to the edited curve)
@@ -87,14 +72,14 @@ struct SegmentationStruct {
     // Constructor
     SegmentationStruct() { // Default
     }
-    SegmentationStruct(volcart::VolumePkg::Pointer vpkg, std::string segID, volcart::Segmentation::Pointer seg,
-                       volcart::Volume::Pointer curVolume,
+    SegmentationStruct(vc::VolumePkg::Pointer vpkg, std::string segID, vc::Segmentation::Pointer seg,
+                       vc::Volume::Pointer curVolume,
                        std::vector<CXCurve> intersections,
                        CXCurve intersectionCurve, int maxSegIndex,
                        int minSegIndex,
-                       volcart::Segmentation::PointSet masterCloud,
-                       volcart::Segmentation::PointSet upperPart,
-                       volcart::Segmentation::AnnotationSet annotations,
+                       vc::Segmentation::PointSet masterCloud,
+                       vc::Segmentation::PointSet upperPart,
+                       vc::Segmentation::AnnotationSet annotations,
                        std::vector<cv::Vec3d> startingPath,
                        int pathOnSliceIndex, bool display, bool compute)
         : fVpkg(vpkg),
@@ -134,7 +119,7 @@ struct SegmentationStruct {
         compute = false;
     }
 
-    inline SegmentationStruct(volcart::VolumePkg::Pointer vpkg, std::string segID, int pathOnSliceIndex)
+    inline SegmentationStruct(vc::VolumePkg::Pointer vpkg, std::string segID, int pathOnSliceIndex)
                                                         : fVpkg(vpkg) {
         fSegmentationId = segID;
         SetPathOnSliceIndex(pathOnSliceIndex);
@@ -223,7 +208,7 @@ struct SegmentationStruct {
         if (fPathOnSliceIndex > fMinSegIndex) {
             fUpperPart = fMasterCloud.copyRows(0, pathIndex);
         } else {
-            fUpperPart = volcart::OrderedPointSet<cv::Vec3d>(fMasterCloud.width());
+            fUpperPart = vc::OrderedPointSet<cv::Vec3d>(fMasterCloud.width());
         }
 
         // Lower part, the starting path
@@ -358,7 +343,7 @@ struct SegmentationStruct {
         }
     }
 
-    inline void MergePointSetIntoPointCloud(const volcart::Segmentation::PointSet ps)
+    inline void MergePointSetIntoPointCloud(const vc::Segmentation::PointSet ps)
     {
         if (ps.empty()) {
             return;
@@ -416,15 +401,15 @@ struct SegmentationStruct {
         }
 
         int sizeDelta = fUpperPart.height() - fMasterCloud.height();
-        // volcart::debug::PrintPointCloud(fMasterCloud, "Before Copy", true);
+        // vc::debug::PrintPointCloud(fMasterCloud, "Before Copy", true);
         fMasterCloud = fUpperPart;
-        // volcart::debug::PrintPointCloud(fMasterCloud, "After Copy", true);
+        // vc::debug::PrintPointCloud(fMasterCloud, "After Copy", true);
 
         // Handle annotation cloud logic
 
         // Check if size changed (some merges simply overwrite an existing point cloud row)
         if (fMasterCloud.size() != fAnnotationCloud.size()) {
-            volcart::Segmentation::AnnotationSet fUpperAnnotations(fAnnotationCloud.width());
+            vc::Segmentation::AnnotationSet fUpperAnnotations(fAnnotationCloud.width());
             const AnnotationStruct defaultAnnotation;
             long defaultAnnotationFlags = 0;
             if (defaultAnnotation.anchor) {
@@ -440,8 +425,8 @@ struct SegmentationStruct {
             // Create an initial annotation point set that matches the dimensions of the input "ps"
             // of this method minus one row (since compared to the master point set, we want to retain
             // the existing row that e.g. the segmentation was started with to not loose its flags).
-            volcart::Segmentation::AnnotationSet as(fAnnotationCloud.width());
-            std::vector<volcart::Segmentation::Annotation> annotations;
+            vc::Segmentation::AnnotationSet as(fAnnotationCloud.width());
+            std::vector<vc::Segmentation::Annotation> annotations;
             double initialPos = 0;
 
             for (int ia = 0; ia < sizeDelta; ia++) {
@@ -449,7 +434,7 @@ struct SegmentationStruct {
                 for (int ja = 0; ja < ps.width(); ja++) {
                     // We have no annotation info for the new points, so just create initial entries
                     long sliceIndex = frontGrowth ? ps[0][2] + ia : std::get<long>(fAnnotationCloud[fAnnotationCloud.size() - 1][ANO_EL_SLICE]) + 1 + ia;
-                    annotations.emplace_back(volcart::Segmentation::Annotation((long)sliceIndex, defaultAnnotationFlags, initialPos, initialPos));
+                    annotations.emplace_back(vc::Segmentation::Annotation((long)sliceIndex, defaultAnnotationFlags, initialPos, initialPos));
                 }
                 as.pushRow(annotations);
             }
@@ -462,17 +447,17 @@ struct SegmentationStruct {
         }
 
         if (fMasterCloud.height() != fAnnotationCloud.height()) {
-            // volcart::debug::PrintPointCloud(fMasterCloud, "Master Cloud");
-            // volcart::debug::PrintPointCloud(fAnnotationCloud, "Annotation Cloud");
+            // vc::debug::PrintPointCloud(fMasterCloud, "Master Cloud");
+            // vc::debug::PrintPointCloud(fAnnotationCloud, "Annotation Cloud");
             std::cout << "Error: Height mismatch after cloud merging" << std::endl;
             return;
         }
     }
 
 
-    inline volcart::Segmentation::AnnotationSet CreateInitialAnnotationSet(int startSlice, int height, int width)
+    inline vc::Segmentation::AnnotationSet CreateInitialAnnotationSet(int startSlice, int height, int width)
     {
-        volcart::Segmentation::AnnotationSet as(width);
+        vc::Segmentation::AnnotationSet as(width);
         const AnnotationStruct defaultAnnotation;
         long defaultAnnotationFlags = 0;
         if (defaultAnnotation.anchor) {
@@ -485,13 +470,13 @@ struct SegmentationStruct {
             defaultAnnotationFlags |= AnnotationBits::ANO_USED_IN_RUN;
         }
 
-        std::vector<volcart::Segmentation::Annotation> annotations;
+        std::vector<vc::Segmentation::Annotation> annotations;
         double initialPos = 0;
         for (int i = 0; i < height; i++) {
             annotations.clear();
             for (int j = 0; j < width; j++) {
                 // We have no annotation info for the new points, so just create initial entries
-                annotations.emplace_back(volcart::Segmentation::Annotation((long)(startSlice + i), defaultAnnotationFlags, initialPos, initialPos));
+                annotations.emplace_back(vc::Segmentation::Annotation((long)(startSlice + i), defaultAnnotationFlags, initialPos, initialPos));
             }
             as.pushRow(annotations);
         }
@@ -506,7 +491,7 @@ struct SegmentationStruct {
     inline void AlignAnnotationCloudWithPointCloud()
     {
         if (fMasterCloud.size() != fAnnotationCloud.size()) {
-            volcart::Segmentation::AnnotationSet newCloud(fAnnotationCloud.width());
+            vc::Segmentation::AnnotationSet newCloud(fAnnotationCloud.width());
 
             int delta = std::abs(fMasterCloud[0][2] - std::get<long>(fAnnotationCloud[0][ANO_EL_SLICE]));
             // Check if we need to add rows at the start
@@ -655,7 +640,7 @@ struct SegmentationStruct {
     }
 
     // Set the annotation for the original position of each point as output by the segmentation algorithm
-    inline void SetAnnotationOriginalPos(volcart::Segmentation::PointSet ps)
+    inline void SetAnnotationOriginalPos(vc::Segmentation::PointSet ps)
     {
         for (int i = 0; i < ps.height(); i++) {
             auto psRow = ps.getRow(i);
@@ -757,7 +742,7 @@ struct SegmentationStruct {
         for (auto pt : points) {
             voxels.push_back(cv::Vec3d(pt[0], pt[1], sliceIndex));
         }
-        volcart::segmentation::FittedCurve curve(voxels, sliceIndex);
+        vc::segmentation::FittedCurve curve(voxels, sliceIndex);
 
         auto evenVoxels = curve.evenlySpacePoints();
         int i = 0;
@@ -769,4 +754,3 @@ struct SegmentationStruct {
     }
 };
 
-}  // namespace ChaoVis

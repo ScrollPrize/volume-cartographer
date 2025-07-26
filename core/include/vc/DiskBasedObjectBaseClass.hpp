@@ -4,7 +4,7 @@
 
 #include "Metadata.hpp"
 #include <filesystem>
-namespace volcart
+namespace vc
 {
 /**
  * @class DiskBasedObjectBaseClass
@@ -61,9 +61,9 @@ protected:
         std::filesystem::path path, Identifier uuid, std::string name);
 
     /** Metadata */
-    volcart::Metadata metadata_;
+    vc::Metadata metadata_;
 
     /** Location for the object on disk */
     std::filesystem::path path_;
 };
-}  // namespace volcart
+}  // namespace vc

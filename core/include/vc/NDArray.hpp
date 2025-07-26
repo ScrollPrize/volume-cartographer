@@ -10,7 +10,7 @@
 #include <numeric>
 #include <vector>
 
-namespace volcart
+namespace vc
 {
 /**
  * @class NDArray
@@ -279,4 +279,4 @@ private:
         return idx;
     }
 };
-}  // namespace volcart
+}  // namespace vc

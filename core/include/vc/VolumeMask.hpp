@@ -10,7 +10,7 @@
 
 #include "vc/NDArray.hpp"
 
-namespace volcart
+namespace vc
 {
 
 /**
@@ -74,4 +74,4 @@ private:
     std::size_t sliceHeight_;
 };
 
-}  // namespace volcart
+}  // namespace vc

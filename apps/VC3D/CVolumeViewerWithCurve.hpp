@@ -1,8 +1,5 @@
-// CVolumeViewerWithCurve.h
-// Chao Du 2015 April
 #pragma once
 
-#include <QCheckBox>
 #include <vector>
 #include <opencv2/core.hpp>
 #include "CBSpline.hpp"
@@ -13,11 +10,9 @@
 
 #include <QList>
 #include <QGraphicsEllipseItem>
-#include <QGraphicsView>
 #include <QGraphicsScene>
 
-namespace ChaoVis
-{
+
 
 // REVISIT - NOTE - since there are two modes, edit and draw, for the
 // application, we need to add corresponding modes to the widget, too.
@@ -117,4 +112,3 @@ private:
     QList<QGraphicsEllipseItem*> controlPointItems;
 };  // class CVolumeViewerWithCurve
 
-}  // namespace ChaoVis

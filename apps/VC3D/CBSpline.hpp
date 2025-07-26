@@ -1,5 +1,3 @@
-// CBSpline.h
-// Chao Du 2015 April
 #pragma once
 
 #include <cstddef>
@@ -11,10 +9,7 @@
 #include "MathUtils.hpp"
 #include <QGraphicsEllipseItem>
 #include <QGraphicsView>
-#include <QGraphicsScene>
 
-namespace ChaoVis
-{
 
 // REVISIT - NOTE - B-Spline can use many kinds of interpolation method (base
 // function); we use Bezier curve here (Bezier-Bernstein)
@@ -56,4 +51,3 @@ private:
 
 };  // class CBSpline
 
-}  // namespace ChaoVis

@@ -5,7 +5,7 @@
 #include <stdexcept>
 #include <string>
 
-namespace volcart
+namespace vc
 {
 
 /**
@@ -36,4 +36,4 @@ public:
 protected:
     std::string msg_;
 };
-}  // namespace volcart
+}  // namespace vc

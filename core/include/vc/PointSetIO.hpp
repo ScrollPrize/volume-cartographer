@@ -16,7 +16,7 @@
 #include "PointSet.hpp"
 #include "String.hpp"
 #include <filesystem>
-namespace volcart
+namespace vc
 {
 
 /** @brief IO Mode for file readers/writers
@@ -36,8 +36,8 @@ enum class IOMode { ASCII = 0, BINARY };
  *
  * @ingroup IO
  *
- * @see volcart::PointSet
- * @see volcart::OrderedPointSet
+ * @see vc::PointSet
+ * @see vc::OrderedPointSet
  */
 template <typename T>
 class PointSetIO
@@ -566,4 +566,4 @@ private:
     }
     /**@}*/
 };
-}  // namespace volcart
+}  // namespace vc

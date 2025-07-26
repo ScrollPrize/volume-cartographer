@@ -29,8 +29,7 @@
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 #endif  // MIN
 
-namespace ChaoVis
-{
+
 
 template <typename T>
 class Vec2
@@ -638,4 +637,3 @@ inline T pythag(T a, T b)
     }
 }
 
-}  // namespace ChaoVis

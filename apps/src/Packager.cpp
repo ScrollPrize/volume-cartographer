@@ -6,7 +6,7 @@
 
 #include <boost/program_options.hpp>
 
-#include "../../core/include/vc/Iteration.hpp"
+#include "vc/Iteration.hpp"
 #include "vc/app_support/ProgressIndicator.hpp"
 #include "vc/apps/packager/SliceImage.hpp"
 #include <filesystem>#include "vc/core/io/FileFilters.hpp"
@@ -17,10 +17,8 @@
 #include "vc/core/util/Logging.hpp"
 #include "vc/core/util/String.hpp"
 
-namespace fs = std::filesystem;
-namespace po = boost::program_options;
-namespace vc = volcart;
-namespace vci = volcart::io;
+namespace boost::program_options = boost::program_options;
+namespace vci = vc::io;
 
 enum class Flip { None, Horizontal, Vertical, ZFlip, Both, All };
 
@@ -34,7 +32,7 @@ static const double MAX_16BPC = std::numeric_limits<std::uint16_t>::max();
 static constexpr int VOLPKG_MIN_VERSION = 6;
 
 struct VolumeInfo {
-    fs::path path;
+    std::filesystem::path path;
     std::string name;
     std::string sliceRegex;
     double voxelsize{0};
@@ -45,25 +43,25 @@ struct VolumeInfo {
 
 static bool DoAnalyze{true};
 
-auto GetVolumeInfo(const po::variables_map& parsed) -> VolumeInfo;
+auto GetVolumeInfo(const boost::program_options::variables_map& parsed) -> VolumeInfo;
 void AddVolume(vc::VolumePkg::Pointer& volpkg, const VolumeInfo& info);
 
 auto main(int argc, char* argv[]) -> int
 {
     ///// Parse the command line options /////
     // clang-format off
-    po::options_description options("Options");
+    boost::program_options::options_description options("Options");
     options.add_options()
         ("help,h", "Show this message")
-        ("volpkg,v", po::value<std::string>()->required(),
+        ("volpkg,v", boost::program_options::value<std::string>()->required(),
            "Path for the output volume package.");
 
-    po::options_description volpkg_metadata("Volpkg metadata");
+    boost::program_options::options_description volpkg_metadata("Volpkg metadata");
     volpkg_metadata.add_options()
-        ("name", po::value<std::string>(),
+        ("name", boost::program_options::value<std::string>(),
             "Set a descriptive name for the VolumePkg. Default: Filename "
             "specified by --volpkg")
-        ("material-thickness,m", po::value<double>(),
+        ("material-thickness,m", boost::program_options::value<double>(),
            "Estimated thickness of a material layer (in microns). Required "
            "when making a new volume package.");
 
@@ -114,8 +112,8 @@ auto main(int argc, char* argv[]) -> int
 
     ///// New VolumePkg /////
     // Get the output volpkg path
-    fs::path volpkgPath = parsed["volpkg"].as<std::string>();
-    auto newPackageMode = !fs::exists(volpkgPath);
+    std::filesystem::path volpkgPath = parsed["volpkg"].as<std::string>();
+    auto newPackageMode = !std::filesystem::exists(volpkgPath);
 
     // Make sure the package doesn't already exist
     vc::VolumePkg::Pointer volpkg;
@@ -174,7 +172,7 @@ auto GetVolumeInfo(const po::variables_map& parsed) -> VolumeInfo
 {
     VolumeInfo info;
 
-    fs::path slicePath = parsed["slices"].as<std::string>();
+    std::filesystem::path slicePath = parsed["slices"].as<std::string>();
 
     bool voxelFound = false;
 
@@ -267,7 +265,7 @@ void AddVolume(vc::VolumePkg::Pointer& volpkg, const VolumeInfo& info)
     std::cout << "Reading the slice directory..." << std::endl;
     std::vector<vc::SliceImage> slices;
 
-    if (not fs::exists(info.path) or not fs::is_directory(info.path)) {
+    if (not std::filesystem::exists(info.path) or not std::filesystem::is_directory(info.path)) {
         std::cerr << "ERROR: Provided slice path does not exist/is not a "
                      "directory. Please provide a directory of slice images."
                   << std::endl;
@@ -275,13 +273,13 @@ void AddVolume(vc::VolumePkg::Pointer& volpkg, const VolumeInfo& info)
     }
 
     // Iterate through all files in the directory
-    fs::directory_iterator subfile(info.path);
-    for (const fs::directory_iterator dirEnd; subfile != dirEnd; ++subfile) {
+    std::filesystem::directory_iterator subfile(info.path);
+    for (const std::filesystem::directory_iterator dirEnd; subfile != dirEnd; ++subfile) {
         // Get subfile as path
         const auto subpath = subfile->path();
 
         // Skip if not a regular or visible file
-        if (not fs::is_regular_file(subpath) or vc::IsUnixHiddenFile(subpath)) {
+        if (not std::filesystem::is_regular_file(subpath) or vc::IsUnixHiddenFile(subpath)) {
             continue;
         }
 
@@ -316,7 +314,7 @@ void AddVolume(vc::VolumePkg::Pointer& volpkg, const VolumeInfo& info)
     auto consistent = true;
     auto volMin = std::numeric_limits<double>::max();
     auto volMax = std::numeric_limits<double>::lowest();
-    std::vector<fs::path> mismatches;
+    std::vector<std::filesystem::path> mismatches;
     if (DoAnalyze) {
         for (auto& slice : vc::ProgressWrap(slices, "Analyzing slices")) {
             // Skip if we can't analyze
@@ -435,7 +433,7 @@ void AddVolume(vc::VolumePkg::Pointer& volpkg, const VolumeInfo& info)
 
         // Just copy to the volume
         else {
-            fs::copy_file(slice.path, volume->getSlicePath(idx));
+            std::filesystem::copy_file(slice.path, volume->getSlicePath(idx));
         }
     }
 }

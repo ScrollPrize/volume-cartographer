@@ -1,14 +1,14 @@
-#include "SurfaceHelpers.hpp"
+#include "../include/SurfaceHelpers.hpp"
 
 #include <opencv2/core.hpp>
 #include <opencv2/highgui.hpp>
 #include <opencv2/imgproc.hpp>
 #include <opencv2/video/tracking.hpp>
 
-#include "../include/vc/ChunkedTensor.hpp"
-#include "../include/vc/Slicing.hpp"
-#include "../include/vc/Surface.hpp"
-#include "../include/vc/SurfaceModeling.hpp"
+#include "vc/ChunkedTensor.hpp"
+#include "vc/Slicing.hpp"
+#include "vc/Surface.hpp"
+#include "vc/SurfaceModeling.hpp"
 
 #include <xtensor/views/xview.hpp>
 

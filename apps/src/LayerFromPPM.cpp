@@ -19,21 +19,19 @@
 #include "vc/core/util/String.hpp"
 #include "vc/texturing/LayerTexture.hpp"
 
-using namespace volcart;
-namespace fs = std::filesystem;
-namespace po = boost::program_options;
+using namespace vc;
 
 // Volpkg version required by this app
 static constexpr int VOLPKG_MIN_VERSION = 6;
 
 namespace
 {
-auto GetTransformOpts() -> po::options_description
+auto GetTransformOpts() -> boost::program_options::options_description
 {
     // clang-format off
-    po::options_description opts("Transform Options");
+    boost::program_options::options_description opts("Transform Options");
     opts.add_options()
-        ("transform", po::value<std::string>(), "The ID of a transform in the "
+        ("transform", boost::program_options::value<std::string>(), "The ID of a transform in the "
             "VolumePkg or a path to a Transform3D .json file. If provided, "
             "perform coordinate transforms with the given transform.")
         ("invert-transform", "When provided, invert the transform.");
@@ -48,10 +46,10 @@ auto main(int argc, char* argv[]) -> int
     ///// Parse the command line options /////
     // All command line options
     // clang-format off
-    po::options_description ioOpts("Input/Output Options");
+    boost::program_options::options_description ioOpts("Input/Output Options");
     ioOpts.add_options()
-        ("volpkg,v", po::value<std::string>()->required(), "VolumePkg path")
-        ("ppm,p", po::value<std::string>()->required(), "Input PPM file")
+        ("volpkg,v", boost::program_options::value<std::string>()->required(), "VolumePkg path")
+        ("ppm,p", boost::program_options::value<std::string>()->required(), "Input PPM file")
         ("volume", po::value<std::string>(),
             "Volume to use for texturing. Default: The first volume in the "
             "volume package.")
@@ -112,18 +110,18 @@ auto main(int argc, char* argv[]) -> int
     logging::SetLogLevel(logLevel);
 
     // Get the parsed options
-    const fs::path volpkgPath = parsed["volpkg"].as<std::string>();
-    const fs::path inputPPMPath = parsed["ppm"].as<std::string>();
+    const std::filesystem::path volpkgPath = parsed["volpkg"].as<std::string>();
+    const std::filesystem::path inputPPMPath = parsed["ppm"].as<std::string>();
 
     // Check for output file
-    auto outDir = fs::weakly_canonical(parsed["output-dir"].as<std::string>());
+    auto outDir = std::filesystem::weakly_canonical(parsed["output-dir"].as<std::string>());
     if (outDir.has_extension()) {
         Logger()->error(
             "Provided output path is not a directory: {}", outDir.string());
         return EXIT_FAILURE;
     }
-    if (not fs::exists(outDir)) {
-        auto success = fs::create_directory(outDir);
+    if (not std::filesystem::exists(outDir)) {
+        auto success = std::filesystem::create_directory(outDir);
         if (not success) {
             Logger()->error(
                 "Could not create output directory: {}. Check that parent "
@@ -251,7 +249,7 @@ auto main(int argc, char* argv[]) -> int
     auto texture = layerGen.compute();
 
     // Write the image sequence
-    const fs::path filepath = outDir / ("{}." + imgFmt);
+    const std::filesystem::path filepath = outDir / ("{}." + imgFmt);
     if (enableProgress) {
         Logger()->debug("Writing layers...");
         auto progIt = ProgressWrap(texture, "Writing layers:", cfg);
@@ -263,7 +261,7 @@ auto main(int argc, char* argv[]) -> int
 
     if (parsed.count("output-ppm") > 0) {
         Logger()->info("Generating new PPM...");
-        const fs::path outputPPMPath = parsed["output-ppm"].as<std::string>();
+        const std::filesystem::path outputPPMPath = parsed["output-ppm"].as<std::string>();
 
         // Setup new PPM
         auto height = ppm->height();

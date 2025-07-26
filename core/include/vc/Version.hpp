@@ -5,7 +5,7 @@
 #include <cstdint>
 #include <string>
 
-namespace volcart
+namespace vc
 {
 
 /** Provides programmatic access to codebase information */
@@ -30,4 +30,4 @@ struct ProjectInfo {
     static auto RepositoryShortHash() -> std::string;
 };
 
-}  // namespace volcart
+}  // namespace vc

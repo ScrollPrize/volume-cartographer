@@ -2,11 +2,14 @@
 #include "CWindow.hpp"
 #include <QDir>
 #include <QFileInfo>
+#include <QDialog>
 #include <QStatusBar>
 #include <QVBoxLayout>
+#include <QJsonObject>
+#include <QMessageBox>
 #include <QCoreApplication>
 
-namespace ChaoVis {
+
 
 CommandLineToolRunner::CommandLineToolRunner(QStatusBar* statusBar, CWindow* mainWindow, QObject* parent)
     : QObject(parent)
@@ -454,4 +457,3 @@ QString CommandLineToolRunner::getOutputPath() const
     return outputInfo.dir().path();
 }
 
-} // namespace ChaoVis

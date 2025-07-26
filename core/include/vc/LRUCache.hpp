@@ -11,7 +11,7 @@
 
 #include "Cache.hpp"
 
-namespace volcart
+namespace vc
 {
 /**
  * @class LRUCache
@@ -177,4 +177,4 @@ private:
     /** Shared mutex for thread-safe access */
     mutable std::shared_mutex cache_mutex_;
 };
-}  // namespace volcart
+}  // namespace vc

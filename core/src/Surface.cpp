@@ -1,10 +1,10 @@
-#include "../include/vc/Surface.hpp"
+#include "vc/Surface.hpp"
 
-#include "../include/vc/ChunkedTensor.hpp"
-#include "../include/vc/PointSetIO.hpp"
-#include "../include/vc/Slicing.hpp"
+#include "vc/ChunkedTensor.hpp"
+#include "vc/PointSetIO.hpp"
+#include "vc/Slicing.hpp"
 
-#include "SurfaceHelpers.hpp"
+#include "../include/SurfaceHelpers.hpp"
 
 #include <opencv2/calib3d.hpp>
 #include <opencv2/imgproc.hpp>
@@ -14,7 +14,7 @@
 #include <unordered_map>
 #include <nlohmann/json.hpp>
 
-namespace fs = std::filesystem;
+
 
 cv::Vec2f offsetPoint2d(TrivialSurfacePointer *ptr, const cv::Vec3f &offset)
 {
@@ -658,7 +658,7 @@ float QuadSurface::pointTo(SurfacePointer *ptr, const cv::Vec3f &tgt, float th, 
 
 QuadSurface *load_quad_from_vcps(const std::string &path)
 {    
-    volcart::OrderedPointSet<cv::Vec3d> segment_raw = volcart::PointSetIO<cv::Vec3d>::ReadOrderedPointSet(path);
+    vc::OrderedPointSet<cv::Vec3d> segment_raw = vc::PointSetIO<cv::Vec3d>::ReadOrderedPointSet(path);
     
     cv::Mat src(segment_raw.height(), segment_raw.width(), CV_64FC3, (void*)const_cast<cv::Vec3d*>(&segment_raw[0]));
     cv::Mat_<cv::Vec3f> points;
@@ -1303,8 +1303,8 @@ void QuadSurface::save(const std::string &path_, const std::string &uuid)
 {
     path = path_;
     
-    if (!fs::create_directories(path)) {
-        if (fs::exists(path))
+    if (!std::filesystem::create_directories(path)) {
+        if (std::filesystem::exists(path))
             throw std::runtime_error("dir already exists => cannot run QuadSurface::save(): " + path.string());
         else
             throw std::runtime_error("error creating dir for QuadSurface::save(): " + path.string());
@@ -1330,7 +1330,7 @@ void QuadSurface::save(const std::string &path_, const std::string &uuid)
     o << std::setw(4) << (*meta) << std::endl;
 
     //rename to make creation atomic
-    fs::rename(path/"meta.json.tmp", path/+"meta.json");
+    std::filesystem::rename(path/"meta.json.tmp", path/+"meta.json");
 }
 
 void QuadSurface::save_meta()
@@ -1344,7 +1344,7 @@ void QuadSurface::save_meta()
     o << std::setw(4) << (*meta) << std::endl;
     
     //rename to make creation atomic
-    fs::rename(path/"meta.json.tmp", path/"meta.json");
+    std::filesystem::rename(path/"meta.json.tmp", path/"meta.json");
 }
 
 Rect3D QuadSurface::bbox()
@@ -1383,7 +1383,7 @@ QuadSurface *load_quad_from_tifxyz(const std::string &path)
                 (*points)(j,i) = {-1,-1,-1};
             }
             
-    if (fs::exists(path+"/mask.tif")) {
+    if (std::filesystem::exists(path+"/mask.tif")) {
         std::vector<cv::Mat> layers;
         cv::imreadmulti(path+"/mask.tif", layers, cv::IMREAD_GRAYSCALE);
         cv::Mat_<uint8_t> mask = layers[0];
@@ -1524,7 +1524,7 @@ SurfaceMeta::~SurfaceMeta()
 void SurfaceMeta::readOverlapping()
 {
     if (std::filesystem::exists(path / "overlapping"))
-        for (const auto& entry : fs::directory_iterator(path / "overlapping"))
+        for (const auto& entry : std::filesystem::directory_iterator(path / "overlapping"))
             overlapping_str.insert(entry.path().filename());
 }
 

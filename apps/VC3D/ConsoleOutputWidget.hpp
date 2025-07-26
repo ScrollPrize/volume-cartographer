@@ -1,14 +1,11 @@
 #pragma once
 
-#include <QWidget>
 #include <QPlainTextEdit>
 #include <QPushButton>
-#include <QVBoxLayout>
-#include <QHBoxLayout>
 #include <QToolButton>
 #include <QLabel>
 
-namespace ChaoVis {
+
 class ConsoleOutputWidget : public QWidget
 {
     Q_OBJECT
@@ -31,4 +28,3 @@ private:
     QLabel* _titleLabel;
 };
 
-} // namespace ChaoVis

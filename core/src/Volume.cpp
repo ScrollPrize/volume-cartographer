@@ -1,31 +1,23 @@
-#include "../include/vc/Volume.hpp"
-
-#include <iomanip>
-#include <sstream>
+#include "vc/Volume.hpp"
 
 #include <opencv2/imgcodecs.hpp>
-#include <opencv2/imgproc.hpp>
 
 #include "z5/attributes.hxx"
 #include "z5/dataset.hxx"
 #include "z5/filesystem/handle.hxx"
-#include "z5/metadata.hxx"
 #include "z5/handle.hxx"
 #include "z5/types/types.hxx"
-#include "z5/util/util.hxx"
-#include "z5/util/blocking.hxx"
-#include "z5/util/format_data.hxx"
 #include "z5/factory.hxx"
 #include "z5/multiarray/xtensor_access.hxx"
 
 #include "xtensor/containers/xarray.hpp"
 
-namespace fs = std::filesystem;
 
-using namespace volcart;
+
+using namespace vc;
 
 // Load a Volume from disk
-Volume::Volume(fs::path path) : DiskBasedObjectBaseClass(std::move(path))
+Volume::Volume(std::filesystem::path path) : DiskBasedObjectBaseClass(std::move(path))
 {
     if (metadata_.get<std::string>("type") != "vol") {
         throw std::runtime_error("File not of type: vol");
@@ -44,7 +36,7 @@ Volume::Volume(fs::path path) : DiskBasedObjectBaseClass(std::move(path))
 }
 
 // Setup a Volume from a folder of slices
-Volume::Volume(fs::path path, std::string uuid, std::string name)
+Volume::Volume(std::filesystem::path path, std::string uuid, std::string name)
     : DiskBasedObjectBaseClass(
           std::move(path), std::move(uuid), std::move(name)),
           slice_mutexes_(slices_)
@@ -85,13 +77,13 @@ void Volume::zarrOpen()
 }
 
 // Load a Volume from disk, return a pointer
-auto Volume::New(fs::path path) -> Volume::Pointer
+auto Volume::New(std::filesystem::path path) -> Volume::Pointer
 {
     return std::make_shared<Volume>(path);
 }
 
 // Set a Volume from a folder of slices, return a pointer
-auto Volume::New(fs::path path, std::string uuid, std::string name)
+auto Volume::New(std::filesystem::path path, std::string uuid, std::string name)
     -> Volume::Pointer
 {
     return std::make_shared<Volume>(path, uuid, name);
@@ -149,7 +141,7 @@ auto Volume::isInBounds(const cv::Vec3d& v) const -> bool
     return isInBounds(v(0), v(1), v(2));
 }
 
-void throw_run_path(const fs::path &path, const std::string msg)
+void throw_run_path(const std::filesystem::path &path, const std::string msg)
 {
     throw std::runtime_error(msg + " for " + path.string());
 }

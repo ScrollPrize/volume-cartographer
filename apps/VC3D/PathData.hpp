@@ -1,12 +1,11 @@
 #pragma once
 
 #include <vector>
-#include <QString>
 #include <QColor>
 #include <QPainterPath>
 #include <opencv2/core.hpp>
 
-namespace ChaoVis {
+
 
 /**
  * @brief Structure representing a drawn path
@@ -62,4 +61,3 @@ private:
     float interpolateZ(float percent, float totalLength, const QPainterPath& path) const;
 };
 
-} // namespace ChaoVis

@@ -1,6 +1,4 @@
-#ifndef OPSLIST_HPP
-#define OPSLIST_HPP
-
+#pragma once
 #include <QWidget>
 
 class OpChain;
@@ -9,6 +7,7 @@ class QTreeWidget;
 class QTreeWidgetItem;
 class QComboBox;
 class ChunkCache;
+
 namespace z5 {
     class Dataset;
 };
@@ -52,4 +51,3 @@ private:
     float _scale = 0.0;
 };
 
-#endif  // OPSLIST_HPP

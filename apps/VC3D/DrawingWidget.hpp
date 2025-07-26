@@ -17,14 +17,14 @@ class QCheckBox;
 class QRadioButton;
 class QButtonGroup;
 
-namespace volcart {
+namespace vc {
 class Volume;
 class VolumePkg;
 }
 
 class ChunkCache;
 
-namespace ChaoVis {
+
 
 /**
  * @brief Widget for freehand drawing on volume surfaces
@@ -41,10 +41,10 @@ public:
     ~DrawingWidget();
     
     /** Set the volume package */
-    void setVolumePkg(std::shared_ptr<volcart::VolumePkg> vpkg);
+    void setVolumePkg(std::shared_ptr<vc::VolumePkg> vpkg);
     
     /** Set the current volume */
-    void setCurrentVolume(std::shared_ptr<volcart::Volume> volume);
+    void setCurrentVolume(std::shared_ptr<vc::Volume> volume);
     
     /** Set the cache for volume data access */
     void setCache(ChunkCache* cache);
@@ -72,8 +72,8 @@ public:
 
 public slots:
     /** Handle volume change */
-    void onVolumeChanged(std::shared_ptr<volcart::Volume> vol);
-    void onVolumeChanged(std::shared_ptr<volcart::Volume> vol, const std::string& volumeId);
+    void onVolumeChanged(std::shared_ptr<vc::Volume> vol);
+    void onVolumeChanged(std::shared_ptr<vc::Volume> vol, const std::string& volumeId);
     
     /** Handle mouse events from volume viewers */
     void onMousePress(cv::Vec3f vol_point, Qt::MouseButton button, Qt::KeyboardModifiers modifiers);
@@ -150,8 +150,8 @@ private:
 
 private:
     // Volume data
-    std::shared_ptr<volcart::VolumePkg> fVpkg;
-    std::shared_ptr<volcart::Volume> currentVolume;
+    std::shared_ptr<vc::VolumePkg> fVpkg;
+    std::shared_ptr<vc::Volume> currentVolume;
     std::string currentVolumeId;
     ChunkCache* chunkCache;
     
@@ -196,4 +196,3 @@ private:
     QPushButton* saveAsMaskButton;
 };
 
-} // namespace ChaoVis

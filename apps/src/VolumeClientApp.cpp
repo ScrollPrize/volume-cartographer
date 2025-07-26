@@ -8,26 +8,24 @@
 #include "vc/apps/server/VolumeClient.hpp"
 #include <filesystem>#include "vc/core/util/Logging.hpp"
 
-namespace fs = std::filesystem;
-namespace po = boost::program_options;
-namespace vc = volcart;
+namespace boost::program_options = boost::program_options;
 
 auto main(int argc, char* argv[]) -> int
 {
     // clang-format off
-    po::options_description required("General Options");
+    boost::program_options::options_description required("General Options");
     required.add_options()
         ("help,h", "Show this message")
-        ("server,s", po::value<std::string>()->required(), "IP address of the Volume Server")
-        ("port,p", po::value<quint16>()->required(), "Port of the Volume Server");
+        ("server,s", boost::program_options::value<std::string>()->required(), "IP address of the Volume Server")
+        ("port,p", boost::program_options::value<quint16>()->required(), "Port of the Volume Server");
 
-    po::options_description all("Usage");
+    boost::program_options::options_description all("Usage");
     all.add(required);
     // clang-format on
 
     // Parse the cmd line
-    po::variables_map parsed;
-    po::store(po::command_line_parser(argc, argv).options(all).run(), parsed);
+    boost::program_options::variables_map parsed;
+    boost::program_options::store(boost::program_options::command_line_parser(argc, argv).options(all).run(), parsed);
 
     // Show the help message
     if (parsed.count("help") || argc < 5) {

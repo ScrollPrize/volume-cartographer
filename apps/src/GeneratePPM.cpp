@@ -2,7 +2,7 @@
 
 #include <boost/program_options.hpp>
 
-#include "../../core/include/vc/Logging.hpp"
+#include "vc/Logging.hpp"
 #include "vc/app_support/ProgressIndicator.hpp"
 #include <filesystem>#include "vc/core/io/MeshIO.hpp"
 #include "vc/core/types/PerPixelMap.hpp"
@@ -10,21 +10,19 @@
 #include "vc/texturing/AngleBasedFlattening.hpp"
 #include "vc/texturing/PPMGenerator.hpp"
 
-namespace vc = volcart;
-namespace vcm = volcart::meshing;
-namespace vct = volcart::texturing;
-namespace fs = std::filesystem;
-namespace po = boost::program_options;
+namespace vcm = vc::meshing;
+namespace vct = vc::texturing;
+namespace boost::program_options = boost::program_options;
 
 auto main(int argc, char* argv[]) -> int
 {
     // clang-format off
-    po::options_description all("Usage");
+    boost::program_options::options_description all("Usage");
     all.add_options()
         ("help,h", "Show this message")
-        ("input-mesh,i", po::value<std::string>()->required(),
+        ("input-mesh,i", boost::program_options::value<std::string>()->required(),
             "Path to the input mesh")
-        ("output-ppm,o", po::value<std::string>()->required(),
+        ("output-ppm,o", boost::program_options::value<std::string>()->required(),
             "Path for the output ppm")
         ("uv-reuse", "If input-mesh is specified, attempt to use its existing "
             "UV map instead of generating a new one.")
@@ -32,8 +30,8 @@ auto main(int argc, char* argv[]) -> int
     // clang-format on
 
     // parsed will hold the values of all parsed options as a Map
-    po::variables_map parsed;
-    po::store(po::command_line_parser(argc, argv).options(all).run(), parsed);
+    boost::program_options::variables_map parsed;
+    boost::program_options::store(boost::program_options::command_line_parser(argc, argv).options(all).run(), parsed);
 
     // Show the help message
     if (parsed.count("help") > 0 || argc < 3) {
@@ -50,8 +48,8 @@ auto main(int argc, char* argv[]) -> int
     }
 
     // Get inputs
-    fs::path meshPath = parsed["input-mesh"].as<std::string>();
-    fs::path ppmPath = parsed["output-ppm"].as<std::string>();
+    std::filesystem::path meshPath = parsed["input-mesh"].as<std::string>();
+    std::filesystem::path ppmPath = parsed["output-ppm"].as<std::string>();
 
     // Load mesh
     vc::Logger()->info("Loading mesh");

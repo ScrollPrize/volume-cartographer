@@ -4,7 +4,7 @@
 
 #include <cstddef>
 
-namespace volcart
+namespace vc
 {
 /**
  * @brief Abstract Base Class for Key-Value Caches
@@ -57,4 +57,4 @@ protected:
     /** Maximum number of elements in the cache */
     std::size_t capacity_{200};
 };
-}  // namespace volcart
+}  // namespace vc

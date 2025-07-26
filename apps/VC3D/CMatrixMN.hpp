@@ -1,6 +1,3 @@
-// CMatrixMN.h
-// Chao Du 2015 Jan
-// mxn matrix
 #pragma once
 
 #include "CVectorN.hpp"
@@ -10,8 +7,7 @@
 #include <stdio.h>
 #include <string.h>
 
-namespace ChaoVis
-{
+
 
 template <typename T>
 class CMatrixMN
@@ -247,4 +243,3 @@ void CMatrixMN<T>::Dump(void) const
     }  // for i
 }
 
-}  // namespace ChaoVis

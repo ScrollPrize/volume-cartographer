@@ -11,7 +11,7 @@
 #include "Exceptions.hpp"
 #include "PointSet.hpp"
 
-namespace volcart
+namespace vc
 {
 /**
  * @class OrderedPointSet
@@ -233,4 +233,4 @@ private:
     /** Number of rows preallocated */
     constexpr static std::size_t CAPACITY_MULTIPLIER = 20;
 };
-}  // namespace volcart
+}  // namespace vc

@@ -25,7 +25,7 @@
 
 using shape = z5::types::ShapeType;
 using namespace xt::placeholders;
-namespace fs = std::filesystem; 
+
 
 std::ostream& operator<< (std::ostream& out, const std::vector<size_t> &v) {
     if ( !v.empty() ) {
@@ -451,10 +451,10 @@ int main(int argc, char *argv[])
     int min_slice = 0;
     int max_slice = 65;
     
-    if (!fs::exists(outdir_path)) {
-        fs::create_directory(outdir_path);
+    if (!std::filesystem::exists(outdir_path)) {
+        std::filesystem::create_directory(outdir_path);
     }
-    else if (!fs::is_directory(outdir_path)) {
+    else if (!std::filesystem::is_directory(outdir_path)) {
         printf("ERROR: target path %s is not a directory\n", outdir_path);
         return EXIT_FAILURE;
     }
@@ -463,12 +463,12 @@ int main(int argc, char *argv[])
         min_slice = atoi(argv[4]);
         max_slice = min_slice;
     }
-    else if (!fs::is_empty(outdir_path)) {
+    else if (!std::filesystem::is_empty(outdir_path)) {
         printf("ERROR: target path %s is not empty\n", outdir_path);
         return EXIT_FAILURE;
     }
 
-    else if (!fs::is_directory(outdir_path) || !fs::is_empty(outdir_path)) {
+    else if (!std::filesystem::is_directory(outdir_path) || !std::filesystem::is_empty(outdir_path)) {
         printf("ERROR: target path %s is not an empty directory\n", outdir_path);
         return EXIT_FAILURE;
     }
@@ -481,7 +481,7 @@ int main(int argc, char *argv[])
     std::cout << "chunk shape shape " << ds->chunking().blockShape() << std::endl;
 
     auto timer = new MeasureLife("reading segment ...");
-    volcart::OrderedPointSet<cv::Vec3d> segment_raw = volcart::PointSetIO<cv::Vec3d>::ReadOrderedPointSet(segment_path);
+    vc::OrderedPointSet<cv::Vec3d> segment_raw = vc::PointSetIO<cv::Vec3d>::ReadOrderedPointSet(segment_path);
     delete timer;
     
     timer = new MeasureLife("smoothing segment ...");

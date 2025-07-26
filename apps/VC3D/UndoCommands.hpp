@@ -1,12 +1,8 @@
 #pragma once
 
-#include <QUndoCommand>
-
 #include "CVolumeViewerWithCurve.hpp"
-#include "MathUtils.hpp"
 
-namespace ChaoVis
-{
+
 
 class PathChangeCommand : public QUndoCommand
 {
@@ -32,4 +28,3 @@ public:
     void redo() override;
 };
 
-}

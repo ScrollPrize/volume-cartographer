@@ -8,7 +8,7 @@
 #include <filesystem>
 #include <variant>
 
-namespace volcart
+namespace vc
 {
 
 /**
@@ -126,4 +126,4 @@ public:
         metadata_.save();
     }
 };
-}  // namespace volcart
+}  // namespace vc

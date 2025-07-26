@@ -31,17 +31,11 @@
 
 #pragma once
 
-#ifndef CUBICMULTITHREADEDSPLINE_H
-#define CUBICMULTITHREADEDSPLINE_H
+#pragma once
 
-#include <iostream>
 #include <vector>
 #include <Eigen/Dense>
-#include <algorithm>
-#include <cmath>
 #include <utility>
-#include <numeric>
-#include <thread>
 #include <mutex>
 
 using Eigen::VectorXd;
@@ -154,5 +148,3 @@ public:
     // Evaluate the spline at a given value of t
     Pixel operator()(double t) const;
 };
-
-#endif
