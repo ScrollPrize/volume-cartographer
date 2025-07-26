@@ -27,7 +27,6 @@ using json = nlohmann::json;
  
 void to_json(json& j, const ColPoint& p) {
     j = json{
-        {"id", p.id},
         {"p", p.p},
     };
     if (!std::isnan(p.winding_annotation)) {
@@ -38,7 +37,6 @@ void to_json(json& j, const ColPoint& p) {
 }
  
 void from_json(const json& j, ColPoint& p) {
-    j.at("id").get_to(p.id);
     j.at("p").get_to(p.p);
     if (j.contains("wind_a") && !j.at("wind_a").is_null()) {
         j.at("wind_a").get_to(p.winding_annotation);
@@ -58,17 +56,32 @@ void from_json(const json& j, CollectionMetadata& m) {
 }
  
 void to_json(json& j, const VCCollection::Collection& c) {
+   json points_obj = json::object();
+   for(const auto& pair : c.points) {
+       points_obj[std::to_string(pair.first)] = pair.second;
+   }
+
     j = json{
-        {"id", c.id},
-        {"points", c.points},
+        {"name", c.name},
+        {"points", points_obj},
         {"metadata", c.metadata},
         {"color", c.color}
     };
 }
  
 void from_json(const json& j, VCCollection::Collection& c) {
-    j.at("id").get_to(c.id);
-    j.at("points").get_to(c.points);
+    j.at("name").get_to(c.name);
+    
+    json points_obj = j.at("points");
+    if (points_obj.is_object()) {
+        for (auto& [id_str, point_json] : points_obj.items()) {
+            uint64_t id = std::stoull(id_str);
+            ColPoint p = point_json.get<ColPoint>();
+            p.id = id;
+            c.points[id] = p;
+        }
+    }
+
     j.at("metadata").get_to(c.metadata);
     j.at("color").get_to(c.color);
 }
@@ -264,13 +277,12 @@ void VCCollection::autoFillWindingNumbers(uint64_t collectionId)
 bool VCCollection::saveToJSON(const std::string& filename) const
 {
     json j;
+   j["vc_pointcollections_json_version"] = "0";
     json collections_obj = json::object();
     for(const auto& pair : _collections) {
-        collections_obj[pair.second.name] = pair.second;
+        collections_obj[std::to_string(pair.first)] = pair.second;
     }
     j["collections"] = collections_obj;
-    j["next_point_id"] = _next_point_id;
-    j["next_collection_id"] = _next_collection_id;
  
     std::ofstream o(filename);
     if (!o.is_open()) {
@@ -301,25 +313,42 @@ bool VCCollection::loadFromJSON(const std::string& filename)
     clearAll();
  
     try {
+       if (!j.contains("vc_pointcollections_json_version") || j.at("vc_pointcollections_json_version").get<std::string>() != "0") {
+           throw std::runtime_error("JSON file has incorrect version or is missing version info.");
+       }
+
         json collections_obj = j.at("collections");
         if (!collections_obj.is_object()) {
             return false;
         }
 
-        for (auto& [name, col_json] : collections_obj.items()) {
+        for (auto& [id_str, col_json] : collections_obj.items()) {
+           uint64_t id = std::stoull(id_str);
             Collection col = col_json.get<Collection>();
-            col.name = name;
+            col.id = id;
             _collections[col.id] = col;
             for (auto& point_pair : _collections.at(col.id).points) {
                 point_pair.second.collectionId = col.id;
             }
         }
 
-        _next_point_id = j.at("next_point_id").get<uint64_t>();
-        _next_collection_id = j.at("next_collection_id").get<uint64_t>();
     } catch (json::exception& e) {
         qWarning() << "Failed to extract data from JSON: " << e.what();
         return false;
+    }
+ 
+    // Recalculate next IDs
+    _next_collection_id = 1;
+    _next_point_id = 1;
+    for (const auto& col_pair : _collections) {
+        if (col_pair.first >= _next_collection_id) {
+            _next_collection_id = col_pair.first + 1;
+        }
+        for (const auto& point_pair : col_pair.second.points) {
+            if (point_pair.first >= _next_point_id) {
+                _next_point_id = point_pair.first + 1;
+            }
+        }
     }
  
     // Rebuild the _points map

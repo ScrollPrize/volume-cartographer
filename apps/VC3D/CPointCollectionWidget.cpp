@@ -4,6 +4,7 @@
 #include <stdexcept>
 #include <QColorDialog>
 #include <QFileDialog>
+#include <QMessageBox>
  
 #include "VCCollection.hpp"
  
@@ -411,9 +412,13 @@ void CPointCollectionWidget::onLoadClicked()
     }
  
     if (_point_collection) {
-        if (_point_collection->loadFromJSON(fileName.toStdString())) {
-            refreshTree();
-        }
+       try {
+           if (_point_collection->loadFromJSON(fileName.toStdString())) {
+               refreshTree();
+           }
+       } catch (const std::exception& e) {
+           QMessageBox::critical(this, "Error Loading File", e.what());
+       }
     }
 }
  
