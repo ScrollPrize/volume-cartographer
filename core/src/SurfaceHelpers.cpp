@@ -11,7 +11,7 @@
 #include "vc/core/types/ChunkedTensor.hpp"
 
 
-#include <xtensor/xview.hpp>
+#include <xtensor/views/xview.hpp>
 
 #include <fstream>
 #include <iostream>

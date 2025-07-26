@@ -15,6 +15,7 @@ target_link_libraries(VC3D
     Qt6::Gui
     Qt6::Widgets
     OpenMP::OpenMP_CXX
-    z5
         Boost::program_options
+        spdlog::spdlog
+
 )

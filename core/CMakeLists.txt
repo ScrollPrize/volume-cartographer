@@ -19,14 +19,14 @@ target_link_libraries(vc_core
         opencv_core
         opencv_imgproc
         opencv_imgcodecs
+        CURL::libcurl
         spdlog::spdlog
         nlohmann_json::nlohmann_json
-        z5
-        CURL::libcurl
         OpenMP::OpenMP_CXX
         opencv_core
         opencv_imgproc
         opencv_calib3d
+        Ceres::ceres
 )
 
 target_include_directories(vc_core PUBLIC ${CMAKE_SOURCE_DIR}/core/include /usr/include/eigen3)

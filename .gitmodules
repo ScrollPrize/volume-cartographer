@@ -1,3 +1,21 @@
 [submodule "vc-deps"]
 	path = vc-deps
 	url = https://github.com/educelab/vc-deps.git
+[submodule "thirdparty/z5"]
+	path = thirdparty/z5
+	url = https://github.com/constantinpape/z5.git
+[submodule "thirdparty/ceres-solver"]
+	path = thirdparty/ceres-solver
+	url = https://github.com/ceres-solver/ceres-solver.git
+[submodule "thirdparty/eigen"]
+	path = thirdparty/eigen
+	url = https://gitlab.com/libeigen/eigen.git
+[submodule "thirdparty/spdlog"]
+	path = thirdparty/spdlog
+	url = https://github.com/gabime/spdlog.git
+[submodule "thirdparty/indicators"]
+	path = thirdparty/indicators
+	url = https://github.com/p-ranav/indicators.git
+[submodule "thirdparty/smgl"]
+	path = thirdparty/smgl
+	url = https://github.com/hendrikschilling/smgl.git
