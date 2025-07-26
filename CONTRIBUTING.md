@@ -1,14 +1,9 @@
-# Contributing to Volume Cartographer
+# Contributing to VC3D
 
-Volume Cartographer is maintained by [EduceLab](https://cs.uky.edu/dri) and 
+VC3D is maintained by [The Vesuvius Challenge Team](https://scrollprize.org/) and 
 developed in collaboration with our community of contributors. We welcome bug 
 reports, feature requests, and code contributions.
 
-## Bug Reports and Feature Requests
-If you think you have found a bug or if you would like to request a new
-feature, please check our
-[issue tracker](https://github.com/educelab/volume-cartographer/issues) to make 
-sure an issue has not already been opened on your topic.
 
 ## Workflow
 1) Fork this repository
@@ -23,41 +18,6 @@ sure an issue has not already been opened on your topic.
       incomplete feature.
 4) Code review
 5) Merge
-
-## Code style
-This project uses `clang-format` to maintain a consistent code style
-throughout the code base. Code which has not been processed with
-this tool will not be merged.
-
-The easiest way to maintain a consistent style is to process all changes
-with `git clang-format` before they are committed:
-
-```shell
-# Stage original changes
-git add .
-
-# Run clang-format on staged changes
-git clang-format 
-
-# Check code style changes
-git diff
-
-# Stage formatting changes and commit
-git add .
-git commit -m "My commit message."
-```
-
-Don't worry if you forget to run this process before committing! You can
-always process an entire branch's diff by comparing against the default
-branch:
-
-```shell
-git clang-format develop
-```
-
-Unfortunately, `clang-format` does not handle all style issues. For a general
-overview of the EduceLab C++ style, please refer to our
-[C++ style guide](https://gitlab.com/educelab/style-guides/-/blob/master/C++%20Style%20Guide.md).
 
 ## License
 Any changes intentionally contributed to this repository are assumed to

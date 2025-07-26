@@ -1,8 +1,0 @@
-.clang-*
-.dockerignore
-.github/*
-.gitignore
-.gitlab-ci.yml
-.zenodo.json
-build
-results
