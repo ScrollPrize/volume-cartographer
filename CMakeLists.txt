@@ -24,6 +24,7 @@ endif()
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC ON)
+
 find_package(Qt6 REQUIRED COMPONENTS Widgets Gui Core Network)
 find_package(OpenCV  REQUIRED)
 find_package(OpenMP REQUIRED)
@@ -34,7 +35,7 @@ find_package(Boost REQUIRED COMPONENTS system program_options)
 find_package(absl REQUIRED)
 find_package(Ceres REQUIRED)
 
-find_library(GKLIB_LIBRARY GKlib PATHS /home/forrest/ceres-install/lib)
+find_library(GKLIB_LIBRARY GKlib)
 
 add_compile_options(-fdiagnostics-color=always)
 add_subdirectory(core)

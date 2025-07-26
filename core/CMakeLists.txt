@@ -1,18 +1,7 @@
 
-add_library(vc_core
-    src/DiskBasedObjectBaseClass.cpp
-    src/Metadata.cpp
-    src/Segmentation.cpp
-    src/Volume.cpp
-    src/VolumePkg.cpp
-        src/Logging.cpp
-        src/Slicing.cpp
-        src/Surface.cpp
-        src/SurfaceHelpers.cpp
-        src/ChunkedTensor.cpp
-        src/SurfaceVoxelizer.cpp
-        src/ImageConversion.cpp
-)
+file(GLOB SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp" "${CMAKE_CURRENT_SOURCE_DIR}/src/*.hpp")
+
+add_library(vc_core ${SOURCES})
 
 target_link_libraries(vc_core
     PUBLIC
@@ -27,6 +16,11 @@ target_link_libraries(vc_core
         opencv_imgproc
         opencv_calib3d
         Ceres::ceres
+        OpenMP::OpenMP_CXX
+        Boost::program_options
+        spdlog::spdlog
+        ${GKLIB_LIBRARY}
+        opencv_highgui
 )
 
-target_include_directories(vc_core PUBLIC ${CMAKE_SOURCE_DIR}/core/include /usr/include/eigen3)
+target_include_directories(vc_core PUBLIC ${CMAKE_SOURCE_DIR}/core/include)
