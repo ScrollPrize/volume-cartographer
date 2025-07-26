@@ -190,7 +190,9 @@ private:
 
     QComboBox* volSelect;
     QCheckBox* chkFilterFocusPoints;
-    QCheckBox* chkFilterPointSets;
+   QComboBox* cmbPointSetFilter;
+   QPushButton* btnPointSetFilterAll;
+   QPushButton* btnPointSetFilterNone;
     QCheckBox* chkFilterUnreviewed;
     QCheckBox* chkFilterRevisit;
     QCheckBox* chkFilterNoExpansion;

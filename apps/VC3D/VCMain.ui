@@ -371,11 +371,25 @@
                 </widget>
                </item>
                <item row="0" column="1">
-                <widget class="QCheckBox" name="chkFilterPointSets">
-                 <property name="text">
-                  <string>Point Sets</string>
-                 </property>
-                </widget>
+                <layout class="QHBoxLayout" name="pointSetFilterLayout">
+                 <item>
+                  <widget class="QComboBox" name="cmbPointSetFilter"/>
+                 </item>
+                 <item>
+                  <widget class="QPushButton" name="btnPointSetFilterAll">
+                   <property name="text">
+                    <string>All</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QPushButton" name="btnPointSetFilterNone">
+                   <property name="text">
+                    <string>None</string>
+                   </property>
+                  </widget>
+                 </item>
+                </layout>
                </item>
                <item row="1" column="0">
                 <widget class="QCheckBox" name="chkFilterUnreviewed">

@@ -19,6 +19,7 @@
 #include <QProgressDialog>
 #include <QMessageBox>
 #include <QThread>
+#include <QStandardItemModel>
 #include <QtConcurrent/QtConcurrent>
 #include <QFutureWatcher>
 #include <atomic>
@@ -375,6 +376,40 @@ void CWindow::CreateWidgets(void)
         connect(viewer, &CVolumeViewer::pointSelected, _point_collection_widget, &CPointCollectionWidget::selectPoint);
     }
 
+   connect(_point_collection, &VCCollection::collectionAdded, this, [this](uint64_t id) {
+       const auto& collections = _point_collection->getAllCollections();
+       auto it = collections.find(id);
+       if (it != collections.end()) {
+           const auto& collection = it->second;
+           QStandardItem* item = new QStandardItem(QString::fromStdString(collection.name));
+           item->setFlags(Qt::ItemIsUserCheckable | Qt::ItemIsEnabled);
+           item->setData(Qt::Unchecked, Qt::CheckStateRole);
+           qobject_cast<QStandardItemModel*>(cmbPointSetFilter->model())->appendRow(item);
+       }
+   });
+   connect(_point_collection, &VCCollection::collectionRemoved, this, [this](uint64_t id) {
+       // This is inefficient, but simple. A better way would be to store the mapping from id to combobox index.
+       const auto& collections = _point_collection->getAllCollections();
+       cmbPointSetFilter->clear();
+       for (const auto& pair : collections) {
+           QStandardItem* item = new QStandardItem(QString::fromStdString(pair.second.name));
+           item->setFlags(Qt::ItemIsUserCheckable | Qt::ItemIsEnabled);
+           item->setData(Qt::Unchecked, Qt::CheckStateRole);
+           qobject_cast<QStandardItemModel*>(cmbPointSetFilter->model())->appendRow(item);
+       }
+   });
+   connect(_point_collection, &VCCollection::collectionChanged, this, [this](uint64_t id) {
+       // This is inefficient, but simple. A better way would be to store the mapping from id to combobox index.
+       const auto& collections = _point_collection->getAllCollections();
+       cmbPointSetFilter->clear();
+       for (const auto& pair : collections) {
+           QStandardItem* item = new QStandardItem(QString::fromStdString(pair.second.name));
+           item->setFlags(Qt::ItemIsUserCheckable | Qt::ItemIsEnabled);
+           item->setData(Qt::Unchecked, Qt::CheckStateRole);
+           qobject_cast<QStandardItemModel*>(cmbPointSetFilter->model())->appendRow(item);
+       }
+   });
+
     // Tab the docks - Drawing first, then Seeding, then Tools
     tabifyDockWidget(ui.dockWidgetSegmentation, ui.dockWidgetDistanceTransform);
     tabifyDockWidget(ui.dockWidgetDistanceTransform, ui.dockWidgetDrawing);
@@ -416,7 +451,9 @@ void CWindow::CreateWidgets(void)
         });
 
     chkFilterFocusPoints = ui.chkFilterFocusPoints;
-    chkFilterPointSets = ui.chkFilterPointSets;
+   cmbPointSetFilter = ui.cmbPointSetFilter;
+   btnPointSetFilterAll = ui.btnPointSetFilterAll;
+   btnPointSetFilterNone = ui.btnPointSetFilterNone;
     chkFilterUnreviewed = ui.chkFilterUnreviewed;
     chkFilterRevisit = ui.chkFilterRevisit;
     chkFilterNoExpansion = ui.chkFilterNoExpansion;
@@ -424,7 +461,19 @@ void CWindow::CreateWidgets(void)
     chkFilterPartialReview = ui.chkFilterPartialReview;
     
     connect(chkFilterFocusPoints, &QCheckBox::toggled, [this]() { onSegFilterChanged(0); });
-    connect(chkFilterPointSets, &QCheckBox::toggled, [this]() { onSegFilterChanged(0); });
+   connect(cmbPointSetFilter, &QComboBox::currentIndexChanged, [this]() { onSegFilterChanged(0); });
+   connect(btnPointSetFilterAll, &QPushButton::clicked, [this]() {
+       for (int i = 0; i < cmbPointSetFilter->count(); ++i) {
+           cmbPointSetFilter->model()->setData(cmbPointSetFilter->model()->index(i, 0), Qt::Checked, Qt::CheckStateRole);
+       }
+       onSegFilterChanged(0);
+   });
+   connect(btnPointSetFilterNone, &QPushButton::clicked, [this]() {
+       for (int i = 0; i < cmbPointSetFilter->count(); ++i) {
+           cmbPointSetFilter->model()->setData(cmbPointSetFilter->model()->index(i, 0), Qt::Unchecked, Qt::CheckStateRole);
+       }
+       onSegFilterChanged(0);
+   });
     connect(chkFilterUnreviewed, &QCheckBox::toggled, [this]() { onSegFilterChanged(0); });
     connect(chkFilterRevisit, &QCheckBox::toggled, [this]() { onSegFilterChanged(0); });
     connect(chkFilterNoExpansion, &QCheckBox::toggled, [this]() { onSegFilterChanged(0); });
@@ -914,9 +963,19 @@ void CWindow::OpenVolume(const QString& path)
     UpdateRecentVolpkgList(aVpkgPath);
     
     // Set volume package in Seeding widget
-    if (_seedingWidget) {
-        _seedingWidget->setVolumePkg(fVpkg);
-    }
+   if (_seedingWidget) {
+       _seedingWidget->setVolumePkg(fVpkg);
+   }
+
+   // Populate point set filter
+   cmbPointSetFilter->clear();
+   cmbPointSetFilter->setModel(new QStandardItemModel(this));
+   for (const auto& pair : _point_collection->getAllCollections()) {
+       QStandardItem* item = new QStandardItem(QString::fromStdString(pair.second.name));
+       item->setFlags(Qt::ItemIsUserCheckable | Qt::ItemIsEnabled);
+       item->setData(Qt::Unchecked, Qt::CheckStateRole);
+       qobject_cast<QStandardItemModel*>(cmbPointSetFilter->model())->appendRow(item);
+   }
 }
 
 void CWindow::CloseVolume(void)
@@ -1535,7 +1594,7 @@ void CWindow::onSegFilterChanged(int index)
 
     // Check if any filters are active
     bool hasActiveFilters = chkFilterFocusPoints->isChecked() ||
-                           chkFilterPointSets->isChecked() ||
+                          (cmbPointSetFilter->currentIndex() != -1) ||
                            chkFilterUnreviewed->isChecked() ||
                            chkFilterRevisit->isChecked() ||
                            chkFilterNoExpansion->isChecked() ||
@@ -1562,19 +1621,38 @@ void CWindow::onSegFilterChanged(int index)
             }
             
             // Filter by point sets (red and blue points)
-            if (chkFilterPointSets->isChecked()) {
-                auto get_points_as_vec3f = [&](const std::string& name) {
-                    std::vector<cv::Vec3f> points;
-                    auto collection = _point_collection->getPoints(name);
-                    points.reserve(collection.size());
-                    for (const auto& p : collection) {
-                        points.push_back(p.p);
-                    }
-                    return points;
-                };
+           if (cmbPointSetFilter->currentIndex() != -1) {
+               bool any_checked = false;
+               for (int i = 0; i < cmbPointSetFilter->count(); ++i) {
+                   if (cmbPointSetFilter->itemData(i, Qt::CheckStateRole) == Qt::Checked) {
+                       any_checked = true;
+                       break;
+                   }
+               }
 
-                show = show && contains(*_vol_qsurfs[id], get_points_as_vec3f("red_points")) && contains(*_vol_qsurfs[id], get_points_as_vec3f("blue_points"));
-            }
+               if (any_checked) {
+                   bool contains_all = true;
+                   for (int i = 0; i < cmbPointSetFilter->count(); ++i) {
+                       if (cmbPointSetFilter->itemData(i, Qt::CheckStateRole) == Qt::Checked) {
+                           std::string collectionName = cmbPointSetFilter->itemText(i).toStdString();
+                           auto get_points_as_vec3f = [&](const std::string& name) {
+                               std::vector<cv::Vec3f> points;
+                               auto collection = _point_collection->getPoints(name);
+                               points.reserve(collection.size());
+                               for (const auto& p : collection) {
+                                   points.push_back(p.p);
+                               }
+                               return points;
+                           };
+                           if (!contains(*_vol_qsurfs[id], get_points_as_vec3f(collectionName))) {
+                               contains_all = false;
+                               break;
+                           }
+                       }
+                   }
+                   show = show && contains_all;
+               }
+           }
             
             // Filter by unreviewed
             if (chkFilterUnreviewed->isChecked()) {
