@@ -383,6 +383,7 @@ void CWindow::CreateWidgets(void)
            item->setData(Qt::Unchecked, Qt::CheckStateRole);
            qobject_cast<QStandardItemModel*>(cmbPointSetFilter->model())->appendRow(item);
        }
+       onSegFilterChanged(0);
    });
    connect(_point_collection, &VCCollection::collectionRemoved, this, [this](uint64_t id) {
        // This is inefficient, but simple. A better way would be to store the mapping from id to combobox index.
@@ -394,6 +395,7 @@ void CWindow::CreateWidgets(void)
            item->setData(Qt::Unchecked, Qt::CheckStateRole);
            qobject_cast<QStandardItemModel*>(cmbPointSetFilter->model())->appendRow(item);
        }
+       onSegFilterChanged(0);
    });
    connect(_point_collection, &VCCollection::collectionChanged, this, [this](uint64_t id) {
        // This is inefficient, but simple. A better way would be to store the mapping from id to combobox index.
@@ -405,7 +407,12 @@ void CWindow::CreateWidgets(void)
            item->setData(Qt::Unchecked, Qt::CheckStateRole);
            qobject_cast<QStandardItemModel*>(cmbPointSetFilter->model())->appendRow(item);
        }
+       onSegFilterChanged(0);
    });
+
+   connect(_point_collection, &VCCollection::pointAdded, this, [this](const ColPoint&) { onSegFilterChanged(0); });
+   connect(_point_collection, &VCCollection::pointChanged, this, [this](const ColPoint&) { onSegFilterChanged(0); });
+   connect(_point_collection, &VCCollection::pointRemoved, this, [this](uint64_t) { onSegFilterChanged(0); });
 
     // Tab the docks - Drawing first, then Seeding, then Tools
     tabifyDockWidget(ui.dockWidgetSegmentation, ui.dockWidgetDistanceTransform);
@@ -458,7 +465,6 @@ void CWindow::CreateWidgets(void)
     chkFilterPartialReview = ui.chkFilterPartialReview;
     
     connect(chkFilterFocusPoints, &QCheckBox::toggled, [this]() { onSegFilterChanged(0); });
-   connect(cmbPointSetFilter, &QComboBox::currentIndexChanged, [this]() { onSegFilterChanged(0); });
    connect(btnPointSetFilterAll, &QPushButton::clicked, [this]() {
        for (int i = 0; i < cmbPointSetFilter->count(); ++i) {
            cmbPointSetFilter->model()->setData(cmbPointSetFilter->model()->index(i, 0), Qt::Checked, Qt::CheckStateRole);
@@ -856,6 +862,9 @@ void CWindow::UpdateView(void)
 
 void CWindow::UpdateVolpkgLabel(int filterCounter)
 {
+    if (!fVpkg) {
+        return;
+    }
     QString label = tr("%1 (%2 Surfaces | %3 filtered)").arg(QString::fromStdString(fVpkg->name())).arg(fVpkg->segmentationIDs().size()).arg(filterCounter);
     ui.lblVpkgName->setText(label);
 }
@@ -967,6 +976,11 @@ void CWindow::OpenVolume(const QString& path)
    // Populate point set filter
    cmbPointSetFilter->clear();
    cmbPointSetFilter->setModel(new QStandardItemModel(this));
+   connect(cmbPointSetFilter->model(), &QStandardItemModel::dataChanged, this, [this](const QModelIndex &topLeft, const QModelIndex &bottomRight, const QVector<int> &roles) {
+        if (roles.contains(Qt::CheckStateRole)) {
+            onSegFilterChanged(0);
+        }
+   });
    for (const auto& pair : _point_collection->getAllCollections()) {
        QStandardItem* item = new QStandardItem(QString::fromStdString(pair.second.name));
        item->setFlags(Qt::ItemIsUserCheckable | Qt::ItemIsEnabled);
@@ -1578,6 +1592,9 @@ void CWindow::UpdateSurfaceTreeIcon(SurfaceTreeWidgetItem *item)
 
 void CWindow::onSegFilterChanged(int index)
 {
+    if (!fVpkg) {
+        return;
+    }
     std::set<std::string> dbg_intersects = {"segmentation"};
     
     POI *poi = _surf_col->poi("focus");
