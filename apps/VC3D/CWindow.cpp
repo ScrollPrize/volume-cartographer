@@ -206,7 +206,12 @@ CVolumeViewer *CWindow::newConnectedCVolumeViewer(std::string surfaceName, QStri
     connect(_surf_col, &CSurfaceCollection::sendIntersectionChanged, volView, &CVolumeViewer::onIntersectionChanged);
     connect(volView, &CVolumeViewer::sendVolumeClicked, this, &CWindow::onVolumeClicked);
     connect(this, &CWindow::sendVolumeClosing, volView, &CVolumeViewer::onVolumeClosing);
-    
+
+    QSettings settings("VC.ini", QSettings::IniFormat);
+    bool resetViewOnSurfaceChange = settings.value("viewer/reset_view_on_surface_change", true).toBool();
+    volView->setResetViewOnSurfaceChange(resetViewOnSurfaceChange);
+
+
     volView->setSurface(surfaceName);
     
     _viewers.push_back(volView);
@@ -569,7 +574,10 @@ void CWindow::CreateWidgets(void)
             }
         }
     });
-    
+    bool resetViewOnSurfaceChange = settings.value("viewer/reset_view_on_surface_change", true).toBool();
+    for (auto& viewer : _viewers) {
+        viewer->setResetViewOnSurfaceChange(resetViewOnSurfaceChange);
+    }
 }
 
 // Create menus
@@ -1569,7 +1577,25 @@ void CWindow::onSegFilterChanged(int index)
             
             // Filter by point sets (red and blue points)
             if (chkFilterPointSets->isChecked()) {
-                show = show && contains(*_vol_qsurfs[id], _red_points) && contains(*_vol_qsurfs[id], _blue_points);
+                bool containsAnyPoint = false;
+
+                for (const auto& point : _red_points) {
+                    if (contains(*_vol_qsurfs[id], point)) {
+                        containsAnyPoint = true;
+                        break;
+                    }
+                }
+
+                if (!containsAnyPoint) {
+                    for (const auto& point : _blue_points) {
+                        if (contains(*_vol_qsurfs[id], point)) {
+                            containsAnyPoint = true;
+                            break;
+                        }
+                    }
+                }
+
+                show = show && containsAnyPoint;
             }
             
             // Filter by unreviewed

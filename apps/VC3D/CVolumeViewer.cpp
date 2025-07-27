@@ -153,7 +153,6 @@ void CVolumeViewer::onCursorMove(QPointF scene_loc)
 
 void CVolumeViewer::recalcScales()
 {
-
     float old_ds = _ds_scale;         // remember previous level
     // if (dynamic_cast<PlaneSurface*>(_surf))
     _min_scale = pow(2.0,1.-volume->numScales());
@@ -377,6 +376,72 @@ void CVolumeViewer::setIntersects(const std::set<std::string> &set)
     renderIntersections();
 }
 
+void CVolumeViewer::fitSurfaceInView()
+{
+    if (!_surf || !fGraphicsView) {
+        return;
+    }
+
+    Rect3D bbox;
+    bool haveBounds = false;
+
+    if (auto* quadSurf = dynamic_cast<QuadSurface*>(_surf)) {
+        bbox = quadSurf->bbox();
+        haveBounds = true;
+    } else if (auto* opChain = dynamic_cast<OpChain*>(_surf)) {
+        QuadSurface* src = opChain->src();
+        if (src) {
+            bbox = src->bbox();
+            haveBounds = true;
+        }
+    }
+
+    if (!haveBounds) {
+        // when we can't get bounds, just reset to a default view
+        _scale = 1.0f;
+        recalcScales();
+        fGraphicsView->resetTransform();
+        fGraphicsView->centerOn(0, 0);
+        _lbl->setText(QString("%1x %2").arg(_scale).arg(_z_off));
+        return;
+    }
+
+    // Calculate the actual dimensions of the bounding box
+    float bboxWidth = bbox.high[0] - bbox.low[0];
+    float bboxHeight = bbox.high[1] - bbox.low[1];
+
+    if (bboxWidth <= 0 || bboxHeight <= 0) {
+        return;
+    }
+
+    QSize viewportSize = fGraphicsView->viewport()->size();
+    float viewportWidth = viewportSize.width();
+    float viewportHeight = viewportSize.height();
+
+    if (viewportWidth <= 0 || viewportHeight <= 0) {
+        return;
+    }
+
+    // Calculate scale factor based on actual bbox dimensions
+    float fit_factor = 0.8f;
+    float required_scale_x = (viewportWidth * fit_factor) / bboxWidth;
+    float required_scale_y = (viewportHeight * fit_factor) / bboxHeight;
+
+    // Use the smaller scale to ensure the entire bbox fits
+    float required_scale = std::min(required_scale_x, required_scale_y);
+
+    _scale = required_scale;
+    round_scale(_scale);
+    recalcScales();
+
+    fGraphicsView->resetTransform();
+    fGraphicsView->centerOn(0, 0);
+
+    _lbl->setText(QString("%1x %2").arg(_scale).arg(_z_off));
+    curr_img_area = {0,0,0,0};
+}
+
+
 void CVolumeViewer::onSurfaceChanged(std::string name, Surface *surf)
 {
     if (_surf_name == name) {
@@ -395,6 +460,7 @@ void CVolumeViewer::onSurfaceChanged(std::string name, Surface *surf)
         }
         else {
             invalidateVis();
+            if (name == "segmentation" && _resetViewOnSurfaceChange) {fitSurfaceInView();}
         }
     }
 
@@ -1397,4 +1463,9 @@ void CVolumeViewer::onDrawingModeActive(bool active, float brushSize, bool isSqu
     if (cursor) {
         onPOIChanged("cursor", cursor);
     }
+}
+
+void CVolumeViewer::setResetViewOnSurfaceChange(bool reset)
+{
+    _resetViewOnSurfaceChange = reset;
 }

@@ -224,6 +224,19 @@
            </property>
           </widget>
          </item>
+         <item row="8" column="0" colspan="2">
+          <widget class="QCheckBox" name="chkResetViewOnSurfaceChange">
+           <property name="text">
+            <string>Reset view when switching between surfaces</string>
+           </property>
+           <property name="checked">
+            <bool>true</bool>
+           </property>
+           <property name="toolTip">
+            <string>When enabled, the view will automatically fit and center on each surface when switching between segments</string>
+           </property>
+          </widget>
+         </item>
         </layout>
        </widget>
       </item>
