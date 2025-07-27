@@ -13,8 +13,8 @@
 #include <opencv2/highgui.hpp>
 #include <opencv2/imgproc.hpp>
 
-#include "../../libvcui/include/vcui/DrawingWidget.hpp"
-#include "../../libvcui/include/vcui/SeedingWidget.hpp"
+#include "vcui/DrawingWidget.hpp"
+#include "vcui/SeedingWidget.hpp"
 #include "CSurfaceCollection.hpp"
 #include "CVolumeViewer.hpp"
 #include "CVolumeViewerView.hpp"

@@ -1,4 +1,4 @@
-#include "../include/vc/CBezierCurve.hpp"
+#include "../include/vcui/CBezierCurve.hpp"
 
 #include <opencv2/imgproc.hpp>
 

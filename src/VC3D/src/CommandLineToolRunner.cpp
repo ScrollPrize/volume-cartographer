@@ -1,5 +1,5 @@
-#include "../include/vcui/CommandLineToolRunner.hpp"
-#include "../../VC3D/src/CWindow.hpp"
+#include "CommandLineToolRunner.hpp"
+#include "CWindow.hpp"
 #include <QCoreApplication>
 #include <QDialog>
 #include <QDir>

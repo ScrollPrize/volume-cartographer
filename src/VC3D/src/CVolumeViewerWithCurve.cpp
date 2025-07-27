@@ -7,7 +7,7 @@
 
 #include <opencv2/imgproc.hpp>
 
-#include "../../libvcui/include/vcui/ColorFrame.hpp"
+#include "vcui/ColorFrame.hpp"
 
 // Constructor
 CVolumeViewerWithCurve::CVolumeViewerWithCurve(std::unordered_map<std::string, SegmentationStruct>& nSegStructMapRef)

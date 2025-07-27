@@ -1,4 +1,4 @@
-#include "../include/vcui/DrawingWidget.hpp"
+#include "vcui/DrawingWidget.hpp"
 
 #include <QApplication>
 #include <QButtonGroup>

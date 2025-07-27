@@ -6,7 +6,7 @@
 #include <opencv2/core.hpp>
 #include "ui_VCMain.h"
 
-#include "../../libvcui/include/vcui/CommandLineToolRunner.hpp"
+#include "CommandLineToolRunner.hpp"
 #include "vc/SurfaceDef.hpp"
 
 #include <QShortcut>

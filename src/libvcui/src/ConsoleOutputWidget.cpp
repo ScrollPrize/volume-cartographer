@@ -1,4 +1,4 @@
-#include "../include/vcui/ConsoleOutputWidget.hpp"
+#include "vcui/ConsoleOutputWidget.hpp"
 #include <QApplication>
 #include <QClipboard>
 #include <QFontDatabase>

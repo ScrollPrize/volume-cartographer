@@ -1,4 +1,4 @@
-#include "../include/vcui/SurfaceTreeWidget.hpp"
+#include "vcui/SurfaceTreeWidget.hpp"
 
 #include <QApplication>
 #include <QObject>

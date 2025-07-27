@@ -31,11 +31,7 @@ find_package(Ceres REQUIRED)
 
 find_library(GKLIB_LIBRARY GKlib)
 
-
-file(GLOB SOURCES "src/libvc/src/*.cpp" "src/libvc/include/vc/*.hpp" "src/libvcui/src/*.cpp" "src/libvcui/include/vcui/*.hpp" "src/VC3D/src/*.cpp")
-add_executable(VC3D ${SOURCES})
-
-target_link_libraries(VC3D PUBLIC OpenMP::OpenMP_CXX Qt6::Core Qt6::Gui Qt6::Widgets opencv_core opencv_highgui
+set(LIBRARIES OpenMP::OpenMP_CXX opencv_core opencv_highgui
         opencv_imgproc
         opencv_imgcodecs
         opencv_calib3d
@@ -46,4 +42,58 @@ target_link_libraries(VC3D PUBLIC OpenMP::OpenMP_CXX Qt6::Core Qt6::Gui Qt6::Wid
         spdlog::spdlog
         ${GKLIB_LIBRARY})
 
-target_include_directories(VC3D PUBLIC src/libvc/include src/libvcui/include)
+set(UI_LIBRARIES Qt6::Core Qt6::Gui Qt6::Widgets)
+
+file(GLOB SOURCES "src/libvc/src/*.cpp" "src/libvc/include/vc/*.hpp")
+add_library(libvc ${SOURCES})
+target_include_directories(libvc PUBLIC src/libvc/include ${LIBRARIES})
+target_link_libraries(libvc PUBLIC ${LIBRARIES})
+
+file(GLOB SOURCES "src/libvcui/src/*.cpp" "src/libvcui/include/vcui/*.hpp")
+add_library(libvcui ${SOURCES})
+target_link_libraries(libvcui PUBLIC libvc ${LIBRARIES} ${UI_LIBRARIES})
+target_include_directories(libvcui PUBLIC src/libvcui/include libvc ${LIBRARIES} ${UI_LIBRARIES})
+
+file(GLOB SOURCES "src/VC3D/src/*.cpp")
+add_executable(VC3D ${SOURCES})
+
+target_link_libraries(VC3D PUBLIC libvc libvcui ${LIBRARIES} ${UI_LIBRARIES})
+
+target_include_directories(VC3D PUBLIC libvc libvcui ${LIBRARIES} ${UI_LIBRARIES})
+
+
+
+
+
+add_executable(vc_render_video src/apps/src/vc_render_video.cpp)
+target_link_libraries(vc_render_video libvc)
+
+add_executable(vc_render_tifxyz src/apps/src/vc_render_tifxyz.cpp)
+target_link_libraries(vc_render_tifxyz libvc)
+
+add_executable(vc_objrefine src/apps/src/ObjAlphaCompRefinement.cpp)
+target_link_libraries(vc_objrefine libvc)
+
+add_executable(vc_grow_seg_from_seed src/apps/src/vc_grow_seg_from_seed.cpp)
+target_link_libraries(vc_grow_seg_from_seed libvc)
+
+add_executable(vc_seg_add_overlap src/apps/src/vc_seg_add_overlap.cpp)
+target_link_libraries(vc_seg_add_overlap libvc)
+
+add_executable(vc_grow_seg_from_segments src/apps/src/vc_grow_seg_from_segments.cpp)
+target_link_libraries(vc_grow_seg_from_segments libvc)
+
+add_executable(vc_tifxyz2obj src/apps/src/vc_tifxyz2obj.cpp)
+target_link_libraries(vc_tifxyz2obj libvc)
+
+add_executable(vc_tifxyz_inp_mask src/apps/src/vc_tifxyz_inp_mask.cpp)
+target_link_libraries(vc_tifxyz_inp_mask libvc)
+
+add_executable(vc_tifxyz_winding src/apps/src/vc_tifxyz_winding.cpp)
+target_link_libraries(vc_tifxyz_winding libvc)
+
+add_executable(vc_fill_quadmesh src/apps/src/vc_fill_quadmesh.cpp)
+target_link_libraries(vc_fill_quadmesh libvc)
+
+add_executable(vc_tiffxyz_upscale_grounding src/apps/src/vc_tiffxyz_upscale_grounding.cpp)
+target_link_libraries(vc_tiffxyz_upscale_grounding libvc)

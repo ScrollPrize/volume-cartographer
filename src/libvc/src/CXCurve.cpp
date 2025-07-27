@@ -1,4 +1,4 @@
-#include "../include/vc/CXCurve.hpp"
+#include "vc/CXCurve.hpp"
 #include <omp.h>
 
 

@@ -1,4 +1,4 @@
-#include "../include/vcui/SegmentRenderThread.hpp"
+#include "vcui/SegmentRenderThread.hpp"
 #include <QDir>
 #include <QFileInfo>
 

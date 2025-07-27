@@ -1,8 +1,8 @@
 #pragma once
 
-#include "../../libvc/include/vc/CXCurve.hpp"
-#include "../../libvc/include/vc/FittedCurve.hpp"
-#include "../../libvc/include/vc/MathUtils.hpp"
+#include "vc/CXCurve.hpp"
+#include "vc/FittedCurve.hpp"
+#include "vc/MathUtils.hpp"
 #include "ui_VCMain.h"
 #include <QMessageBox>
 #include <QObject>

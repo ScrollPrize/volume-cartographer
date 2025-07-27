@@ -1,9 +1,9 @@
-#include "../include/vc/CBSpline.hpp"
+#include "../include/vcui/CBSpline.hpp"
 
 #include <opencv2/imgproc.hpp>
 
-#include "../include/vc/CMatrixMN.hpp"
-#include "../include/vc/UVecMatOperations.hpp"
+#include "vc/CMatrixMN.hpp"
+#include "vc/UVecMatOperations.hpp"
 
 // Constructor
 CBSpline::CBSpline(void) {}

@@ -5,8 +5,8 @@
 
 #include <opencv2/core.hpp>
 
+#include "../../../libvc/include/vc/MathUtils.hpp"
 #include "CBezierCurve.hpp"
-#include "MathUtils.hpp"
 #include <QGraphicsEllipseItem>
 #include <QGraphicsView>
 

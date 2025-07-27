@@ -4,7 +4,7 @@
 
 #include <opencv2/core.hpp>
 
-#include "MathUtils.hpp"
+#include "../../../libvc/include/vc/MathUtils.hpp"
 #include <QGraphicsEllipseItem>
 #include <QGraphicsView>
 

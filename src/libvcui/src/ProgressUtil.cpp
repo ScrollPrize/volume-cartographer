@@ -1,4 +1,4 @@
-#include "../include/vcui/ProgressUtil.hpp"
+#include "vcui/ProgressUtil.hpp"
 
 ProgressUtil::ProgressUtil(QStatusBar* statusBar, QObject* parent)
     : QObject(parent)

@@ -10,7 +10,8 @@
 #include "DiskBasedObjectBaseClass.hpp"
 #include "LRUCache.hpp"
 #include "Reslice.hpp"
-#include <filesystem>#include "vc/core/types/Cache.hpp"
+#include <filesystem>
+#include "vc/Cache.hpp"
 
 #include "z5/types/types.hxx"
 

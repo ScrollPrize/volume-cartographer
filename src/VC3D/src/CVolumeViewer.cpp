@@ -1,5 +1,5 @@
 #include "CVolumeViewer.hpp"
-#include "../../libvc/include/vc/HBase.hpp"
+#include "vc/HBase.hpp"
 #include "UDataManipulateUtils.hpp"
 
 #include <QGraphicsScene>
