@@ -211,6 +211,7 @@ CVolumeViewer *CWindow::newConnectedCVolumeViewer(std::string surfaceName, QStri
     connect(_point_collection, &VCCollection::pointRemoved, volView, &CVolumeViewer::onPointRemoved);
     connect(_surf_col, &CSurfaceCollection::sendSurfaceChanged, volView, &CVolumeViewer::onSurfaceChanged);
     connect(_surf_col, &CSurfaceCollection::sendPOIChanged, volView, &CVolumeViewer::onPOIChanged);
+    connect(_surf_col, &CSurfaceCollection::sendPOIChanged, this, &CWindow::onFocusPOIChanged);
     connect(_surf_col, &CSurfaceCollection::sendIntersectionChanged, volView, &CVolumeViewer::onIntersectionChanged);
     connect(volView, &CVolumeViewer::sendVolumeClicked, this, &CWindow::onVolumeClicked);
     connect(this, &CWindow::sendVolumeClosing, volView, &CVolumeViewer::onVolumeClosing);
@@ -258,11 +259,6 @@ void CWindow::setVolume(std::shared_ptr<volcart::Volume> newvol)
     poi->n = cv::Vec3f(0, 0, 1); // Default normal for XY plane
     _surf_col->setPOI("focus", poi);
 
-    // Update location labels
-    lblLoc[0]->setText(QString::number(poi->p[0]));
-    lblLoc[1]->setText(QString::number(poi->p[1]));
-    lblLoc[2]->setText(QString::number(poi->p[2]));
-    
     onManualPlaneChanged();
 }
 
@@ -1282,12 +1278,6 @@ void CWindow::onVolumeClicked(cv::Vec3f vol_loc, cv::Vec3f normal, Surface *surf
         
         _surf_col->setPOI("focus", poi);
 
-        lblLoc[0]->setText(QString::number(poi->p[0]));
-        lblLoc[1]->setText(QString::number(poi->p[1]));
-        lblLoc[2]->setText(QString::number(poi->p[2]));
-
-        // Force an update of the filter
-        onSegFilterChanged(0);
     }
     else {
     }
@@ -2463,6 +2453,18 @@ void CWindow::onZoomIn()
     
     // Trigger zoom in (positive steps)
     viewer->onZoom(3, center, Qt::NoModifier);
+}
+
+void CWindow::onFocusPOIChanged(std::string name, POI* poi)
+{
+    if (name == "focus" && poi) {
+        lblLoc[0]->setText(QString::number(poi->p[0]));
+        lblLoc[1]->setText(QString::number(poi->p[1]));
+        lblLoc[2]->setText(QString::number(poi->p[2]));
+
+        // Force an update of the filter
+        onSegFilterChanged(0);
+    }
 }
 
 void CWindow::onZoomOut()

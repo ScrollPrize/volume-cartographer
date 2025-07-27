@@ -42,6 +42,7 @@ namespace ChaoVis
 
 class CVolumeViewer;
 class CSurfaceCollection;
+class POI;
 class CPointCollectionWidget;
 class CSegmentationEditorWindow;
 class SeedingWidget;
@@ -80,6 +81,7 @@ public slots:
     void onToggleConsoleOutput();
     void onDeleteSegments(const std::vector<SurfaceID>& segmentIds);
     void onVoxelizePaths();
+   void onFocusPOIChanged(std::string name, POI* poi);
 
 public:
     CWindow();
