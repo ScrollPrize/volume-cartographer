@@ -119,7 +119,7 @@ Segmentation::AnnotationSet Segmentation::getAnnotationSet() const
         // Convert from raw (only double values) to long and double variant
         Segmentation::AnnotationSet as(raw.width());
         as.data_.resize(raw.width()*raw.height());
-#pragma omp parallel for
+
         for (std::size_t h = 0; h < raw.height(); ++h) {
             for (std::size_t w = 0; w < raw.width(); ++w) {
                 as.data_[h*raw.width() + w] = Annotation((long)raw[h * raw.width() + w][0], (long)raw[h * raw.width() + w][1], raw[h * raw.width() + w][2], raw[h * raw.width() + w][3]);

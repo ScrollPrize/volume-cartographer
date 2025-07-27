@@ -34,7 +34,7 @@ find_package(LibLZMA REQUIRED)
 
 find_library(GKLIB_LIBRARY GKlib)
 
-set(LIBRARIES OpenMP::OpenMP_CXX opencv_core opencv_highgui
+set(LIBRARIES opencv_core opencv_highgui
         opencv_imgproc
         opencv_imgcodecs
         opencv_calib3d

@@ -195,7 +195,7 @@ void PlaneSurface::gen(cv::Mat_<cv::Vec3f> *coords, cv::Mat_<cv::Vec3f> *normals
 
     cv::Vec3f use_origin = _origin + _normal*total_offset[2];
 
-#pragma omp parallel for
+
     for(int j=0;j<h;j++)
         for(int i=0;i<w;i++) {
             (*coords)(j,i) = vx*(i*m+total_offset[0]) + vy*(j*m+total_offset[1]) + use_origin;
@@ -358,19 +358,40 @@ static float tdist_sum(const cv::Vec3f &v, const std::vector<cv::Vec3f> &tgts, c
 
     return sum;
 }
-
-//search location in points where we minimize error to multiple objectives using iterated local search
-//tgts,tds -> distance to some POIs
-//plane -> stay on plane
-float min_loc(const cv::Mat_<cv::Vec3f> &points, cv::Vec2f &loc, cv::Vec3f &out, const std::vector<cv::Vec3f> &tgts, const std::vector<float> &tds, PlaneSurface *plane, float init_step, float min_step)
+float min_loc(const cv::Mat_<cv::Vec3f> &points, cv::Vec2f &loc, cv::Vec3f &out,
+              const std::vector<cv::Vec3f> &tgts, const std::vector<float> &tds,
+              PlaneSurface *plane, float init_step, float min_step)
 {
     if (!loc_valid(points, {loc[1],loc[0]})) {
         out = {-1,-1,-1};
         return -1;
     }
 
+    // Cache for at_int results - key is packed coordinates
+    std::unordered_map<uint64_t, cv::Vec3f> value_cache;
+
+    // Helper to create cache key from coordinates
+    auto make_key = [](const cv::Vec2f& p) -> uint64_t {
+        // Pack coordinates into 64-bit key (assumes coordinates < 1M)
+        uint32_t x = static_cast<uint32_t>(p[0] * 1000);
+        uint32_t y = static_cast<uint32_t>(p[1] * 1000);
+        return (static_cast<uint64_t>(x) << 32) | static_cast<uint64_t>(y);
+    };
+
+    // Cached version of at_int
+    auto cached_at_int = [&](const cv::Mat_<cv::Vec3f>& pts, const cv::Vec2f& p) -> cv::Vec3f {
+        uint64_t key = make_key(p);
+        auto it = value_cache.find(key);
+        if (it != value_cache.end()) {
+            return it->second;
+        }
+        cv::Vec3f val = at_int(pts, p);
+        value_cache[key] = val;
+        return val;
+    };
+
     bool changed = true;
-    cv::Vec3f val = at_int(points, loc);
+    cv::Vec3f val = cached_at_int(points, loc);
     out = val;
     float best = tdist_sum(val, tgts, tds);
     if (plane) {
@@ -379,11 +400,8 @@ float min_loc(const cv::Mat_<cv::Vec3f> &points, cv::Vec2f &loc, cv::Vec3f &out,
     }
     float res;
 
-    // std::vector<cv::Vec2f> search = {{0,-1},{0,1},{-1,-1},{-1,0},{-1,1},{1,-1},{1,0},{1,1}};
     std::vector<cv::Vec2f> search = {{0,-1},{0,1},{-1,0},{1,0}};
     float step = init_step;
-
-
 
     while (changed) {
         changed = false;
@@ -392,28 +410,21 @@ float min_loc(const cv::Mat_<cv::Vec3f> &points, cv::Vec2f &loc, cv::Vec3f &out,
             cv::Vec2f cand = loc+off*step;
 
             if (!loc_valid(points, {cand[1],cand[0]})) {
-                // out = {-1,-1,-1};
-                // loc = {-1,-1};
-                // return -1;
                 continue;
             }
 
-            val = at_int(points, cand);
-            // std::cout << "at" << cand << val << std::endl;
+            val = cached_at_int(points, cand);
             res = tdist_sum(val, tgts, tds);
             if (plane) {
                 float d = plane->pointDist(val);
                 res += d*d;
             }
             if (res < best) {
-                // std::cout << res << val << step << cand << "\n";
                 changed = true;
                 best = res;
                 loc = cand;
                 out = val;
             }
-            // else
-                // std::cout << "(" << res << val << step << cand << "\n";
         }
 
         if (changed)
@@ -426,7 +437,6 @@ float min_loc(const cv::Mat_<cv::Vec3f> &points, cv::Vec2f &loc, cv::Vec3f &out,
             break;
     }
 
-    // std::cout << "best" << best << out << "\n" <<  std::endl;
     return best;
 }
 

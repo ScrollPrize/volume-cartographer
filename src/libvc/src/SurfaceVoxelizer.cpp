@@ -12,7 +12,7 @@
 #include <chrono>
 #include <iomanip>
 #include <sstream>
-#include <omp.h>
+
 
 using namespace vc;
 
@@ -79,7 +79,7 @@ void SurfaceVoxelizer::voxelizeSurfaces(
     }
     
     // Process chunks in parallel
-    #pragma omp parallel for schedule(dynamic)
+
     for (size_t i = 0; i < chunkCoords.size(); ++i) {
         size_t cx = chunkCoords[i][0];
         size_t cy = chunkCoords[i][1];
@@ -415,7 +415,7 @@ void SurfaceVoxelizer::downsampleLevel(
     }
     
     // Process pyramid chunks in parallel
-    #pragma omp parallel for schedule(dynamic)
+
     for (size_t i = 0; i < pyramidChunkCoords.size(); ++i) {
         size_t dx = pyramidChunkCoords[i][0];
         size_t dy = pyramidChunkCoords[i][1];
@@ -441,7 +441,7 @@ void SurfaceVoxelizer::downsampleLevel(
         xt::xarray<uint8_t> srcChunk = xt::zeros<uint8_t>({src_nz, src_ny, src_nx});
         
         // Thread-safe read
-        #pragma omp critical(zarr_read_pyramid)
+
         {
             z5::types::ShapeType srcOffset = {src_z, src_y, src_x};
             z5::multiarray::readSubarray<uint8_t>(srcDs, srcChunk, srcOffset.begin());
@@ -465,7 +465,7 @@ void SurfaceVoxelizer::downsampleLevel(
         }
         
         // Thread-safe write
-        #pragma omp critical(zarr_write_pyramid)
+
         {
             z5::types::ShapeType dstOffset = {dz, dy, dx};
             z5::multiarray::writeSubarray<uint8_t>(dstDs, dstChunk, dstOffset.begin());

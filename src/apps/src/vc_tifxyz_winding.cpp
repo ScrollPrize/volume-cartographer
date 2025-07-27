@@ -7,9 +7,11 @@
 
 #include <opencv2/highgui.hpp>
 #include <opencv2/imgproc.hpp>
+
+
 #include <omp.h>
 
-
+int omp_get_thread_num() {return 0;}
 
 using json = nlohmann::json;
 
@@ -304,10 +306,10 @@ int main(int argc, char *argv[])
     
     std::vector<IntersectVec> intersects(num_conn);
     
-#pragma omp parallel
+
     {
         unsigned int sr = omp_get_thread_num();
-#pragma omp for
+
         for(int i=0;i<num_conn;i++) {
             cv::Vec2i seed = {rand_r(&sr) % points.cols, rand_r(&sr) % points.rows};
             while (points(seed[1],seed[0])[0] == -1)
@@ -473,7 +475,7 @@ int main(int argc, char *argv[])
         cv::Rect bounds_inv(0,0,points.rows-1,points.cols-1);
         
         std::vector<cv::Vec2i> neighs = {{0,-1},{0,1},{1,0},{-1,0},{1,1},{-1,1},{1,-1},{-1,-1},{0,-4},{0,4},{4,0},{-4,0},{0,-16},{0,16},{16,0},{-16,0}};
-#pragma omp parallel for
+
         for(int j=1;j<winding.rows-1;j++)
             for(int i=1;i<winding.cols-1;i++) {
                 cv::Vec2i p = {j,i};
@@ -531,7 +533,7 @@ int main(int argc, char *argv[])
             
             cv::Mat_<cv::Vec3b> vis(points.size(), {0,0,0});
             cv::Mat_<float> winding_err(points.size());
-#pragma omp parallel for
+
             for(int j=0;j<winding.rows;j++)
                 for(int i=0;i<winding.cols;i++) {
                     if (wind_w(j,i)) {
@@ -540,7 +542,7 @@ int main(int argc, char *argv[])
                         vis(j,i) = wind_cols[w_num]*(1-f)+wind_cols[w_num+1]*f;
                     }
                 }
-#pragma omp parallel for
+
             for(int j=0;j<winding.rows;j++)
                 for(int i=0;i<winding.cols-1;i++) {
                     if (wind_w(j,i) && wind_w(j,i+1)) {

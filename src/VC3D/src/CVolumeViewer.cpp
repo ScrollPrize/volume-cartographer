@@ -12,7 +12,7 @@
 #include "vc/VolumePkg.hpp"
 #include "vc/Slicing.hpp"
 
-#include <omp.h>
+
 
 using qga = QGuiApplication;
 
@@ -321,19 +321,51 @@ void CVolumeViewer::invalidateVis()
 void CVolumeViewer::invalidateIntersect(const std::string &name)
 {
     if (!name.size() || name == _surf_name) {
-        for(auto &pair : _intersect_items) {
-            for(auto &item : pair.second) {
-                fScene->removeItem(item);
+        // Batch remove all items from scene first
+        if (!_intersect_items.empty()) {
+            // Temporarily disable scene updates
+            fScene->setSceneRect(fScene->sceneRect()); // Force batch mode
+
+            // Collect all items to remove
+            std::vector<QGraphicsItem*> itemsToRemove;
+            for(auto &pair : _intersect_items) {
+                itemsToRemove.insert(itemsToRemove.end(),
+                                   pair.second.begin(),
+                                   pair.second.end());
+            }
+
+            // Remove all items in one batch
+            for(auto item : itemsToRemove) {
+                if (item && item->scene() == fScene) {
+                    fScene->removeItem(item);
+                }
+            }
+
+            // Now delete all items
+            for(auto item : itemsToRemove) {
+                delete item;
+            }
+
+            _intersect_items.clear();
+        }
+    }
+    else if (_intersect_items.count(name)) {
+        auto& items = _intersect_items[name];
+
+        if (!items.empty()) {
+            // Batch remove from scene
+            for(auto &item : items) {
+                if (item && item->scene() == fScene) {
+                    fScene->removeItem(item);
+                }
+            }
+
+            // Then delete
+            for(auto &item : items) {
                 delete item;
             }
         }
-        _intersect_items.clear();
-    }
-    else if (_intersect_items.count(name)) {
-        for(auto &item : _intersect_items[name]) {
-            fScene->removeItem(item);
-            delete item;
-        }
+
         _intersect_items.erase(name);
     }
 }
@@ -772,27 +804,27 @@ void CVolumeViewer::renderIntersections()
         for (auto key : _intersect_tgts)
             intersect_tgts_v.push_back(key);
 
-#pragma omp parallel for
+
         for(int n=0;n<intersect_tgts_v.size();n++) {
             std::string key = intersect_tgts_v[n];
             bool haskey;
-#pragma omp critical
+
             haskey = _intersect_items.count(key);
             if (!haskey && dynamic_cast<QuadSurface*>(_surf_col->surface(key))) {
                 QuadSurface *segmentation = dynamic_cast<QuadSurface*>(_surf_col->surface(key));
 
                 if (intersect(view_bbox, segmentation->bbox()))
-#pragma omp critical
+
                     intersect_cands.push_back(key);
                 else
-#pragma omp critical
+
                     _intersect_items[key] = {};
             }
         }
 
         std::vector<std::vector<std::vector<cv::Vec3f>>> intersections(intersect_cands.size());
 
-#pragma omp parallel for
+
         for(int n=0;n<intersect_cands.size();n++) {
             std::string key = intersect_cands[n];
             QuadSurface *segmentation = dynamic_cast<QuadSurface*>(_surf_col->surface(key));
@@ -895,11 +927,11 @@ void CVolumeViewer::renderIntersections()
                 for (auto wp : seg)
                     src_locations.push_back(wp);
             
-#pragma omp parallel
+
             {
                 // SurfacePointer *ptr = crop->pointer();
                 SurfacePointer *ptr = _surf->pointer();
-#pragma omp for
+
                 for (auto wp : src_locations) {
                     // float res = crop->pointTo(ptr, wp, 2.0, 100);
                     // cv::Vec3f p = crop->loc(ptr)*_ds_scale + cv::Vec3f(_vis_center[0],_vis_center[1],0);
@@ -909,7 +941,7 @@ void CVolumeViewer::renderIntersections()
                     if (res >= 2.0)
                         p = {-1,-1,-1};
                         // std::cout << "WARNING pointTo() high residual in renderIntersections()" << std::endl;
-#pragma omp critical
+
                     location_cache[wp] = p;
                 }
             }

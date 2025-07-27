@@ -1,5 +1,5 @@
 #include "vc/CXCurve.hpp"
-#include <omp.h>
+
 
 
 // Constructor
@@ -60,7 +60,7 @@ void CXCurve::SetPointByDifferenceMt(
     double (*ImpactFunc)(double, double, double),
     int nImpactRange)
 {
-    #pragma omp parallel for
+
     for (int i = -nImpactRange; i <= nImpactRange; ++i) {
         int current_index = nIndex + i;
         if (current_index >= 0 && current_index < static_cast<int>(fPoints.size())) {

@@ -7,6 +7,8 @@
 
 #include <omp.h>
 
+void omp_set_num_threads(int a){}
+
 using shape = z5::types::ShapeType;
 
 

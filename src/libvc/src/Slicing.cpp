@@ -315,16 +315,16 @@ void readInterpolated3D(cv::Mat_<uint8_t> &out, z5::Dataset *ds, const cv::Mat_<
     
     size_t done = 0;
 
-#pragma omp parallel
+
     {
 
         cv::Vec4i last_idx = {-1,-1,-1,-1};
         std::shared_ptr<xt::xarray<uint8_t>> chunk_ref;
         xt::xarray<uint8_t> *chunk = nullptr;
-#pragma omp for schedule(guided,1)
+
         for(size_t y = 0;y<h;y++) {
             if (w*h > 10000000)
-#pragma omp critical
+
             {
                 done++;
                 if (done % 100 == 0)
@@ -473,16 +473,16 @@ cv::Vec3f grid_normal(const cv::Mat_<cv::Vec3f> &points, const cv::Vec3f &loc)
     inb_loc = vmin(inb_loc, {points.cols-3,points.rows-3});
     
     if (!loc_valid_xy(points, inb_loc))
-        return {NAN,NAN};
+        return {NAN,NAN,NAN};
     
     if (!loc_valid_xy(points, inb_loc+cv::Vec2f(1,0)))
-        return {NAN,NAN}; 
+        return {NAN,NAN,NAN};
     if (!loc_valid_xy(points, inb_loc+cv::Vec2f(-1,0)))
-        return {NAN,NAN}; 
+        return {NAN,NAN,NAN};
     if (!loc_valid_xy(points, inb_loc+cv::Vec2f(0,1)))
-        return {NAN,NAN}; 
+        return {NAN,NAN,NAN};
     if (!loc_valid_xy(points, inb_loc+cv::Vec2f(0,-1)))
-        return {NAN,NAN}; 
+        return {NAN,NAN,NAN};
     
     cv::Vec3f xv = normed(at_int(points,inb_loc+cv::Vec2f(1,0))-at_int(points,inb_loc-cv::Vec2f(1,0)));
     cv::Vec3f yv = normed(at_int(points,inb_loc+cv::Vec2f(0,1))-at_int(points,inb_loc-cv::Vec2f(0,1)));
@@ -506,35 +506,35 @@ static void min_loc(const cv::Mat_<cv::Vec3f> &points, cv::Vec2f &loc, cv::Vec3f
         loc = {-1,-1};
         return;
     }
-    
+
     bool changed = true;
     cv::Vec3f val = at_int(points, loc);
     out = val;
     float best = sdist(val, tgt);
     float res;
-    
+
     std::vector<cv::Vec2f> search;
     if (z_search)
         search = {{0,-1},{0,1},{-1,0},{1,0}};
     else
         search = {{1,0},{-1,0}};
-    
+
     float step = 1.0;
-    
-    
+
+
     while (changed) {
         changed = false;
-        
+
         for(auto &off : search) {
             cv::Vec2f cand = loc+off*step;
-            
+
             if (!boundary.contains(cv::Point(cand))) {
                 out = {-1,-1,-1};
                 loc = {-1,-1};
                 return;
             }
-            
-            
+
+
             val = at_int(points, cand);
             res = sdist(val,tgt);
             if (res < best) {
@@ -544,7 +544,7 @@ static void min_loc(const cv::Mat_<cv::Vec3f> &points, cv::Vec2f &loc, cv::Vec3f
                 out = val;
             }
         }
-        
+
         if (!changed && step > 0.125) {
             step *= 0.5;
             changed = true;
@@ -556,7 +556,7 @@ static float tdist(const cv::Vec3f &a, const cv::Vec3f &b, float t_dist)
 {
     cv::Vec3f d = a-b;
     float l = sqrt(d.dot(d));
-    
+
     return abs(l-t_dist);
 }
 
@@ -567,7 +567,7 @@ static float tdist_sum(const cv::Vec3f &v, const std::vector<cv::Vec3f> &tgts, c
         float d = tdist(v, tgts[i], tds[i]);
         sum += d*d;
     }
-    
+
     return sum;
 }
 
@@ -580,13 +580,13 @@ cv::Mat_<cv::Vec3f> smooth_vc_segmentation(const cv::Mat_<cv::Vec3f> &points)
     
     cv::Mat trans = out.t();
     
-    #pragma omp parallel for
+
     for(int j=0;j<trans.rows;j++) 
         cv::GaussianBlur(trans({0,j,trans.cols,1}), blur({0,j,trans.cols,1}), {255,1}, 0);
     
     blur = blur.t();
     
-    #pragma omp parallel for
+
     for(int j=1;j<points.rows;j++)
         for(int i=1;i<points.cols-1;i++) {
             cv::Vec2f loc = {i,j};
@@ -616,7 +616,7 @@ void vc_segmentation_scales(cv::Mat_<cv::Vec3f> points, double &sx, double &sy)
         imax = points.size().width;
         step = 1;
     }
-#pragma omp parallel for
+
     for(int j=jmin;j<jmax;j+=step) {
         double _sum_x = 0;
         double _sum_y = 0;
@@ -629,7 +629,7 @@ void vc_segmentation_scales(cv::Mat_<cv::Vec3f> points, double &sx, double &sy)
             _sum_y += sqrt(v.dot(v));
             _count++;
         }
-#pragma omp critical
+
         {
             sum_x += _sum_x;
             sum_y += _sum_y;
@@ -646,7 +646,7 @@ cv::Mat_<cv::Vec3f> vc_segmentation_calc_normals(const cv::Mat_<cv::Vec3f> &poin
     cv::Mat_<cv::Vec3f> blur;
     cv::GaussianBlur(points, blur, {21,21}, 0);
     cv::Mat_<cv::Vec3f> normals(points.size());
-#pragma omp parallel for
+
     for(int j=n_step;j<points.rows-n_step;j++)
         for(int i=n_step;i<points.cols-n_step;i++) {
             cv::Vec3f xv = normed(blur(j,i+n_step)-blur(j,i-n_step));
@@ -660,7 +660,7 @@ cv::Mat_<cv::Vec3f> vc_segmentation_calc_normals(const cv::Mat_<cv::Vec3f> &poin
         
         cv::GaussianBlur(normals, normals, {21,21}, 0);
         
-#pragma omp parallel for
+
         for(int j=n_step;j<points.rows-n_step;j++)
             for(int i=n_step;i<points.cols-n_step;i++)
                 normals(j,i) = normed(normals(j,i));

@@ -23,7 +23,7 @@
 
 #include <filesystem>
 #include <unordered_map>
-#include <omp.h>
+
 
 #include "vc/ChunkedTensor.hpp"
 
