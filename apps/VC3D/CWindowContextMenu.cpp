@@ -31,23 +31,23 @@ void CWindow::onRenderSegment(const SurfaceID& segmentId)
     
     // Initialize command line tool runner if needed
     if (!_cmdRunner) {
-        _cmdRunner = new CommandLineToolRunner(statusBar, this, this);
+        _cmdRunner = new CommandLineToolRunner(statusBar(), this, this);
         connect(_cmdRunner, &CommandLineToolRunner::toolStarted, 
                 [this](CommandLineToolRunner::Tool tool, const QString& message) {
-                    statusBar->showMessage(message, 0);
+                    statusBar()->showMessage(message, 0);
                 });
-        connect(_cmdRunner, &CommandLineToolRunner::toolFinished, 
-                [this](CommandLineToolRunner::Tool tool, bool success, const QString& message, 
+        connect(_cmdRunner, &CommandLineToolRunner::toolFinished,
+                [this](CommandLineToolRunner::Tool tool, bool success, const QString& message,
                        const QString& outputPath, bool copyToClipboard) {
                     if (success) {
                         QString displayMsg = message;
                         if (copyToClipboard) {
                             displayMsg += tr(" - Path copied to clipboard");
                         }
-                        statusBar->showMessage(displayMsg, 5000);
+                        statusBar()->showMessage(displayMsg, 5000);
                         QMessageBox::information(this, tr("Rendering Complete"), displayMsg);
                     } else {
-                        statusBar->showMessage(tr("Rendering failed"), 5000);
+                        statusBar()->showMessage(tr("Rendering failed"), 5000);
                         QMessageBox::critical(this, tr("Rendering Error"), message);
                     }
                 });
@@ -66,7 +66,7 @@ void CWindow::onRenderSegment(const SurfaceID& segmentId)
     
     _cmdRunner->execute(CommandLineToolRunner::Tool::RenderTifXYZ);
     
-    statusBar->showMessage(tr("Rendering segment: %1").arg(QString::fromStdString(segmentId)), 5000);
+    statusBar()->showMessage(tr("Rendering segment: %1").arg(QString::fromStdString(segmentId)), 5000);
 }
 
 void CWindow::onGrowSegmentFromSegment(const SurfaceID& segmentId)
@@ -96,7 +96,7 @@ void CWindow::onGrowSegmentFromSegment(const SurfaceID& segmentId)
     fs::path jsonParamsPath = volpkgPath / "trace_params.json";
     fs::path pathsDir = volpkgPath / "paths";
     
-    statusBar->showMessage(tr("Preparing to run grow_seg_from_segment..."), 2000);
+    statusBar()->showMessage(tr("Preparing to run grow_seg_from_segment..."), 2000);
     
     // Create traces directory if it doesn't exist
     if (!fs::exists(tracesDir)) {
@@ -128,7 +128,7 @@ void CWindow::onGrowSegmentFromSegment(const SurfaceID& segmentId)
     
     _cmdRunner->execute(CommandLineToolRunner::Tool::GrowSegFromSegment);
     
-    statusBar->showMessage(tr("Growing segment from: %1").arg(QString::fromStdString(segmentId)), 5000);
+    statusBar()->showMessage(tr("Growing segment from: %1").arg(QString::fromStdString(segmentId)), 5000);
 }
 
 void CWindow::onAddOverlap(const SurfaceID& segmentId)
@@ -162,7 +162,7 @@ void CWindow::onAddOverlap(const SurfaceID& segmentId)
     
     _cmdRunner->execute(CommandLineToolRunner::Tool::SegAddOverlap);
     
-    statusBar->showMessage(tr("Adding overlap for segment: %1").arg(QString::fromStdString(segmentId)), 5000);
+    statusBar()->showMessage(tr("Adding overlap for segment: %1").arg(QString::fromStdString(segmentId)), 5000);
 }
 
 void CWindow::onConvertToObj(const SurfaceID& segmentId)
@@ -197,7 +197,7 @@ void CWindow::onConvertToObj(const SurfaceID& segmentId)
     
     _cmdRunner->execute(CommandLineToolRunner::Tool::tifxyz2obj);
     
-    statusBar->showMessage(tr("Converting segment to OBJ: %1").arg(QString::fromStdString(segmentId)), 5000);
+    statusBar()->showMessage(tr("Converting segment to OBJ: %1").arg(QString::fromStdString(segmentId)), 5000);
 }
 
 void CWindow::onGrowSeeds(const SurfaceID& segmentId, bool isExpand, bool isRandomSeed)
@@ -267,14 +267,14 @@ void CWindow::onGrowSeeds(const SurfaceID& segmentId, bool isExpand, bool isRand
     
     QString modeDesc = isExpand ? "expand mode" : 
                       (isRandomSeed ? "random seed mode" : "seed mode");
-    statusBar->showMessage(tr("Growing segment using %1 in %2").arg(jsonFileName).arg(modeDesc), 5000);
+    statusBar()->showMessage(tr("Growing segment using %1 in %2").arg(jsonFileName).arg(modeDesc), 5000);
 }
 
 // Helper method to initialize command line runner
 bool CWindow::initializeCommandLineRunner()
 {
     if (!_cmdRunner) {
-        _cmdRunner = new CommandLineToolRunner(statusBar, this, this);
+        _cmdRunner = new CommandLineToolRunner(statusBar(), this, this);
         
         // Read parallel processes and iteration count settings from INI file
         QSettings settings("VC.ini", QSettings::IniFormat);
@@ -287,7 +287,7 @@ bool CWindow::initializeCommandLineRunner()
         
         connect(_cmdRunner, &CommandLineToolRunner::toolStarted, 
                 [this](CommandLineToolRunner::Tool tool, const QString& message) {
-                    statusBar->showMessage(message, 0);
+                    statusBar()->showMessage(message, 0);
                 });
         connect(_cmdRunner, &CommandLineToolRunner::toolFinished, 
                 [this](CommandLineToolRunner::Tool tool, bool success, const QString& message, 
@@ -297,10 +297,10 @@ bool CWindow::initializeCommandLineRunner()
                         if (copyToClipboard) {
                             displayMsg += tr(" - Path copied to clipboard");
                         }
-                        statusBar->showMessage(displayMsg, 5000);
+                        statusBar()->showMessage(displayMsg, 5000);
                         QMessageBox::information(this, tr("Operation Complete"), displayMsg);
                     } else {
-                        statusBar->showMessage(tr("Operation failed"), 5000);
+                        statusBar()->showMessage(tr("Operation failed"), 5000);
                         QMessageBox::critical(this, tr("Error"), message);
                     }
                 });
@@ -388,7 +388,7 @@ void CWindow::onDeleteSegments(const std::vector<SurfaceID>& segmentIds)
     
     // Show result message
     if (successCount == segmentIds.size()) {
-        statusBar->showMessage(tr("Successfully deleted %1 segment(s)").arg(successCount), 5000);
+        statusBar()->showMessage(tr("Successfully deleted %1 segment(s)").arg(successCount), 5000);
     } else if (successCount > 0) {
         QMessageBox::warning(this, tr("Partial Success"),
             tr("Deleted %1 segment(s), but failed to delete: %2\n\n"
