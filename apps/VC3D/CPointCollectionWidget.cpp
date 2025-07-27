@@ -43,7 +43,10 @@ void CPointCollectionWidget::setupUi()
 
     connect(_tree_view->selectionModel(), &QItemSelectionModel::selectionChanged, this, &CPointCollectionWidget::onSelectionChanged);
     connect(_tree_view, &QTreeView::doubleClicked, this, [this](const QModelIndex &index) {
-        QStandardItem *item = _model->itemFromIndex(index);
+        // Get the index for the first column in the same row
+        QModelIndex id_index = index.sibling(index.row(), 0);
+        QStandardItem *item = _model->itemFromIndex(id_index);
+        // Check if it's a point item (i.e., it has a parent)
         if (item && (item->parent() != nullptr && item->parent() != _model->invisibleRootItem())) {
             uint64_t pointId = item->data().toULongLong();
             emit pointDoubleClicked(pointId);
