@@ -163,7 +163,6 @@ void CVolumeViewer::recalcScales()
     if      (_scale >= _max_scale) { _ds_sd_idx = 0;                         }
     else if (_scale <  _min_scale) { _ds_sd_idx = volume->numScales()-1;     }
     else  { _ds_sd_idx = int(std::round(-std::log2(_scale))); }
-    if (_ds_sd_idx < volume->numScales()-1)_ds_sd_idx++;
     _ds_scale = std::pow(2.0f, -_ds_sd_idx);
     /* ---------------------------------------------------------------- */
 
