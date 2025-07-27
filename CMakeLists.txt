@@ -2,19 +2,12 @@ cmake_minimum_required(VERSION 3.22 FATAL_ERROR)
 project(VC3D VERSION 4.0.0)
 
 
-set(CMAKE_CXX_FLAGS "-ggdb -Og -g3 -w -Wno-narrowing -std=c++23")
+set(CMAKE_CXX_FLAGS "-ggdb -Og -g3 -w -Wno-narrowing -std=c++23 -fdiagnostics-color=always")
 
 set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fuse-ld=lld ")
 set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -fuse-ld=lld")
 
 list(PREPEND CMAKE_PREFIX_PATH "/home/forrest/ceres-install")
-find_program(CCACHE_PROGRAM "ccache")
-if(CCACHE_FOUND)
-    set(CMAKE_C_COMPILER_LAUNCHER ccache)
-    set(CMAKE_CXX_COMPILER_LAUNCHER ccache)
-endif()
-
-set(CMAKE_EXPORT_COMPILE_COMMANDS on)
 
 option(VC_WITH_CUDA_SPARSE "use cudss" OFF)
 if (VC_WITH_CUDA_SPARSE)
@@ -38,6 +31,19 @@ find_package(Ceres REQUIRED)
 
 find_library(GKLIB_LIBRARY GKlib)
 
-add_compile_options(-fdiagnostics-color=always)
-add_subdirectory(core)
-add_subdirectory(apps)
+
+file(GLOB SOURCES "src/libvc/src/*.cpp" "src/libvc/include/vc/*.hpp" "src/libvcui/src/*.cpp" "src/libvcui/include/vcui/*.hpp" "src/VC3D/src/*.cpp")
+add_executable(VC3D ${SOURCES})
+
+target_link_libraries(VC3D PUBLIC OpenMP::OpenMP_CXX Qt6::Core Qt6::Gui Qt6::Widgets opencv_core opencv_highgui
+        opencv_imgproc
+        opencv_imgcodecs
+        opencv_calib3d
+        nlohmann_json::nlohmann_json
+        CURL::libcurl
+        Ceres::ceres
+        Boost::program_options
+        spdlog::spdlog
+        ${GKLIB_LIBRARY})
+
+target_include_directories(VC3D PUBLIC src/libvc/include src/libvcui/include)
