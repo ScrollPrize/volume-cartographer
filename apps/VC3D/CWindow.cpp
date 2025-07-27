@@ -371,6 +371,7 @@ void CWindow::CreateWidgets(void)
         connect(_point_collection_widget, &CPointCollectionWidget::pointSelected, viewer, &CVolumeViewer::onPointSelected);
         connect(viewer, &CVolumeViewer::pointSelected, _point_collection_widget, &CPointCollectionWidget::selectPoint);
     }
+    connect(_point_collection_widget, &CPointCollectionWidget::pointDoubleClicked, this, &CWindow::onPointDoubleClicked);
 
    connect(_point_collection, &VCCollection::collectionAdded, this, [this](uint64_t id) {
        const auto& collections = _point_collection->getAllCollections();
@@ -2464,6 +2465,20 @@ void CWindow::onFocusPOIChanged(std::string name, POI* poi)
 
         // Force an update of the filter
         onSegFilterChanged(0);
+    }
+}
+
+void CWindow::onPointDoubleClicked(uint64_t pointId)
+{
+    auto point_opt = _point_collection->getPoint(pointId);
+    if (point_opt) {
+        POI *poi = _surf_col->poi("focus");
+        if (!poi) {
+            poi = new POI;
+        }
+        poi->p = point_opt->p;
+        poi->n = cv::Vec3f(0, 0, 1); // Default normal
+        _surf_col->setPOI("focus", poi);
     }
 }
 

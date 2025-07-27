@@ -42,6 +42,13 @@ void CPointCollectionWidget::setupUi()
     layout->addWidget(_tree_view);
 
     connect(_tree_view->selectionModel(), &QItemSelectionModel::selectionChanged, this, &CPointCollectionWidget::onSelectionChanged);
+    connect(_tree_view, &QTreeView::doubleClicked, this, [this](const QModelIndex &index) {
+        QStandardItem *item = _model->itemFromIndex(index);
+        if (item && (item->parent() != nullptr && item->parent() != _model->invisibleRootItem())) {
+            uint64_t pointId = item->data().toULongLong();
+            emit pointDoubleClicked(pointId);
+        }
+    });
 
     // Collection Metadata
     _collection_metadata_group = new QGroupBox("Collection Metadata");

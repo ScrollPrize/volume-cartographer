@@ -82,6 +82,7 @@ public slots:
     void onDeleteSegments(const std::vector<SurfaceID>& segmentIds);
     void onVoxelizePaths();
    void onFocusPOIChanged(std::string name, POI* poi);
+    void onPointDoubleClicked(uint64_t pointId);
 
 public:
     CWindow();

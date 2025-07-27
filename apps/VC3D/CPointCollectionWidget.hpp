@@ -29,6 +29,7 @@ public:
 signals:
     void collectionSelected(uint64_t collectionId);
     void pointSelected(uint64_t pointId);
+    void pointDoubleClicked(uint64_t pointId);
 
 public slots:
     void selectCollection(uint64_t collectionId);
