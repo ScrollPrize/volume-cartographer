@@ -473,21 +473,24 @@ cv::Vec3f grid_normal(const cv::Mat_<cv::Vec3f> &points, const cv::Vec3f &loc)
     inb_loc = vmin(inb_loc, {points.cols-3,points.rows-3});
     
     if (!loc_valid_xy(points, inb_loc))
-        return {NAN,NAN};
+        return {NAN,NAN,NAN};
     
     if (!loc_valid_xy(points, inb_loc+cv::Vec2f(1,0)))
-        return {NAN,NAN}; 
+        return {NAN,NAN,NAN};
     if (!loc_valid_xy(points, inb_loc+cv::Vec2f(-1,0)))
-        return {NAN,NAN}; 
+        return {NAN,NAN,NAN};
     if (!loc_valid_xy(points, inb_loc+cv::Vec2f(0,1)))
-        return {NAN,NAN}; 
+        return {NAN,NAN,NAN};
     if (!loc_valid_xy(points, inb_loc+cv::Vec2f(0,-1)))
-        return {NAN,NAN}; 
+        return {NAN,NAN,NAN};
     
     cv::Vec3f xv = normed(at_int(points,inb_loc+cv::Vec2f(1,0))-at_int(points,inb_loc-cv::Vec2f(1,0)));
     cv::Vec3f yv = normed(at_int(points,inb_loc+cv::Vec2f(0,1))-at_int(points,inb_loc-cv::Vec2f(0,1)));
     
     cv::Vec3f n = yv.cross(xv);
+
+    if (std::isnan(n[0]))
+        return {NAN,NAN,NAN};
     
     return normed(n);
 }
