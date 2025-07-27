@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../../../VC3D/src/PathData.hpp"
+#include "PathData.hpp"
 #include <QDoubleSpinBox>
 #include <QFileDialog>
 #include <QHBoxLayout>

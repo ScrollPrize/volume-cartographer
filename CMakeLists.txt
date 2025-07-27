@@ -2,10 +2,10 @@ cmake_minimum_required(VERSION 3.22 FATAL_ERROR)
 project(VC3D VERSION 4.0.0)
 
 
-set(CMAKE_CXX_FLAGS "-ggdb -Og -g3 -w -Wno-narrowing -std=c++23 -fdiagnostics-color=always -DWITH_BLOSC=1 -DWITH_ZLIB=ON -DWITH_XZ=1 ")
+set(CMAKE_CXX_FLAGS "-ggdb -Og -g3 -w -Wno-narrowing -std=c++23 -fdiagnostics-color=always -DWITH_BLOSC=1 -DWITH_ZLIB=ON -DWITH_XZ=1  ")
 
 set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fuse-ld=lld  ")
-set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -fuse-ld=lld")
+set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -fuse-ld=lld  ")
 
 list(PREPEND CMAKE_PREFIX_PATH "/home/forrest/ceres-install")
 
@@ -34,7 +34,7 @@ find_package(LibLZMA REQUIRED)
 
 find_library(GKLIB_LIBRARY GKlib)
 
-set(LIBRARIES opencv_core opencv_highgui
+set(LIBRARIES  opencv_core opencv_highgui
         opencv_imgproc
         opencv_imgcodecs
         opencv_calib3d

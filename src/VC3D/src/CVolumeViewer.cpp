@@ -170,8 +170,8 @@ void CVolumeViewer::recalcScales()
 void CVolumeViewer::onZoom(int steps, QPointF scene_loc, Qt::KeyboardModifiers modifiers)
 {
     invalidateVis();
-    invalidateIntersect();
-    
+    //invalidateIntersect();
+
     if (!_surf)
         return;
     
@@ -380,10 +380,10 @@ void CVolumeViewer::onIntersectionChanged(std::string a, std::string b, Intersec
         return;
 
     //FIXME fix segmentation vs visible_segmentation naming and usage ..., think about dependency chain ..
-    if (a == _surf_name || (_surf_name == "segmentation" && a == "visible_segmentation"))
-        invalidateIntersect(b);
-    else if (b == _surf_name || (_surf_name == "segmentation" && b == "visible_segmentation"))
-        invalidateIntersect(a);
+    //if (a == _surf_name || (_surf_name == "segmentation" && a == "visible_segmentation"))
+    //    invalidateIntersect(b);
+    //else if (b == _surf_name || (_surf_name == "segmentation" && b == "visible_segmentation"))
+    //    invalidateIntersect(a);
     
     renderIntersections();
 }
@@ -1003,8 +1003,8 @@ void CVolumeViewer::onPanStart(Qt::MouseButton buttons, Qt::KeyboardModifiers mo
         for(auto &item : col.second)
             item->setVisible(false);
     
-    if (dynamic_cast<PlaneSurface*>(_surf))
-        invalidateIntersect();
+    //if (dynamic_cast<PlaneSurface*>(_surf))
+    //    invalidateIntersect();
 }
 
 void CVolumeViewer::onScrolled()

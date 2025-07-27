@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../../libvcui/include/vcui/CBSpline.hpp"
+#include "vcui/CBSpline.hpp"
 #include "CVolumeViewer.hpp"
 #include "SegmentationStruct.hpp"
 #include "vc/CXCurve.hpp"

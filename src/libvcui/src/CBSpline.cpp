@@ -1,4 +1,4 @@
-#include "../include/vcui/CBSpline.hpp"
+#include "vcui/CBSpline.hpp"
 
 #include <opencv2/imgproc.hpp>
 
@@ -120,9 +120,7 @@ void CBSpline::UpdateCurve(void)
         aA(i, i + 1) = 1;
     }
 
-#ifdef _DEBUG
-// aA.Dump();
-#endif  // _DEBUG
+
 
     // solve tri-diagonal matrix
     // REVISIT - note that we need to use the same left hand side but different
@@ -136,13 +134,8 @@ void CBSpline::UpdateCurve(void)
     for (int i = 1; i < aNumUnknowns - 1; ++i) {
         aB[i] = 4 * fControlPoints[i][0] + 2 * fControlPoints[i + 1][0];
     }
-#ifdef _DEBUG
-// aB.Dump();
-#endif  // _DEBUG
+
     ThomasTriDiagonal<double>(aA, aB, aX);
-#ifdef _DEBUG
-    aX.Dump();
-#endif  // _DEBUG
 
     // for y component
     aB[0] = 2 * fControlPoints[1][1] + fControlPoints[0][1];
@@ -152,9 +145,6 @@ void CBSpline::UpdateCurve(void)
         aB[i] = 4 * fControlPoints[i][1] + 2 * fControlPoints[i + 1][1];
     }
     ThomasTriDiagonal<double>(aA, aB, aY);
-#ifdef _DEBUG
-    aY.Dump();
-#endif  // _DEBUG
 
     // calculate P2,i
     CVectorN<double> aX2(aNumUnknowns), aY2(aNumUnknowns);
@@ -166,10 +156,6 @@ void CBSpline::UpdateCurve(void)
         aX2[i] = 2 * fControlPoints[i + 1][0] - aX[i + 1];
         aY2[i] = 2 * fControlPoints[i + 1][1] - aY[i + 1];
     }
-#ifdef _DEBUG
-    aX2.Dump();
-    aY2.Dump();
-#endif  // _DEBUG
 
     std::vector<Vec2<double>> aControlPointsForSeg;
     aControlPointsForSeg.resize(4);
@@ -185,21 +171,6 @@ void CBSpline::UpdateCurve(void)
     }
 }
 
-// // Draw the curve on image
-// void CBSpline::DrawOnImage(cv::Mat& nImg, const cv::Scalar& nColor)
-// {
-//     // Handle drawing curves with only 2 points
-//     if (fControlPoints.size() == 2) {
-//         cv::Point2d start(fControlPoints[0][0], fControlPoints[0][1]);
-//         cv::Point2d end(fControlPoints[1][0], fControlPoints[1][1]);
-//         cv::line(nImg, start, end, nColor);
-//         return;
-//     }
-
-//     for (std::size_t i = 0; i < fCurveSegments.size(); ++i) {
-//         fCurveSegments[i].DrawOnImage(nImg, nColor);
-//     }
-// }
 
 // Draw the curve on the QGraphicsScene
 void CBSpline::DrawOnImage(QGraphicsScene* scene, const QColor& color)

@@ -5,10 +5,8 @@
 
 #include <opencv2/core.hpp>
 
-#include "../../../libvc/include/vc/MathUtils.hpp"
+#include "vc/MathUtils.hpp"
 #include "CBezierCurve.hpp"
-#include <QGraphicsEllipseItem>
-#include <QGraphicsView>
 
 // REVISIT - NOTE - B-Spline can use many kinds of interpolation method (base
 // function); we use Bezier curve here (Bezier-Bernstein)

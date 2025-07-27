@@ -5,7 +5,7 @@
 #include <QJsonDocument>
 #include <QFile>
 
-#include "../../libvcui/include/vcui/ProgressUtil.hpp"
+#include "vcui/ProgressUtil.hpp"
 #include "vcui/ConsoleOutputWidget.hpp"
 
 // Forward declaration

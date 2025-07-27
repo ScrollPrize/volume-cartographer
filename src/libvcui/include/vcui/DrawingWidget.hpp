@@ -7,7 +7,7 @@
 #include <memory>
 #include <opencv2/core.hpp>
 
-#include "../../../VC3D/src/PathData.hpp"
+#include "PathData.hpp"
 
 class QLabel;
 class QSpinBox;

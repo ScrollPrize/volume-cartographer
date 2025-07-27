@@ -122,13 +122,7 @@ void Volume::setVoxelSize(double s) { metadata_.set("voxelsize", s); }
 void Volume::setMin(double m) { metadata_.set("min", m); }
 void Volume::setMax(double m) { metadata_.set("max", m); }
 
-auto Volume::bounds() const -> Volume::Bounds
-{
-    return {
-        {0, 0, 0},
-        {static_cast<double>(width_), static_cast<double>(height_),
-         static_cast<double>(slices_)}};
-}
+
 
 auto Volume::isInBounds(double x, double y, double z) const -> bool
 {
@@ -144,16 +138,6 @@ auto Volume::isInBounds(const cv::Vec3d& v) const -> bool
 void throw_run_path(const std::filesystem::path &path, const std::string msg)
 {
     throw std::runtime_error(msg + " for " + path.string());
-}
-
-std::ostream& operator<< (std::ostream& out, const xt::xarray<uint8_t>::shape_type &v) {
-    if ( !v.empty() ) {
-        out << '[';
-        for(auto &v : v)
-            out << v << ",";
-        out << "\b\b]"; // use two ANSI backspace characters '\b' to overwrite final ", "
-    }
-    return out;
 }
 
 z5::Dataset *Volume::zarrDataset(int level)

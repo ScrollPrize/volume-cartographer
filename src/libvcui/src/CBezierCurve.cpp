@@ -1,4 +1,4 @@
-#include "../include/vcui/CBezierCurve.hpp"
+#include "vcui/CBezierCurve.hpp"
 
 #include <opencv2/imgproc.hpp>
 
@@ -144,29 +144,6 @@ void CBezierCurve::DrawOnImage(QGraphicsScene* scene, const QColor& color)
     QPen pen(color);
     pen.setStyle(Qt::DashLine);
 
-    // Debug colors
-    QColor debugColor1(0, 0, 255);  // Blue
-    QColor debugColor2(0, 255, 0);  // Green
-    QColor debugColor3(255, 0, 0);  // Red
-
-#ifdef _DEBUG
-    // Debug control lines
-    scene->addLine(QLineF(fControlPoints[0][0], fControlPoints[0][1],
-                          fControlPoints[1][0], fControlPoints[1][1]), debugColor1);
-
-    scene->addLine(QLineF(fControlPoints[1][0], fControlPoints[1][1],
-                          fControlPoints[2][0], fControlPoints[2][1]), debugColor2);
-
-    scene->addLine(QLineF(fControlPoints[2][0], fControlPoints[2][1],
-                          fControlPoints[3][0], fControlPoints[3][1]), debugColor3);
-
-    // Debug control points
-    scene->addEllipse(fControlPoints[0][0]-3.5, fControlPoints[0][1]-3.5, 7, 7, QPen(), QBrush(debugColor3));
-    scene->addEllipse(fControlPoints[1][0]-3.5, fControlPoints[1][1]-3.5, 7, 7, QPen(), QBrush(debugColor3));
-    scene->addEllipse(fControlPoints[2][0]-3.5, fControlPoints[2][1]-3.5, 7, 7, QPen(), QBrush(debugColor3));
-    scene->addEllipse(fControlPoints[3][0]-3.5, fControlPoints[3][1]-3.5, 7, 7, QPen(), QBrush(debugColor3));
-#endif
-
     double aTotalLen = pythag<double>(
                            fControlPoints[0][0] - fControlPoints[1][0],
                            fControlPoints[0][1] - fControlPoints[1][1]) +
@@ -206,29 +183,6 @@ void CBezierCurve::DrawOnImage(QGraphicsScene* scene, const QColor& color)
             prev_x = xxx;
             prev_y = yyy;
         }
-
-#ifdef _DEBUG
-    // Draw debug circles on each point of the curve
-    for (int i = 0; i < aNumOfPts; i++) {
-        float xa = GetPt(fControlPoints[0][0], fControlPoints[1][0], i * aInterval);
-        float ya = GetPt(fControlPoints[0][1], fControlPoints[1][1], i * aInterval);
-        float xb = GetPt(fControlPoints[1][0], fControlPoints[2][0], i * aInterval);
-        float yb = GetPt(fControlPoints[1][1], fControlPoints[2][1], i * aInterval);
-        float xc = GetPt(fControlPoints[2][0], fControlPoints[3][0], i * aInterval);
-        float yc = GetPt(fControlPoints[2][1], fControlPoints[3][1], i * aInterval);
-
-        float xxa = GetPt(xa, xb, i * aInterval);
-        float yya = GetPt(ya, yb, i * aInterval);
-        float xxb = GetPt(xb, xc, i * aInterval);
-        float yyb = GetPt(yb, yc, i * aInterval);
-
-        float xxx = GetPt(xxa, xxb, i * aInterval);
-        float yyy = GetPt(yya, yyb, i * aInterval);
-
-        // Add a circle for this point
-        scene->addEllipse(xxx - 1.5, yyy - 1.5, 3, 3, QPen(), QBrush(Qt::yellow));  // yellow for visibility
-    }
-#endif  // _DEBUG
     }
 }
 

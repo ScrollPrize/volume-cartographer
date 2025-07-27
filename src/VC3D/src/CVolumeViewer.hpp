@@ -2,7 +2,7 @@
 
 #include <QtWidgets>
 
-#include "PathData.hpp"
+#include "vcui/PathData.hpp"
 #include <set>
 
 enum EViewState {

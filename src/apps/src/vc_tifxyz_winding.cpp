@@ -11,7 +11,7 @@
 
 #include <omp.h>
 
-int omp_get_thread_num() {return 0;}
+int omp_get_thread_num(){return 0;}
 
 using json = nlohmann::json;
 

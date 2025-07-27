@@ -1050,186 +1050,228 @@ bool area_valid(const cv::Mat_<cv::Vec<T,C>> &m, cv::Vec2f l)
     return true;
 }
 
-void find_intersect_segments(std::vector<std::vector<cv::Vec3f>> &seg_vol, std::vector<std::vector<cv::Vec2f>> &seg_grid, const cv::Mat_<cv::Vec3f> &points, PlaneSurface *plane, const cv::Rect &plane_roi, float step, int min_tries)
+
+
+static void extend_segment_direction(
+    std::vector<cv::Vec3f>& seg,
+    std::vector<cv::Vec2f>& seg_loc,
+    const cv::Mat_<cv::Vec3f>& points,
+    PlaneSurface* plane,
+    cv::Mat_<uint8_t>& block,
+    const cv::Rect& plane_roi,
+    const cv::Rect& grid_bounds,
+    float step,
+    float block_step,
+    bool reverse = false)
 {
-    //start with random points and search for a plane intersection
+    if (seg.size() < 2) return;
 
-    float block_step = 0.5*step;
+    // Set up initial points based on direction
+    size_t idx1 = reverse ? 0 : seg.size() - 2;
+    size_t idx2 = reverse ? 1 : seg.size() - 1;
 
-    cv::Mat_<uint8_t> block(cv::Size(plane_roi.width/block_step, plane_roi.height/block_step), 0);
+    cv::Vec2f loc = seg_loc[idx1];
+    cv::Vec2f loc2 = seg_loc[idx2];
+    cv::Vec3f point = seg[idx1];
+    cv::Vec3f point2 = seg[idx2];
 
-    cv::Rect grid_bounds(1,1,points.cols-2,points.rows-2);
+    cv::Vec3f last_plane_loc = plane->project(point2);
 
+    // Pre-allocate space for efficiency
+    if (!reverse) {
+        seg.reserve(seg.size() + 100);
+        seg_loc.reserve(seg_loc.size() + 100);
+    }
+
+    // Cache for min_loc optimization
+    std::vector<cv::Vec3f> target_points;
+    std::vector<float> target_dists;
+    target_points.reserve(3);
+    target_dists.reserve(3);
+
+    for (int n = 0; n < 100; n++) {
+        // Predict next point location
+        cv::Vec2f loc3 = 2 * loc2 - loc;
+
+        if (!grid_bounds.contains(cv::Point(loc3))) break;
+
+        cv::Vec3f point3 = at_int(points, loc3);
+
+        // Optimize min_loc calls by combining them
+        target_points.clear();
+        target_dists.clear();
+        target_points = {point, point2, point3};
+        target_dists = {2*step, step, 0};
+
+        float dist = min_loc(points, loc3, point3, target_points, target_dists, plane, 0.01, 0.0001);
+
+        if (dist < 0 || dist > 1 || !loc_valid_xy(points, loc3)) break;
+
+        cv::Vec3f plane_loc = plane->project(point3);
+        if (get_block(block, plane_loc, plane_roi, block_step)) break;
+
+        set_block(block, last_plane_loc, plane_loc, plane_roi, block_step);
+
+        if (reverse) {
+            seg.insert(seg.begin(), point3);
+            seg_loc.insert(seg_loc.begin(), loc3);
+        } else {
+            seg.push_back(point3);
+            seg_loc.push_back(loc3);
+        }
+
+        // Update for next iteration
+        point = point2;
+        point2 = point3;
+        loc = loc2;
+        loc2 = loc3;
+        last_plane_loc = plane_loc;
+    }
+}
+
+void find_intersect_segments(
+    std::vector<std::vector<cv::Vec3f>>& seg_vol,
+    std::vector<std::vector<cv::Vec2f>>& seg_grid,
+    const cv::Mat_<cv::Vec3f>& points,
+    PlaneSurface* plane,
+    const cv::Rect& plane_roi,
+    float step,
+    int min_tries)
+{
+    // Pre-allocate output vectors
+    seg_vol.clear();
+    seg_grid.clear();
+    const int estimated_segments = std::max(min_tries, std::max(points.cols, points.rows) / 50);
+    seg_vol.reserve(estimated_segments * 2);  // Account for splitting
+    seg_grid.reserve(estimated_segments * 2);
+
+    // Initialize block grid for tracking visited areas
+    const float block_step = 0.5f * step;
+    cv::Mat_<uint8_t> block(cv::Size(
+        static_cast<int>(plane_roi.width / block_step),
+        static_cast<int>(plane_roi.height / block_step)), 0);
+
+    const cv::Rect grid_bounds(1, 1, points.cols - 2, points.rows - 2);
+
+    // Use modern random number generator for better performance and quality
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_int_distribution<> dist_x(0, points.cols - 2);
+    std::uniform_int_distribution<> dist_y(0, points.rows - 2);
+
+    // Temporary storage for raw segments
     std::vector<std::vector<cv::Vec3f>> seg_vol_raw;
     std::vector<std::vector<cv::Vec2f>> seg_grid_raw;
+    seg_vol_raw.reserve(estimated_segments);
+    seg_grid_raw.reserve(estimated_segments);
 
-    for(int r=0;r<std::max(min_tries, std::max(points.cols,points.rows)/100);r++) {
-        std::vector<cv::Vec3f> seg;
-        std::vector<cv::Vec2f> seg_loc;
-        std::vector<cv::Vec3f> seg2;
-        std::vector<cv::Vec2f> seg_loc2;
-        cv::Vec2f loc;
-        cv::Vec2f loc2;
-        cv::Vec2f loc3;
-        cv::Vec3f point;
-        cv::Vec3f point2;
-        cv::Vec3f point3;
-        cv::Vec3f plane_loc;
-        cv::Vec3f last_plane_loc;
+    const int num_attempts = std::max(min_tries, std::max(points.cols, points.rows) / 100);
+    const float initial_search_radius = std::min(static_cast<float>(points.cols),
+                                                 static_cast<float>(points.rows)) * 0.1f;
+
+    for (int r = 0; r < num_attempts; r++) {
+        cv::Vec2f loc, loc2;
+        cv::Vec3f point, point2;
         float dist = -1;
 
-
-        //initial points
-        for(int i=0;i<std::max(min_tries, std::max(points.cols,points.rows)/100);i++) {
-            loc = {std::rand() % (points.cols-1), std::rand() % (points.rows-1)};
+        // Find initial point on plane
+        for (int i = 0; i < num_attempts; i++) {
+            loc = cv::Vec2f(dist_x(gen), dist_y(gen));
             point = at_int(points, loc);
 
-            plane_loc = plane->project(point);
-            if (!plane_roi.contains(cv::Point(plane_loc[0],plane_loc[1])))
+            cv::Vec3f plane_loc = plane->project(point);
+            if (!plane_roi.contains(cv::Point(plane_loc[0], plane_loc[1])))
                 continue;
 
-                dist = min_loc(points, loc, point, {}, {}, plane, std::min(points.cols,points.rows)*0.1, 0.01);
+            dist = min_loc(points, loc, point, {}, {}, plane, initial_search_radius, 0.01);
 
-                plane_loc = plane->project(point);
-                if (!plane_roi.contains(cv::Point(plane_loc[0],plane_loc[1])))
-                    dist = -1;
+            plane_loc = plane->project(point);
+            if (!plane_roi.contains(cv::Point(plane_loc[0], plane_loc[1]))) {
+                dist = -1;
+                continue;
+            }
 
-                if (get_block(block, plane_loc, plane_roi, block_step))
-                    dist = -1;
+            if (get_block(block, plane_loc, plane_roi, block_step)) {
+                dist = -1;
+                continue;
+            }
 
-            if (dist >= 0 && dist <= 1 || !loc_valid_xy(points, loc))
+            if ((dist >= 0 && dist <= 1) || !loc_valid_xy(points, loc))
                 break;
         }
 
+        if (dist < 0 || dist > 1) continue;
 
-        if (dist < 0 || dist > 1)
-            continue;
+        // Initialize segment with first point
+        std::vector<cv::Vec3f> seg;
+        std::vector<cv::Vec2f> seg_loc;
+        seg.reserve(200);  // Pre-allocate for efficiency
+        seg_loc.reserve(200);
 
         seg.push_back(point);
         seg_loc.push_back(loc);
 
-        //point2
+        // Find second point at distance 1
         loc2 = loc;
-        //search point at distance of 1 to init point
         dist = min_loc(points, loc2, point2, {point}, {1}, plane, 0.01, 0.0001);
 
-        if (dist < 0 || dist > 1 || !loc_valid_xy(points, loc))
+        if (dist < 0 || dist > 1 || !loc_valid_xy(points, loc2))
             continue;
 
         seg.push_back(point2);
         seg_loc.push_back(loc2);
 
-        last_plane_loc = plane->project(point);
-        plane_loc = plane->project(point2);
+        // Mark initial segment in block grid
+        cv::Vec3f last_plane_loc = plane->project(point);
+        cv::Vec3f plane_loc = plane->project(point2);
         set_block(block, last_plane_loc, plane_loc, plane_roi, block_step);
-        last_plane_loc = plane_loc;
 
-        //go one direction
-        for(int n=0;n<100;n++) {
-            //now search following points
-            cv::Vec2f loc3 = loc2+loc2-loc;
+        // Extend segment in forward direction
+        extend_segment_direction(seg, seg_loc, points, plane, block,
+                               plane_roi, grid_bounds, step, block_step, false);
 
-            if (!grid_bounds.contains(cv::Point(loc3)))
-                break;
+        // Extend segment in reverse direction
+        extend_segment_direction(seg, seg_loc, points, plane, block,
+                               plane_roi, grid_bounds, step, block_step, true);
 
-                point3 = at_int(points, loc3);
-
-                //search point close to prediction + dist 1 to last point
-                dist = min_loc(points, loc3, point3, {point,point2,point3}, {2*step,step,0}, plane, 0.01, 0.0001);
-
-                //then refine
-                dist = min_loc(points, loc3, point3, {point2}, {step}, plane, 0.01, 0.0001);
-
-                if (dist < 0 || dist > 1 || !loc_valid_xy(points, loc))
-                    break;
-
-            seg.push_back(point3);
-            seg_loc.push_back(loc3);
-            point = point2;
-            point2 = point3;
-            loc = loc2;
-            loc2 = loc3;
-
-            plane_loc = plane->project(point3);
-            if (get_block(block, plane_loc, plane_roi, block_step))
-                break;
-
-            set_block(block, last_plane_loc, plane_loc, plane_roi, block_step);
-            last_plane_loc = plane_loc;
+        if (seg.size() >= 2) {
+            seg_vol_raw.push_back(std::move(seg));
+            seg_grid_raw.push_back(std::move(seg_loc));
         }
-
-        //now the other direction
-        loc2 = seg_loc[0];
-        loc = seg_loc[1];
-        point2 = seg[0];
-        point = seg[1];
-
-        last_plane_loc = plane->project(point2);
-
-        //FIXME repeat by not copying code ...
-        for(int n=0;n<100;n++) {
-            //now search following points
-            cv::Vec2f loc3 = loc2+loc2-loc;
-
-            if (!grid_bounds.contains(cv::Point(loc3[0])))
-                break;
-
-                point3 = at_int(points, loc3);
-
-                //search point close to prediction + dist 1 to last point
-                dist = min_loc(points, loc3, point3, {point,point2,point3}, {2*step,step,0}, plane, 0.01, 0.0001);
-
-                //then refine
-                dist = min_loc(points, loc3, point3, {point2}, {step}, plane, 0.01, 0.0001);
-
-                if (dist < 0 || dist > 1 || !loc_valid_xy(points, loc))
-                    break;
-
-            seg2.push_back(point3);
-            seg_loc2.push_back(loc3);
-            point = point2;
-            point2 = point3;
-            loc = loc2;
-            loc2 = loc3;
-
-            plane_loc = plane->project(point3);
-            if (get_block(block, plane_loc, plane_roi, block_step))
-                break;
-
-            set_block(block, last_plane_loc, plane_loc, plane_roi, block_step);
-            last_plane_loc = plane_loc;
-        }
-
-        std::reverse(seg2.begin(), seg2.end());
-        std::reverse(seg_loc2.begin(), seg_loc2.end());
-
-        seg2.insert(seg2.end(), seg.begin(), seg.end());
-        seg_loc2.insert(seg_loc2.end(), seg_loc.begin(), seg_loc.end());
-
-
-        seg_vol_raw.push_back(seg2);
-        seg_grid_raw.push_back(seg_loc2);
     }
 
-    //split up into disconnected segments
-    for(int s=0;s<seg_vol_raw.size();s++) {
+    // Split disconnected segments more efficiently
+    const float disconnect_threshold = 2 * step;
+    for (size_t s = 0; s < seg_vol_raw.size(); s++) {
         std::vector<cv::Vec3f> seg_vol_curr;
         std::vector<cv::Vec2f> seg_grid_curr;
-        cv::Vec3f last = {-1,-1,-1};
-        for(int n=0;n<seg_vol_raw[s].size();n++) {
-                if (last[0] != -1 && cv::norm(last-seg_vol_raw[s][n]) >= 2*step) {
-                seg_vol.push_back(seg_vol_curr);
-                seg_grid.push_back(seg_grid_curr);
-                seg_vol_curr.resize(0);
-                seg_grid_curr.resize(0);
+        seg_vol_curr.reserve(seg_vol_raw[s].size());
+        seg_grid_curr.reserve(seg_grid_raw[s].size());
+
+        cv::Vec3f last(-1, -1, -1);
+
+        for (size_t n = 0; n < seg_vol_raw[s].size(); n++) {
+            if (last[0] != -1 && cv::norm(last - seg_vol_raw[s][n]) >= disconnect_threshold) {
+                // Save current segment if it has at least 2 points
+                if (seg_vol_curr.size() >= 2) {
+                    seg_vol.push_back(std::move(seg_vol_curr));
+                    seg_grid.push_back(std::move(seg_grid_curr));
+                    seg_vol_curr.clear();
+                    seg_grid_curr.clear();
+                    seg_vol_curr.reserve(seg_vol_raw[s].size() - n);
+                    seg_grid_curr.reserve(seg_grid_raw[s].size() - n);
+                }
             }
+
             last = seg_vol_raw[s][n];
             seg_vol_curr.push_back(seg_vol_raw[s][n]);
             seg_grid_curr.push_back(seg_grid_raw[s][n]);
         }
+
+        // Don't forget the last segment
         if (seg_vol_curr.size() >= 2) {
-            seg_vol.push_back(seg_vol_curr);
-            seg_grid.push_back(seg_grid_curr);
+            seg_vol.push_back(std::move(seg_vol_curr));
+            seg_grid.push_back(std::move(seg_grid_curr));
         }
     }
 }
