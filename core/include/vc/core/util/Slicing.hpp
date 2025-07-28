@@ -1,7 +1,7 @@
 #pragma once
 
 #include "vc/core/util/xtensor_include.hpp"
-#include XTENSORINCLUDE(containers, xarray.hpp)
+#include "xtensor/containers/xarray.hpp"
 #include <opencv2/core.hpp>
 
 #include <shared_mutex>

@@ -10,6 +10,8 @@
 #include <opencv2/core.hpp>
 #include <thread>
 
+#define VC_VERSION "3.0.2"
+
 using namespace ChaoVis;
 
 namespace vc = volcart;
@@ -22,7 +24,7 @@ auto main(int argc, char* argv[]) -> int
     QApplication::setOrganizationName("EduceLab");
     QApplication::setApplicationName("VC3D");
     QApplication::setWindowIcon(QIcon(":/images/logo.png"));
-    QApplication::setApplicationVersion(QString::fromStdString(vc::ProjectInfo::VersionString()));
+    QApplication::setApplicationVersion(QString::fromStdString(VC_VERSION));
 
     CWindow aWin;
     aWin.show();
