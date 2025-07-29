@@ -21,6 +21,7 @@
 #include <QThread>
 #include <QStandardItemModel>
 #include <QtConcurrent/QtConcurrent>
+#include <QComboBox>
 #include <QFutureWatcher>
 #include <atomic>
 #include <omp.h>
@@ -465,6 +466,10 @@ void CWindow::CreateWidgets(void)
    cmbPointSetFilter = ui.cmbPointSetFilter;
    btnPointSetFilterAll = ui.btnPointSetFilterAll;
    btnPointSetFilterNone = ui.btnPointSetFilterNone;
+    cmbPointSetFilterMode = new QComboBox();
+    cmbPointSetFilterMode->addItem("Any (OR)");
+    cmbPointSetFilterMode->addItem("All (AND)");
+    ui.pointSetFilterLayout->insertWidget(1, cmbPointSetFilterMode);
     chkFilterUnreviewed = ui.chkFilterUnreviewed;
     chkFilterRevisit = ui.chkFilterRevisit;
     chkFilterNoExpansion = ui.chkFilterNoExpansion;
@@ -1646,26 +1651,28 @@ void CWindow::onSegFilterChanged(int index)
                }
 
                if (any_checked) {
-                   bool contains_all = true;
+                   bool match = false;
+                   bool all_match = true;
                    for (int i = 0; i < cmbPointSetFilter->count(); ++i) {
                        if (cmbPointSetFilter->itemData(i, Qt::CheckStateRole) == Qt::Checked) {
-                           std::string collectionName = cmbPointSetFilter->itemText(i).toStdString();
-                           auto get_points_as_vec3f = [&](const std::string& name) {
-                               std::vector<cv::Vec3f> points;
-                               auto collection = _point_collection->getPoints(name);
-                               points.reserve(collection.size());
-                               for (const auto& p : collection) {
-                                   points.push_back(p.p);
-                               }
-                               return points;
-                           };
-                           if (!contains(*_vol_qsurfs[id], get_points_as_vec3f(collectionName))) {
-                               contains_all = false;
-                               break;
+                           std::vector<cv::Vec3f> points;
+                           auto collection = _point_collection->getPoints(cmbPointSetFilter->itemText(i).toStdString());
+                           points.reserve(collection.size());
+                           for (const auto& p : collection) {
+                               points.push_back(p.p);
                            }
+                           if (all_match && !contains(*_vol_qsurfs[id], points))
+                               all_match = false;
+                           if (!match && contains_any(*_vol_qsurfs[id], points))
+                               match = true;
+
                        }
                    }
-                   show = show && contains_all;
+                   if (cmbPointSetFilterMode->currentIndex() == 0) { // Any (OR)
+                       show = show && match;
+                   } else { // All (AND)
+                       show = show && all_match;
+                   }
                }
            }
             

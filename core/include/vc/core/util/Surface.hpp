@@ -233,6 +233,7 @@ Rect3D rect_from_json(const nlohmann::json &json);
 bool overlap(SurfaceMeta &a, SurfaceMeta &b, int max_iters = 1000);
 bool contains(SurfaceMeta &a, const cv::Vec3f &loc, int max_iters = 1000);
 bool contains(SurfaceMeta &a, const std::vector<cv::Vec3f> &locs);
+bool contains_any(SurfaceMeta &a, const std::vector<cv::Vec3f> &locs);
 
 //TODO constrain to visible area? or add visible area display?
 void find_intersect_segments(std::vector<std::vector<cv::Vec3f>> &seg_vol, std::vector<std::vector<cv::Vec2f>> &seg_grid, const cv::Mat_<cv::Vec3f> &points, PlaneSurface *plane, const cv::Rect &plane_roi, float step, int min_tries = 10);

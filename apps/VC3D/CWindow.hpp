@@ -4,6 +4,7 @@
 #include <cstdint>
 
 #include <opencv2/core.hpp>
+#include <QComboBox>
 #include "ui_VCMain.h"
 
 #include "CommandLineToolRunner.hpp"
@@ -196,7 +197,8 @@ private:
    QComboBox* cmbPointSetFilter;
    QPushButton* btnPointSetFilterAll;
    QPushButton* btnPointSetFilterNone;
-    QCheckBox* chkFilterUnreviewed;
+   QComboBox* cmbPointSetFilterMode;
+   QCheckBox* chkFilterUnreviewed;
     QCheckBox* chkFilterRevisit;
     QCheckBox* chkFilterNoExpansion;
     QCheckBox* chkFilterNoDefective;
