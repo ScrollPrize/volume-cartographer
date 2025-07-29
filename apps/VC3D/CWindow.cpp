@@ -490,6 +490,7 @@ void CWindow::CreateWidgets(void)
        onSegFilterChanged(0);
    });
     connect(chkFilterUnreviewed, &QCheckBox::toggled, [this]() { onSegFilterChanged(0); });
+    connect(cmbPointSetFilterMode, &QComboBox::currentIndexChanged, this, [this]() { onSegFilterChanged(0); });
     connect(chkFilterRevisit, &QCheckBox::toggled, [this]() { onSegFilterChanged(0); });
     connect(chkFilterNoExpansion, &QCheckBox::toggled, [this]() { onSegFilterChanged(0); });
     connect(chkFilterNoDefective, &QCheckBox::toggled, [this]() { onSegFilterChanged(0); });
