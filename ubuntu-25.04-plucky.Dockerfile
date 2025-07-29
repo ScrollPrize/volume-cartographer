@@ -27,7 +27,7 @@ RUN dpkg -i /src/build/pkgs/vc3d*.deb
 
 FROM base as gimp
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get -y install \
-    gimp \
+    gimp desktop-file-utils \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
