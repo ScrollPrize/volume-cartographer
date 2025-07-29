@@ -26,6 +26,7 @@ find_package(nlohmann_json REQUIRED)
 find_package(Boost REQUIRED COMPONENTS system program_options)
 find_package(absl REQUIRED)
 find_package(Ceres REQUIRED)
+find_package(VTK REQUIRED)
 
 find_library(BLOSC_LIBRARY blosc PATHS "/home/forrest/ceres-install/lib")
 find_package(LibLZMA REQUIRED)
@@ -45,7 +46,7 @@ set(LIBRARIES
         Ceres::ceres
         ${METIS_LIBRARY}
         ${GKLIB_LIBRARY}
-        Boost::program_options
+        #Boost::program_options
         spdlog::spdlog
         ${BLOSC_LIBRARY}
         LibLZMA::LibLZMA)

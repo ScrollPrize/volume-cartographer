@@ -1,5 +1,5 @@
 add_subdirectory(VC3D)
-#add_subdirectory(Canny)
+add_subdirectory(Canny)
 
 add_executable(vc_render_video src/vc_render_video.cpp)
 target_link_libraries(vc_render_video

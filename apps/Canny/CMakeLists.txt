@@ -52,10 +52,8 @@ target_include_directories(${target}
         ${CMAKE_CURRENT_BINARY_DIR}
 )
 target_link_libraries(${target}
-    VC::app_support
-    VC::core
-    VC::gui_support
-    VC::meshing
+    vc_core
+    vc_meshing
     ${VC_FS_LIB}
     VTK::CommonCore
     VTK::CommonDataModel
@@ -68,18 +66,3 @@ target_link_libraries(${target}
     Qt6::Widgets
 )
 
-if (${VC_INSTALL_APPS})
-    install(
-        TARGETS ${target}
-        BUNDLE DESTINATION . COMPONENT Programs
-        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT Programs
-    )
-
-    #FIXME make it work on qt 6.2
-    qt_generate_deploy_app_script(
-        TARGET ${target}
-        OUTPUT_SCRIPT canny_gui_deploy_script
-        NO_UNSUPPORTED_PLATFORM_ERROR
-    )
-    install(SCRIPT ${canny_gui_deploy_script} COMPONENT Programs)
-endif()
