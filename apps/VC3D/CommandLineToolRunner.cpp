@@ -11,7 +11,7 @@ namespace ChaoVis {
 CommandLineToolRunner::CommandLineToolRunner(QStatusBar* statusBar, CWindow* mainWindow, QObject* parent)
     : QObject(parent)
     , _mainWindow(mainWindow)
-    , _progressUtil(new ProgressUtil(statusBar, this))
+    , _progressUtil(new ProgressUtil(nullptr, this))
     , _process(nullptr)
     , _consoleOutput(new ConsoleOutputWidget())
     , _consoleDialog(new QDialog(nullptr, Qt::Window))
@@ -309,7 +309,7 @@ void CommandLineToolRunner::onProcessReadyRead()
 void CommandLineToolRunner::onProcessStarted()
 {
     QString message = tr("Running %1...").arg(toolName(_currentTool));
-    _progressUtil->startAnimation(message);
+    if (_progressUtil) _progressUtil->startAnimation(message);
 }
 
 void CommandLineToolRunner::onProcessFinished(int exitCode, QProcess::ExitStatus exitStatus)
@@ -324,9 +324,9 @@ void CommandLineToolRunner::onProcessFinished(int exitCode, QProcess::ExitStatus
         
         if (copyToClipboard) {
             QApplication::clipboard()->setText(outputPath);
-            _progressUtil->stopAnimation(message + tr(" - Path copied to clipboard"));
+            if (_progressUtil) _progressUtil->stopAnimation(message + tr(" - Path copied to clipboard"));
         } else {
-            _progressUtil->stopAnimation(message);
+            if (_progressUtil) _progressUtil->stopAnimation(message);
         }
         
         emit toolFinished(_currentTool, true, message, outputPath, copyToClipboard);
@@ -335,7 +335,7 @@ void CommandLineToolRunner::onProcessFinished(int exitCode, QProcess::ExitStatus
                                 .arg(toolName(_currentTool))
                                 .arg(exitCode);
         
-        _progressUtil->stopAnimation(tr("Process failed"));
+        if (_progressUtil) _progressUtil->stopAnimation(tr("Process failed"));
         
         emit toolFinished(_currentTool, false, errorMessage, QString(), false);
     }
@@ -360,7 +360,7 @@ void CommandLineToolRunner::onProcessError(QProcess::ProcessError error)
     QStringList args = buildArguments(_currentTool);
     errorMessage += tr("\nArguments: %1").arg(args.join(" "));
     
-    _progressUtil->stopAnimation(tr("Process failed"));
+    if (_progressUtil) _progressUtil->stopAnimation(tr("Process failed"));
     
     emit toolFinished(_currentTool, false, errorMessage, QString(), false);
     

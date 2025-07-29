@@ -187,6 +187,8 @@ CWindow::CWindow() :
 // Destructor
 CWindow::~CWindow(void)
 {
+    setStatusBar(nullptr);
+
     CloseVolume();
     delete chunk_cache;
     delete _surf_col;
@@ -421,9 +423,6 @@ void CWindow::CreateWidgets(void)
 
     cmbSegmentationDir = ui.cmbSegmentationDir;
     connect(cmbSegmentationDir, &QComboBox::currentIndexChanged, this, &CWindow::onSegmentationDirChanged);
-
-    // Set up the status bar
-    statusBar = ui.statusBar;
 
     // Location input elements (now QLineEdit for manual entry)
     lblLoc[0] = ui.sliceX;
@@ -810,7 +809,7 @@ void CWindow::UpdateVolpkgLabel(int filterCounter)
 
 void CWindow::onShowStatusMessage(QString text, int timeout)
 {
-    statusBar->showMessage(text, timeout);
+    statusBar()->showMessage(text, timeout);
 }
 
 fs::path seg_path_name(const fs::path &path)
@@ -1794,7 +1793,7 @@ void CWindow::onSurfaceContextMenuRequested(const QPoint& pos)
         if (_vol_qsurfs.count(segmentId)) {
             QString path = QString::fromStdString(_vol_qsurfs[segmentId]->path.string());
             QApplication::clipboard()->setText(path);
-            statusBar->showMessage(tr("Copied segment path to clipboard: %1").arg(path), 3000);
+            statusBar()->showMessage(tr("Copied segment path to clipboard: %1").arg(path), 3000);
         }
     });
     
@@ -1912,7 +1911,7 @@ void CWindow::onSegmentationDirChanged(int index)
         LoadSurfaces(false);
         
         // Update the status bar to show the change
-        statusBar->showMessage(tr("Switched to %1 directory").arg(QString::fromStdString(newDir)), 3000);
+        statusBar()->showMessage(tr("Switched to %1 directory").arg(QString::fromStdString(newDir)), 3000);
     }
 }
 

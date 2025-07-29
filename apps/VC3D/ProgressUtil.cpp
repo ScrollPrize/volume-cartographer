@@ -30,7 +30,7 @@ void ProgressUtil::startAnimation(const QString& message)
         connect(_animTimer, &QTimer::timeout, this, &ProgressUtil::updateAnimation);
     }
     
-    _statusBar->showMessage(message + " |", 0); // 0 timeout means it stays until changed
+    if (_statusBar) _statusBar->showMessage(message + " |", 0); // 0 timeout means it stays until changed
     _animTimer->start(300); // updates every 300 ms 
 }
 
@@ -40,14 +40,14 @@ void ProgressUtil::stopAnimation(const QString& message, int timeout)
         _animTimer->stop();
     }
     
-    _statusBar->showMessage(message, timeout);
+    if (_statusBar) _statusBar->showMessage(message, timeout);
 }
 
 void ProgressUtil::updateAnimation()
 {
     static const QChar animChars[] = {'|', '/', '-', '\\'};
     _animFrame = (_animFrame + 1) % 4;
-    _statusBar->showMessage(_message + " " + animChars[_animFrame], 0);
+    if (_statusBar) _statusBar->showMessage(_message + " " + animChars[_animFrame], 0);
 }
 
 } // namespace ChaoVis
