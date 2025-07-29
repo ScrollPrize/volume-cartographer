@@ -231,7 +231,6 @@ private:
 
     Ui_VCMainWindow ui;
     QMdiArea *mdiArea;
-    QStatusBar* statusBar;
 
     bool can_change_volume_();
     

@@ -64,8 +64,11 @@ public:
     void setCompositeAlphaThreshold(int value);
     void setCompositeMaterial(int value);
     void setCompositeReverseDirection(bool reverse);
+    void setResetViewOnSurfaceChange(bool reset);
     bool isCompositeEnabled() const { return _composite_enabled; }
-    
+
+    void fitSurfaceInView();
+
     // Get current scale for coordinate transformation
     float getCurrentScale() const { return _scale; }
     // Transform scene coordinates to volume coordinates
@@ -198,6 +201,7 @@ protected:
     bool _drawingModeActive = false;
     float _brushSize = 3.0f;
     bool _brushIsSquare = false;
+    bool _resetViewOnSurfaceChange = true;
 };  // class CVolumeViewer
 
 }  // namespace ChaoVis

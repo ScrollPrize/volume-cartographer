@@ -191,6 +191,8 @@ CWindow::CWindow() :
 // Destructor
 CWindow::~CWindow(void)
 {
+    setStatusBar(nullptr);
+
     CloseVolume();
     delete chunk_cache;
     delete _surf_col;
@@ -215,7 +217,12 @@ CVolumeViewer *CWindow::newConnectedCVolumeViewer(std::string surfaceName, QStri
     connect(_surf_col, &CSurfaceCollection::sendIntersectionChanged, volView, &CVolumeViewer::onIntersectionChanged);
     connect(volView, &CVolumeViewer::sendVolumeClicked, this, &CWindow::onVolumeClicked);
     connect(this, &CWindow::sendVolumeClosing, volView, &CVolumeViewer::onVolumeClosing);
-    
+
+    QSettings settings("VC.ini", QSettings::IniFormat);
+    bool resetViewOnSurfaceChange = settings.value("viewer/reset_view_on_surface_change", true).toBool();
+    volView->setResetViewOnSurfaceChange(resetViewOnSurfaceChange);
+
+
     volView->setSurface(surfaceName);
     
     _viewers.push_back(volView);
@@ -486,9 +493,6 @@ void CWindow::CreateWidgets(void)
     cmbSegmentationDir = ui.cmbSegmentationDir;
     connect(cmbSegmentationDir, &QComboBox::currentIndexChanged, this, &CWindow::onSegmentationDirChanged);
 
-    // Set up the status bar
-    statusBar = ui.statusBar;
-
     // Location input elements (now QLineEdit for manual entry)
     lblLoc[0] = ui.sliceX;
     lblLoc[1] = ui.sliceY;
@@ -635,7 +639,10 @@ void CWindow::CreateWidgets(void)
             }
         }
     });
-    
+    bool resetViewOnSurfaceChange = settings.value("viewer/reset_view_on_surface_change", true).toBool();
+    for (auto& viewer : _viewers) {
+        viewer->setResetViewOnSurfaceChange(resetViewOnSurfaceChange);
+    }
 }
 
 // Create menus
@@ -871,7 +878,7 @@ void CWindow::UpdateVolpkgLabel(int filterCounter)
 
 void CWindow::onShowStatusMessage(QString text, int timeout)
 {
-    statusBar->showMessage(text, timeout);
+    statusBar()->showMessage(text, timeout);
 }
 
 fs::path seg_path_name(const fs::path &path)
@@ -1628,7 +1635,7 @@ void CWindow::onSegFilterChanged(int index)
                 show = show && contains(*_vol_qsurfs[id], poi->p);
             }
             
-            // Filter by point sets (red and blue points)
+            // Filter by point sets
            if (cmbPointSetFilter->currentIndex() != -1) {
                bool any_checked = false;
                for (int i = 0; i < cmbPointSetFilter->count(); ++i) {
@@ -1850,7 +1857,7 @@ void CWindow::onSurfaceContextMenuRequested(const QPoint& pos)
         if (_vol_qsurfs.count(segmentId)) {
             QString path = QString::fromStdString(_vol_qsurfs[segmentId]->path.string());
             QApplication::clipboard()->setText(path);
-            statusBar->showMessage(tr("Copied segment path to clipboard: %1").arg(path), 3000);
+            statusBar()->showMessage(tr("Copied segment path to clipboard: %1").arg(path), 3000);
         }
     });
     
@@ -1968,7 +1975,7 @@ void CWindow::onSegmentationDirChanged(int index)
         LoadSurfaces(false);
         
         // Update the status bar to show the change
-        statusBar->showMessage(tr("Switched to %1 directory").arg(QString::fromStdString(newDir)), 3000);
+        statusBar()->showMessage(tr("Switched to %1 directory").arg(QString::fromStdString(newDir)), 3000);
     }
 }
 
