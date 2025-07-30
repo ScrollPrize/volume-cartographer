@@ -86,8 +86,11 @@ CVolumeViewer::~CVolumeViewer(void)
 
 void round_scale(float &scale)
 {
-    if (abs(scale-round(log2(scale))) < 0.02)
+    if (abs(scale-round(log2(scale))) < 0.02f)
         scale = pow(2,round(log2(scale)));
+    // the most reduced OME zarr projection is 32x so make the min zoom out 1/32 = 0.03125
+    if (scale < 0.03125f) scale = 0.03125f;
+    if (scale > 4.0f) scale = 4.0f;
 }
 
 //get center of current visible area in scene coordinates
@@ -150,7 +153,6 @@ void CVolumeViewer::onCursorMove(QPointF scene_loc)
 
 void CVolumeViewer::recalcScales()
 {
-
     float old_ds = _ds_scale;         // remember previous level
     // if (dynamic_cast<PlaneSurface*>(_surf))
     _min_scale = pow(2.0,1.-volume->numScales());
@@ -210,29 +212,33 @@ void CVolumeViewer::onZoom(int steps, QPointF scene_loc, Qt::KeyboardModifiers m
         renderVisible(true);
     }
     else {
-        // 1) compute our zoom factor
         float zoom = pow(ZOOM_FACTOR, steps);
 
-        // 2) remember the current center in scene-coords
-        QPointF sceneCenter = visible_center(fGraphicsView);
-
-        // 3) actually apply it to the view’s transform
-        fGraphicsView->setTransformationAnchor(QGraphicsView::AnchorUnderMouse);
-        fGraphicsView->scale(zoom, zoom);
-        // force a repaint so drawForeground() runs immediately
-        fGraphicsView->viewport()->update();
-
-        // 4) update your internal “resolution” scale and re-render at new detail
+        // update the scale used when projecting voxels to scene space
         _scale *= zoom;
         round_scale(_scale);
         recalcScales();
 
+        // Cache the view-space mouse position; used later for cursor update
+        QPoint pointViewportBefore = fGraphicsView->mapFromScene(scene_loc);
+
+        // The above scale is *not* part of Qt's scene-to-view transform, but part of the voxel-to-scene transform
+        // implemented in PlaneSurface::project; it causes a zoom around the surface origin
+        // Translations are represented in the Qt scene-to-view transform; these move the surface origin within the viewpoint
+        // To zoom centered on the mouse, we adjust the scene-to-view translation appropriately
+        // If the mouse were at the plane/surface origin, this adjustment should be zero
+        // If the mouse were right of the plane origin, should translate to the left so that point ends up where it was
+        fGraphicsView->translate(scene_loc.x() * (1 - zoom), scene_loc.y() * (1 - zoom));
+
+        // Update the cursor (which lives in scene space) to still lie under the mouse even after the above translation
+        QPointF pointSceneAfter = fGraphicsView->mapToScene(pointViewportBefore);
+        onCursorMove(pointSceneAfter);
+
         curr_img_area = {0,0,0,0};
-        // 5) re-center on the same scene point
+        // Update scene rect
         //FIXME get correct size for slice!
         int max_size = 100000; //std::max(volume->sliceWidth(), std::max(volume->numSlices(), volume->sliceHeight()))*_ds_scale + 512;
         fGraphicsView->setSceneRect(-max_size/2, -max_size/2, max_size, max_size);
-        fGraphicsView->centerOn(sceneCenter);
         renderVisible();
     }
 
@@ -370,6 +376,72 @@ void CVolumeViewer::setIntersects(const std::set<std::string> &set)
     renderIntersections();
 }
 
+void CVolumeViewer::fitSurfaceInView()
+{
+    if (!_surf || !fGraphicsView) {
+        return;
+    }
+
+    Rect3D bbox;
+    bool haveBounds = false;
+
+    if (auto* quadSurf = dynamic_cast<QuadSurface*>(_surf)) {
+        bbox = quadSurf->bbox();
+        haveBounds = true;
+    } else if (auto* opChain = dynamic_cast<OpChain*>(_surf)) {
+        QuadSurface* src = opChain->src();
+        if (src) {
+            bbox = src->bbox();
+            haveBounds = true;
+        }
+    }
+
+    if (!haveBounds) {
+        // when we can't get bounds, just reset to a default view
+        _scale = 1.0f;
+        recalcScales();
+        fGraphicsView->resetTransform();
+        fGraphicsView->centerOn(0, 0);
+        _lbl->setText(QString("%1x %2").arg(_scale).arg(_z_off));
+        return;
+    }
+
+    // Calculate the actual dimensions of the bounding box
+    float bboxWidth = bbox.high[0] - bbox.low[0];
+    float bboxHeight = bbox.high[1] - bbox.low[1];
+
+    if (bboxWidth <= 0 || bboxHeight <= 0) {
+        return;
+    }
+
+    QSize viewportSize = fGraphicsView->viewport()->size();
+    float viewportWidth = viewportSize.width();
+    float viewportHeight = viewportSize.height();
+
+    if (viewportWidth <= 0 || viewportHeight <= 0) {
+        return;
+    }
+
+    // Calculate scale factor based on actual bbox dimensions
+    float fit_factor = 0.8f;
+    float required_scale_x = (viewportWidth * fit_factor) / bboxWidth;
+    float required_scale_y = (viewportHeight * fit_factor) / bboxHeight;
+
+    // Use the smaller scale to ensure the entire bbox fits
+    float required_scale = std::min(required_scale_x, required_scale_y);
+
+    _scale = required_scale;
+    round_scale(_scale);
+    recalcScales();
+
+    fGraphicsView->resetTransform();
+    fGraphicsView->centerOn(0, 0);
+
+    _lbl->setText(QString("%1x %2").arg(_scale).arg(_z_off));
+    curr_img_area = {0,0,0,0};
+}
+
+
 void CVolumeViewer::onSurfaceChanged(std::string name, Surface *surf)
 {
     if (_surf_name == name) {
@@ -388,6 +460,7 @@ void CVolumeViewer::onSurfaceChanged(std::string name, Surface *surf)
         }
         else {
             invalidateVis();
+            if (name == "segmentation" && _resetViewOnSurfaceChange) {fitSurfaceInView();}
         }
     }
 
@@ -535,14 +608,26 @@ cv::Mat CVolumeViewer::render_area(const cv::Rect &roi)
     cv::Mat_<uint8_t> img;
 
     // Check if we should use composite rendering
-    if (_surf_name == "segmentation" && _composite_enabled && _composite_layers > 1) {
+    if (_surf_name == "segmentation" && _composite_enabled && (_composite_layers_front > 0 || _composite_layers_behind > 0)) {
         // Composite rendering for segmentation view
         cv::Mat_<float> accumulator;
         int count = 0;
         
-        int half_range = (_composite_layers - 1) / 2;
+        // Alpha composition state for each pixel
+        cv::Mat_<float> alpha_accumulator;
+        cv::Mat_<float> value_accumulator;
         
-        for (int z = -half_range; z <= half_range; z++) {
+        // Alpha composition parameters using the new settings
+        const float alpha_min = _composite_alpha_min / 255.0f;
+        const float alpha_max = _composite_alpha_max / 255.0f;
+        const float alpha_opacity = _composite_material / 255.0f;
+        const float alpha_cutoff = _composite_alpha_threshold / 10000.0f;
+        
+        // Determine the z range based on front and behind layers
+        int z_start = _composite_reverse_direction ? -_composite_layers_behind : -_composite_layers_front;
+        int z_end = _composite_reverse_direction ? _composite_layers_front : _composite_layers_behind;
+        
+        for (int z = z_start; z <= z_end; z++) {
             cv::Mat_<cv::Vec3f> slice_coords;
             cv::Mat_<uint8_t> slice_img;
             
@@ -551,7 +636,8 @@ cv::Mat CVolumeViewer::render_area(const cv::Rect &roi)
             cv::Vec3f diff = {roi_c[0],roi_c[1],0};
             _surf->move(_ptr, diff/_scale);
             _vis_center = roi_c;
-            _surf->gen(&slice_coords, nullptr, roi.size(), _ptr, _scale, {-roi.width/2, -roi.height/2, _z_off + z});
+            float z_step = z * _ds_scale;  // Scale the step to maintain consistent physical distance
+            _surf->gen(&slice_coords, nullptr, roi.size(), _ptr, _scale, {-roi.width/2, -roi.height/2, _z_off + z_step});
             
             readInterpolated3D(slice_img, volume->zarrDataset(_ds_sd_idx), slice_coords*_ds_scale, cache);
             
@@ -559,20 +645,70 @@ cv::Mat CVolumeViewer::render_area(const cv::Rect &roi)
             cv::Mat_<float> slice_float;
             slice_img.convertTo(slice_float, CV_32F);
             
-            if (accumulator.empty()) {
-                accumulator = slice_float;
-                if (_composite_method == "min") {
-                    accumulator.setTo(255.0); // Initialize to max value for min operation
-                    accumulator = cv::min(accumulator, slice_float);
+            if (_composite_method == "alpha") {
+                // Alpha composition algorithm
+                if (alpha_accumulator.empty()) {
+                    alpha_accumulator = cv::Mat_<float>::zeros(slice_float.size());
+                    value_accumulator = cv::Mat_<float>::zeros(slice_float.size());
+                }
+                
+                // Process each pixel
+                for (int y = 0; y < slice_float.rows; y++) {
+                    for (int x = 0; x < slice_float.cols; x++) {
+                        float pixel_value = slice_float(y, x);
+                        
+                        // Normalize pixel value
+                        float normalized_value = (pixel_value / 255.0f - alpha_min) / (alpha_max - alpha_min);
+                        normalized_value = std::max(0.0f, std::min(1.0f, normalized_value)); // Clamp to [0,1]
+                        
+                        // Skip empty areas (speed through)
+                        if (normalized_value == 0.0f) {
+                            continue;
+                        }
+                        
+                        float current_alpha = alpha_accumulator(y, x);
+                        
+                        // Check alpha cutoff for early termination
+                        if (current_alpha >= alpha_cutoff) {
+                            continue;
+                        }
+                        
+                        // Calculate weight
+                        float weight = (1.0f - current_alpha) * std::min(normalized_value * alpha_opacity, 1.0f);
+                        
+                        // Accumulate
+                        value_accumulator(y, x) += weight * normalized_value;
+                        alpha_accumulator(y, x) += weight;
+                    }
                 }
             } else {
-                if (_composite_method == "max") {
-                    accumulator = cv::max(accumulator, slice_float);
-                } else if (_composite_method == "mean") {
-                    accumulator += slice_float;
-                    count++;
-                } else if (_composite_method == "min") {
-                    accumulator = cv::min(accumulator, slice_float);
+                // Original composite methods
+                if (accumulator.empty()) {
+                    accumulator = slice_float;
+                    if (_composite_method == "min") {
+                        accumulator.setTo(255.0); // Initialize to max value for min operation
+                        accumulator = cv::min(accumulator, slice_float);
+                    }
+                } else {
+                    if (_composite_method == "max") {
+                        accumulator = cv::max(accumulator, slice_float);
+                    } else if (_composite_method == "mean") {
+                        accumulator += slice_float;
+                        count++;
+                    } else if (_composite_method == "min") {
+                        accumulator = cv::min(accumulator, slice_float);
+                    }
+                }
+            }
+        }
+        
+        // Finalize alpha composition result
+        if (_composite_method == "alpha") {
+            accumulator = cv::Mat_<float>::zeros(value_accumulator.size());
+            for (int y = 0; y < value_accumulator.rows; y++) {
+                for (int x = 0; x < value_accumulator.cols; x++) {
+                    float final_value = value_accumulator(y, x) * 255.0f;
+                    accumulator(y, x) = std::max(0.0f, std::min(255.0f, final_value)); // Clamp to [0,255]
                 }
             }
         }
@@ -828,8 +964,7 @@ void CVolumeViewer::renderIntersections()
             
             std::unordered_map<cv::Vec3f,cv::Vec3f,vec3f_hash> location_cache;
             std::vector<cv::Vec3f> src_locations;
-            SurfacePointer *ptrs[omp_get_max_threads()] = {};
-            
+
             for (auto seg : _surf_col->intersection(pair.first, pair.second)->lines)
                 for (auto wp : seg)
                     src_locations.push_back(wp);
@@ -1194,9 +1329,79 @@ void CVolumeViewer::setCompositeLayers(int layers)
     }
 }
 
+void CVolumeViewer::setCompositeLayersInFront(int layers)
+{
+    if (layers >= 0 && layers <= 21 && layers != _composite_layers_front) {
+        _composite_layers_front = layers;
+        if (_composite_enabled) {
+            renderVisible(true);
+        }
+    }
+}
+
+void CVolumeViewer::setCompositeLayersBehind(int layers)
+{
+    if (layers >= 0 && layers <= 21 && layers != _composite_layers_behind) {
+        _composite_layers_behind = layers;
+        if (_composite_enabled) {
+            renderVisible(true);
+        }
+    }
+}
+
+void CVolumeViewer::setCompositeAlphaMin(int value)
+{
+    if (value >= 0 && value <= 255 && value != _composite_alpha_min) {
+        _composite_alpha_min = value;
+        if (_composite_enabled && _composite_method == "alpha") {
+            renderVisible(true);
+        }
+    }
+}
+
+void CVolumeViewer::setCompositeAlphaMax(int value)
+{
+    if (value >= 0 && value <= 255 && value != _composite_alpha_max) {
+        _composite_alpha_max = value;
+        if (_composite_enabled && _composite_method == "alpha") {
+            renderVisible(true);
+        }
+    }
+}
+
+void CVolumeViewer::setCompositeAlphaThreshold(int value)
+{
+    if (value >= 0 && value <= 10000 && value != _composite_alpha_threshold) {
+        _composite_alpha_threshold = value;
+        if (_composite_enabled && _composite_method == "alpha") {
+            renderVisible(true);
+        }
+    }
+}
+
+void CVolumeViewer::setCompositeMaterial(int value)
+{
+    if (value >= 0 && value <= 255 && value != _composite_material) {
+        _composite_material = value;
+        if (_composite_enabled && _composite_method == "alpha") {
+            renderVisible(true);
+        }
+    }
+}
+
+void CVolumeViewer::setCompositeReverseDirection(bool reverse)
+{
+    if (reverse != _composite_reverse_direction) {
+        _composite_reverse_direction = reverse;
+        if (_composite_enabled) {
+            renderVisible(true);
+        }
+    }
+}
+
 void CVolumeViewer::setCompositeMethod(const std::string& method)
 {
-    if (method != _composite_method && (method == "max" || method == "mean" || method == "min")) {
+    if (method != _composite_method && (method == "max" || method == "mean" || method == "min" || method == "alpha")) {
         _composite_method = method;
         if (_composite_enabled) {
             renderVisible(true);
@@ -1258,4 +1463,9 @@ void CVolumeViewer::onDrawingModeActive(bool active, float brushSize, bool isSqu
     if (cursor) {
         onPOIChanged("cursor", cursor);
     }
+}
+
+void CVolumeViewer::setResetViewOnSurfaceChange(bool reset)
+{
+    _resetViewOnSurfaceChange = reset;
 }

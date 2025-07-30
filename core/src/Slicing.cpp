@@ -2,11 +2,12 @@
 
 #include <nlohmann/json.hpp>
 
-#include <xtensor/xarray.hpp>
-#include <xtensor/xaxis_slice_iterator.hpp>
-#include <xtensor/xio.hpp>
-#include <xtensor/xbuilder.hpp>
-#include <xtensor/xview.hpp>
+#include "vc/core/util/xtensor_include.hpp"
+#include XTENSORINCLUDE(containers, xarray.hpp)
+#include XTENSORINCLUDE(views, xaxis_slice_iterator.hpp)
+#include XTENSORINCLUDE(io, xio.hpp)
+#include XTENSORINCLUDE(generators, xbuilder.hpp)
+#include XTENSORINCLUDE(views, xview.hpp)
 
 #include "z5/factory.hxx"
 #include "z5/filesystem/handle.hxx"
@@ -472,21 +473,24 @@ cv::Vec3f grid_normal(const cv::Mat_<cv::Vec3f> &points, const cv::Vec3f &loc)
     inb_loc = vmin(inb_loc, {points.cols-3,points.rows-3});
     
     if (!loc_valid_xy(points, inb_loc))
-        return {NAN,NAN};
+        return {NAN,NAN,NAN};
     
     if (!loc_valid_xy(points, inb_loc+cv::Vec2f(1,0)))
-        return {NAN,NAN}; 
+        return {NAN,NAN,NAN};
     if (!loc_valid_xy(points, inb_loc+cv::Vec2f(-1,0)))
-        return {NAN,NAN}; 
+        return {NAN,NAN,NAN};
     if (!loc_valid_xy(points, inb_loc+cv::Vec2f(0,1)))
-        return {NAN,NAN}; 
+        return {NAN,NAN,NAN};
     if (!loc_valid_xy(points, inb_loc+cv::Vec2f(0,-1)))
-        return {NAN,NAN}; 
+        return {NAN,NAN,NAN};
     
     cv::Vec3f xv = normed(at_int(points,inb_loc+cv::Vec2f(1,0))-at_int(points,inb_loc-cv::Vec2f(1,0)));
     cv::Vec3f yv = normed(at_int(points,inb_loc+cv::Vec2f(0,1))-at_int(points,inb_loc-cv::Vec2f(0,1)));
     
     cv::Vec3f n = yv.cross(xv);
+
+    if (std::isnan(n[0]))
+        return {NAN,NAN,NAN};
     
     return normed(n);
 }

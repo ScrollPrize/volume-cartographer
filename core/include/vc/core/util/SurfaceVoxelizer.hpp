@@ -4,7 +4,8 @@
 #include <map>
 #include <vector>
 #include <opencv2/core.hpp>
-#include <xtensor/xarray.hpp>
+#include "vc/core/util/xtensor_include.hpp"
+#include XTENSORINCLUDE(containers, xarray.hpp)
 #include "vc/core/util/Surface.hpp"
 
 namespace z5 {

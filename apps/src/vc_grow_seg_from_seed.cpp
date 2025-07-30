@@ -313,13 +313,12 @@ int main(int argc, char *argv[])
     if (thread_limit)
         omp_set_num_threads(thread_limit);
 
-    QuadSurface *surf = space_tracing_quad_phys(ds.get(), 1.0, &chunk_cache, origin, generations, step_size, cache_root);
+    QuadSurface *surf = space_tracing_quad_phys(ds.get(), 1.0, &chunk_cache, origin, generations, step_size, cache_root, voxelsize);
 
-    double area_cm2 = (*surf->meta)["area_vx2"].get<double>()*voxelsize*voxelsize/1e8;
+    double area_cm2 = (*surf->meta)["area_cm2"].get<double>();
     if (area_cm2 < min_area_cm)
         return EXIT_SUCCESS;
 
-    (*surf->meta)["area_cm2"] = area_cm2;
     (*surf->meta)["source"] = "vc_grow_seg_from_seed";
     (*surf->meta)["vc_gsfs_params"] = params;
     (*surf->meta)["vc_gsfs_mode"] = mode;
@@ -338,23 +337,28 @@ int main(int argc, char *argv[])
         current.setSurface(surf);
         current.bbox = surf->bbox();
 
-        fs::path overlap_dir = current.path / "overlapping";
-        fs::create_directory(overlap_dir);
+        // Read existing overlapping data
+        std::set<std::string> current_overlapping = read_overlapping_json(current.path);
 
-        {std::ofstream touch(overlap_dir/src->name());}
+        // Add the source segment
+        current_overlapping.insert(src->name());
 
-        fs::path overlap_src = src->path / "overlapping";
-        fs::create_directory(overlap_src);
-        {std::ofstream touch(overlap_src/current.name());}
+        // Update source's overlapping data
+        std::set<std::string> src_overlapping = read_overlapping_json(src->path);
+        src_overlapping.insert(current.name());
+        write_overlapping_json(src->path, src_overlapping);
 
+        // Check overlaps with existing surfaces
         for(auto &s : surfs_v)
             if (overlap(current, *s, search_effort)) {
-                std::ofstream touch_me(overlap_dir/s->name());
-                fs::path overlap_other = s->path / "overlapping";
-                fs::create_directory(overlap_other);
-                std::ofstream touch_you(overlap_other/current.name());
+                current_overlapping.insert(s->name());
+
+                std::set<std::string> s_overlapping = read_overlapping_json(s->path);
+                s_overlapping.insert(current.name());
+                write_overlapping_json(s->path, s_overlapping);
             }
 
+        // Check for additional surfaces in target directory
         for (const auto& entry : fs::directory_iterator(tgt_dir))
             if (fs::is_directory(entry) && !surfs.count(entry.path().filename()))
             {
@@ -382,18 +386,22 @@ int main(int argc, char *argv[])
                 other.readOverlapping();
 
                 if (overlap(current, other, search_effort)) {
-                    std::ofstream touch_me(overlap_dir/other.name());
-                    fs::path overlap_other = other.path / "overlapping";
-                    fs::create_directory(overlap_other);
-                    std::ofstream touch_you(overlap_other/current.name());
+                    current_overlapping.insert(other.name());
+
+                    std::set<std::string> other_overlapping = read_overlapping_json(other.path);
+                    other_overlapping.insert(current.name());
+                    write_overlapping_json(other.path, other_overlapping);
                 }
             }
+
+        // Write final overlapping data for current
+        write_overlapping_json(current.path, current_overlapping);
     }
 
     delete surf;
     for (auto sm : surfs_v) {
         delete sm;
     }
-    
+
     return EXIT_SUCCESS;
 }

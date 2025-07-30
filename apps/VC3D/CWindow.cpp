@@ -187,6 +187,8 @@ CWindow::CWindow() :
 // Destructor
 CWindow::~CWindow(void)
 {
+    setStatusBar(nullptr);
+
     CloseVolume();
     delete chunk_cache;
     delete _surf_col;
@@ -206,7 +208,12 @@ CVolumeViewer *CWindow::newConnectedCVolumeViewer(std::string surfaceName, QStri
     connect(_surf_col, &CSurfaceCollection::sendIntersectionChanged, volView, &CVolumeViewer::onIntersectionChanged);
     connect(volView, &CVolumeViewer::sendVolumeClicked, this, &CWindow::onVolumeClicked);
     connect(this, &CWindow::sendVolumeClosing, volView, &CVolumeViewer::onVolumeClosing);
-    
+
+    QSettings settings("VC.ini", QSettings::IniFormat);
+    bool resetViewOnSurfaceChange = settings.value("viewer/reset_view_on_surface_change", true).toBool();
+    volView->setResetViewOnSurfaceChange(resetViewOnSurfaceChange);
+
+
     volView->setSurface(surfaceName);
     
     _viewers.push_back(volView);
@@ -364,6 +371,13 @@ void CWindow::CreateWidgets(void)
     
     // Make Drawing dock the active tab by default
     ui.dockWidgetDrawing->raise();
+    
+    // Tab the composite widget with the Volume Package widget on the left dock
+    tabifyDockWidget(ui.dockWidgetVolumes, ui.dockWidgetComposite);
+    
+    // Make Volume Package dock the active tab by default
+    ui.dockWidgetVolumes->show();
+    ui.dockWidgetVolumes->raise();
 
     connect(treeWidgetSurfaces, &QTreeWidget::itemSelectionChanged, this, &CWindow::onSurfaceSelected);
     connect(btnReloadSurfaces, &QPushButton::clicked, this, &CWindow::onRefreshSurfaces);
@@ -410,13 +424,23 @@ void CWindow::CreateWidgets(void)
     cmbSegmentationDir = ui.cmbSegmentationDir;
     connect(cmbSegmentationDir, &QComboBox::currentIndexChanged, this, &CWindow::onSegmentationDirChanged);
 
-    // Set up the status bar
-    statusBar = ui.statusBar;
-
-    // Location input elements
+    // Location input elements (now QLineEdit for manual entry)
     lblLoc[0] = ui.sliceX;
     lblLoc[1] = ui.sliceY;
     lblLoc[2] = ui.sliceZ;
+    
+    // Set up validators for location inputs
+    for (int i = 0; i < 3; i++) {
+        lblLoc[i]->setValidator(new QIntValidator(0, 999999, this));
+        connect(lblLoc[i], &QLineEdit::editingFinished, this, &CWindow::onManualLocationChanged);
+    }
+    
+    // Zoom buttons
+    btnZoomIn = ui.btnZoomIn;
+    btnZoomOut = ui.btnZoomOut;
+    
+    connect(btnZoomIn, &QPushButton::clicked, this, &CWindow::onZoomIn);
+    connect(btnZoomOut, &QPushButton::clicked, this, &CWindow::onZoomOut);
     
     spNorm[0] = ui.dspNX;
     spNorm[1] = ui.dspNY;
@@ -462,23 +486,14 @@ void CWindow::CreateWidgets(void)
         }
     });
     
-    connect(ui.spinCompositeLayers, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int value) {
-        // Find the segmentation viewer and update its composite layers
-        for (auto& viewer : _viewers) {
-            if (viewer->surfName() == "segmentation") {
-                viewer->setCompositeLayers(value);
-                break;
-            }
-        }
-    });
-    
-    connect(ui.cmbCompositeMethod, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int index) {
+    connect(ui.cmbCompositeMode, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int index) {
         // Find the segmentation viewer and update its composite method
         std::string method = "max";
         switch (index) {
             case 0: method = "max"; break;
             case 1: method = "mean"; break;
             case 2: method = "min"; break;
+            case 3: method = "alpha"; break;
         }
         
         for (auto& viewer : _viewers) {
@@ -489,6 +504,79 @@ void CWindow::CreateWidgets(void)
         }
     });
     
+    // Connect Layers In Front controls
+    connect(ui.spinLayersInFront, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int value) {
+        for (auto& viewer : _viewers) {
+            if (viewer->surfName() == "segmentation") {
+                viewer->setCompositeLayersInFront(value);
+                break;
+            }
+        }
+    });
+    
+    // Connect Layers Behind controls
+    connect(ui.spinLayersBehind, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int value) {
+        for (auto& viewer : _viewers) {
+            if (viewer->surfName() == "segmentation") {
+                viewer->setCompositeLayersBehind(value);
+                break;
+            }
+        }
+    });
+    
+    // Connect Alpha Min controls
+    connect(ui.spinAlphaMin, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int value) {
+        for (auto& viewer : _viewers) {
+            if (viewer->surfName() == "segmentation") {
+                viewer->setCompositeAlphaMin(value);
+                break;
+            }
+        }
+    });
+    
+    // Connect Alpha Max controls
+    connect(ui.spinAlphaMax, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int value) {
+        for (auto& viewer : _viewers) {
+            if (viewer->surfName() == "segmentation") {
+                viewer->setCompositeAlphaMax(value);
+                break;
+            }
+        }
+    });
+    
+    // Connect Alpha Threshold controls
+    connect(ui.spinAlphaThreshold, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int value) {
+        for (auto& viewer : _viewers) {
+            if (viewer->surfName() == "segmentation") {
+                viewer->setCompositeAlphaThreshold(value);
+                break;
+            }
+        }
+    });
+    
+    // Connect Material controls
+    connect(ui.spinMaterial, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int value) {
+        for (auto& viewer : _viewers) {
+            if (viewer->surfName() == "segmentation") {
+                viewer->setCompositeMaterial(value);
+                break;
+            }
+        }
+    });
+    
+    // Connect Reverse Direction control
+    connect(ui.chkReverseDirection, &QCheckBox::toggled, this, [this](bool checked) {
+        for (auto& viewer : _viewers) {
+            if (viewer->surfName() == "segmentation") {
+                viewer->setCompositeReverseDirection(checked);
+                break;
+            }
+        }
+    });
+    bool resetViewOnSurfaceChange = settings.value("viewer/reset_view_on_surface_change", true).toBool();
+    for (auto& viewer : _viewers) {
+        viewer->setResetViewOnSurfaceChange(resetViewOnSurfaceChange);
+    }
 }
 
 // Create menus
@@ -721,7 +809,7 @@ void CWindow::UpdateVolpkgLabel(int filterCounter)
 
 void CWindow::onShowStatusMessage(QString text, int timeout)
 {
-    statusBar->showMessage(text, timeout);
+    statusBar()->showMessage(text, timeout);
 }
 
 fs::path seg_path_name(const fs::path &path)
@@ -1488,7 +1576,25 @@ void CWindow::onSegFilterChanged(int index)
             
             // Filter by point sets (red and blue points)
             if (chkFilterPointSets->isChecked()) {
-                show = show && contains(*_vol_qsurfs[id], _red_points) && contains(*_vol_qsurfs[id], _blue_points);
+                bool containsAnyPoint = false;
+
+                for (const auto& point : _red_points) {
+                    if (contains(*_vol_qsurfs[id], point)) {
+                        containsAnyPoint = true;
+                        break;
+                    }
+                }
+
+                if (!containsAnyPoint) {
+                    for (const auto& point : _blue_points) {
+                        if (contains(*_vol_qsurfs[id], point)) {
+                            containsAnyPoint = true;
+                            break;
+                        }
+                    }
+                }
+
+                show = show && containsAnyPoint;
             }
             
             // Filter by unreviewed
@@ -1687,7 +1793,7 @@ void CWindow::onSurfaceContextMenuRequested(const QPoint& pos)
         if (_vol_qsurfs.count(segmentId)) {
             QString path = QString::fromStdString(_vol_qsurfs[segmentId]->path.string());
             QApplication::clipboard()->setText(path);
-            statusBar->showMessage(tr("Copied segment path to clipboard: %1").arg(path), 3000);
+            statusBar()->showMessage(tr("Copied segment path to clipboard: %1").arg(path), 3000);
         }
     });
     
@@ -1805,7 +1911,7 @@ void CWindow::onSegmentationDirChanged(int index)
         LoadSurfaces(false);
         
         // Update the status bar to show the change
-        statusBar->showMessage(tr("Switched to %1 directory").arg(QString::fromStdString(newDir)), 3000);
+        statusBar()->showMessage(tr("Switched to %1 directory").arg(QString::fromStdString(newDir)), 3000);
     }
 }
 
@@ -2236,4 +2342,94 @@ void CWindow::onVoxelizePaths()
                 .arg(volumeInfo.depth));
         }
     });
+}
+
+void CWindow::onManualLocationChanged()
+{
+    // Check if we have a valid volume loaded
+    if (!currentVolume) {
+        return;
+    }
+    
+    // Get the current text from the line edits
+    bool ok[3];
+    int x = lblLoc[0]->text().toInt(&ok[0]);
+    int y = lblLoc[1]->text().toInt(&ok[1]);
+    int z = lblLoc[2]->text().toInt(&ok[2]);
+    
+    // Validate the input
+    if (!ok[0] || !ok[1] || !ok[2]) {
+        // Invalid input - restore the previous values
+        POI* poi = _surf_col->poi("focus");
+        if (poi) {
+            lblLoc[0]->setText(QString::number(static_cast<int>(poi->p[0])));
+            lblLoc[1]->setText(QString::number(static_cast<int>(poi->p[1])));
+            lblLoc[2]->setText(QString::number(static_cast<int>(poi->p[2])));
+        }
+        return;
+    }
+    
+    // Clamp values to volume bounds
+    int w = currentVolume->sliceWidth();
+    int h = currentVolume->sliceHeight();
+    int d = currentVolume->numSlices();
+    
+    x = std::max(0, std::min(x, w - 1));
+    y = std::max(0, std::min(y, h - 1));
+    z = std::max(0, std::min(z, d - 1));
+    
+    // Update the line edits with clamped values
+    lblLoc[0]->setText(QString::number(x));
+    lblLoc[1]->setText(QString::number(y));
+    lblLoc[2]->setText(QString::number(z));
+    
+    // Update the focus POI
+    POI* poi = _surf_col->poi("focus");
+    if (!poi) {
+        poi = new POI;
+    }
+    
+    poi->p = cv::Vec3f(x, y, z);
+    poi->n = cv::Vec3f(0, 0, 1); // Default normal for XY plane
+    
+    _surf_col->setPOI("focus", poi);
+    
+    // Force an update of the filter
+    onSegFilterChanged(0);
+}
+
+void CWindow::onZoomIn()
+{
+    // Get the active sub-window
+    QMdiSubWindow* activeWindow = mdiArea->activeSubWindow();
+    if (!activeWindow) return;
+    
+    // Get the viewer from the active window
+    CVolumeViewer* viewer = qobject_cast<CVolumeViewer*>(activeWindow->widget());
+    if (!viewer) return;
+    
+    // Get the center of the current view as the zoom point
+    QPointF center = viewer->fGraphicsView->mapToScene(
+        viewer->fGraphicsView->viewport()->rect().center());
+    
+    // Trigger zoom in (positive steps)
+    viewer->onZoom(3, center, Qt::NoModifier);
+}
+
+void CWindow::onZoomOut()
+{
+    // Get the active sub-window
+    QMdiSubWindow* activeWindow = mdiArea->activeSubWindow();
+    if (!activeWindow) return;
+    
+    // Get the viewer from the active window
+    CVolumeViewer* viewer = qobject_cast<CVolumeViewer*>(activeWindow->widget());
+    if (!viewer) return;
+    
+    // Get the center of the current view as the zoom point
+    QPointF center = viewer->fGraphicsView->mapToScene(
+        viewer->fGraphicsView->viewport()->rect().center());
+    
+    // Trigger zoom out (negative steps)
+    viewer->onZoom(-3, center, Qt::NoModifier);
 }

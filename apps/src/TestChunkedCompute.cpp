@@ -3,7 +3,8 @@
 #include "z5/filesystem/handle.hxx"
 #include "z5/factory.hxx"
 
-#include <xtensor/xview.hpp>
+#include "vc/core/util/xtensor_include.hpp"
+#include XTENSORINCLUDE(views, xview.hpp)
 
 #include <opencv2/highgui.hpp>
 

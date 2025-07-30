@@ -1,10 +1,11 @@
 #include <nlohmann/json.hpp>
 
-#include <xtensor/xarray.hpp>
-#include <xtensor/xaxis_slice_iterator.hpp>
-#include <xtensor/xio.hpp>
-#include <xtensor/xbuilder.hpp>
-#include <xtensor/xview.hpp>
+#include "vc/core/util/xtensor_include.hpp"
+#include XTENSORINCLUDE(containers, xarray.hpp)
+#include XTENSORINCLUDE(views, xaxis_slice_iterator.hpp)
+#include XTENSORINCLUDE(io, xio.hpp)
+#include XTENSORINCLUDE(generators, xbuilder.hpp)
+#include XTENSORINCLUDE(views, xview.hpp)
 
 #include "z5/factory.hxx"
 #include "z5/filesystem/handle.hxx"
@@ -118,6 +119,8 @@ int main(int argc, char *argv[])
     std::cout << "zarr dataset size for scale group 0 " << ds->shape() << std::endl;
     std::cout << "chunk shape shape " << ds->chunking().blockShape() << std::endl;
 
+    float voxelsize = json::parse(std::ifstream(vol_path/"meta.json"))["voxelsize"];
+
     std::string name_prefix = "auto_grown_";
     std::vector<SurfaceMeta*> surfaces;
 
@@ -168,7 +171,7 @@ int main(int argc, char *argv[])
             surfaces.push_back(sm);
         }
 
-    QuadSurface *surf = grow_surf_from_surfs(src, surfaces, params);
+    QuadSurface *surf = grow_surf_from_surfs(src, surfaces, params, voxelsize);
 
     if (!surf)
         return EXIT_SUCCESS;
