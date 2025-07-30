@@ -10,9 +10,19 @@ export JOBS=$(nproc)
 export COMMON_FLAGS="-march=native -w"
 export COMMON_LDFLAGS="-fuse-ld=lld"
 
-#sudo apt-get update
-#sudo apt-get install -y libgmp-dev libmpfr-dev ccache ninja-build lld \
-#    libcurl4-openssl-dev libboost-system-dev libboost-program-options-dev qt6-base-dev
+if [[ "$(uname)" == "Darwin" ]]; then
+    echo "Running on macOS"
+    #todo: determine the complete list
+    brew install qt cmake clang boost eigen
+elif [[ "$(uname)" == "Linux" ]]; then
+    echo "Running on Linux"
+    sudo apt-get update
+    #todo: determine the complete list
+    sudo apt-get install -y libgmp-dev libmpfr-dev ccache ninja-build lld \
+        libcurl4-openssl-dev libboost-system-dev libboost-program-options-dev qt6-base-dev
+fi
+
+
 
 rm -rf "$BUILD_DIR" "$INSTALL_PREFIX"
 mkdir -p "$BUILD_DIR" "$INSTALL_PREFIX"
