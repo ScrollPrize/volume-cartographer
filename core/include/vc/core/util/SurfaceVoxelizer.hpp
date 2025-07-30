@@ -2,7 +2,6 @@
 
 #include <string>
 #include <map>
-#include <vector>
 #include <opencv2/core.hpp>
 #include "vc/core/util/xtensor_include.hpp"
 #include XTENSORINCLUDE(containers, xarray.hpp)
@@ -20,7 +19,7 @@ namespace volcart {
 
 /**
  * @brief Voxelizes quadmesh surfaces into a multi-resolution zarr array
- * 
+ *
  * This class converts surfaces (stored as tifxyz format) into voxel grids,
  * mimicking how surfaces are rendered as intersections in CVolumeViewer.
  */
@@ -34,24 +33,24 @@ public:
         float samplingDensity;    ///< How densely to sample surface (0.25 = 4x4 samples per cell)
         bool fillGaps;             ///< Whether to connect samples with lines
         int chunkSize;               ///< Zarr chunk size
-        
-        VoxelizationParams() : 
+
+        VoxelizationParams() :
             voxelSize(1.0f),
             samplingDensity(0.5f),
             fillGaps(true),
-            chunkSize(256) {}
+            chunkSize(64) {}
     };
-    
+
     /**
      * @brief Volume dimensions and metadata
      */
     struct VolumeInfo {
         size_t width;     ///< Volume width (X dimension)
-        size_t height;    ///< Volume height (Y dimension) 
+        size_t height;    ///< Volume height (Y dimension)
         size_t depth;     ///< Volume depth (Z dimension)
         float voxelSize;  ///< Size of each voxel in mm
     };
-    
+
     /**
      * @brief Main entry point for voxelizing multiple surfaces
      * @param outputPath Path to output zarr file
@@ -67,29 +66,8 @@ public:
         const VoxelizationParams& params = VoxelizationParams(),
         std::function<void(int)> progressCallback = nullptr
     );
-    
+
 private:
-    /**
-     * @brief Spatial index for fast quad lookup
-     */
-    struct QuadIndex {
-        struct QuadEntry {
-            int i, j;  // Quad indices in surface
-            cv::Vec3f minBound;
-            cv::Vec3f maxBound;
-        };
-        
-        // Grid-based spatial index
-        int gridSize;
-        cv::Vec3f minBound;
-        cv::Vec3f maxBound;
-        cv::Vec3f cellSize;
-        std::vector<std::vector<QuadEntry>> grid;
-        
-        void build(QuadSurface* surface, int targetGridSize = 64);
-        std::vector<QuadEntry> getQuadsInRegion(const cv::Vec3f& minRegion, const cv::Vec3f& maxRegion) const;
-    };
-    
     /**
      * @brief Voxelize a surface into a specific chunk
      */
@@ -98,10 +76,9 @@ private:
         xt::xarray<uint8_t>& chunk,
         const cv::Vec3i& chunkOffset,  // Offset in voxel coordinates
         const cv::Vec3i& chunkSize,    // Size of chunk in voxels
-        const VoxelizationParams& params,
-        const QuadIndex* spatialIndex = nullptr
+        const VoxelizationParams& params
     );
-    
+
     /**
      * @brief 3D line drawing using Bresenham's algorithm
      */
@@ -110,7 +87,7 @@ private:
         const cv::Vec3f& start,
         const cv::Vec3f& end
     );
-    
+
     /**
      * @brief Connect edge between two points
      */
@@ -120,7 +97,7 @@ private:
         const cv::Vec3f& p1,
         const VoxelizationParams& params
     );
-    
+
     /**
      * @brief Create multi-resolution pyramid
      */
@@ -128,7 +105,7 @@ private:
         z5::filesystem::handle::File& zarrFile,
         const std::vector<size_t>& baseShape
     );
-    
+
     /**
      * @brief Downsample a level for pyramid generation
      */

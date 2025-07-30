@@ -403,7 +403,7 @@ void SurfaceVoxelizer::downsampleLevel(
 
     // Process in chunks
     const size_t chunkSize = 64;
-    
+
     // Create list of chunks to process
     std::vector<std::array<size_t, 3>> pyramidChunkCoords;
     for (size_t dz = 0; dz < dstShape[0]; dz += chunkSize) {
@@ -413,22 +413,22 @@ void SurfaceVoxelizer::downsampleLevel(
             }
         }
     }
-    
+
     // Process pyramid chunks in parallel
     #pragma omp parallel for schedule(dynamic)
     for (size_t i = 0; i < pyramidChunkCoords.size(); ++i) {
         size_t dx = pyramidChunkCoords[i][0];
         size_t dy = pyramidChunkCoords[i][1];
         size_t dz = pyramidChunkCoords[i][2];
-        
+
         // Calculate chunk dimensions
         size_t chunk_nz = std::min(chunkSize, dstShape[0] - dz);
         size_t chunk_ny = std::min(chunkSize, dstShape[1] - dy);
         size_t chunk_nx = std::min(chunkSize, dstShape[2] - dx);
-        
+
         // Create output chunk
         xt::xarray<uint8_t> dstChunk = xt::zeros<uint8_t>({chunk_nz, chunk_ny, chunk_nx});
-        
+
         // Read corresponding source region (2x size)
         size_t src_z = dz * 2;
         size_t src_y = dy * 2;
@@ -436,17 +436,17 @@ void SurfaceVoxelizer::downsampleLevel(
         size_t src_nz = std::min(chunk_nz * 2, srcShape[0] - src_z);
         size_t src_ny = std::min(chunk_ny * 2, srcShape[1] - src_y);
         size_t src_nx = std::min(chunk_nx * 2, srcShape[2] - src_x);
-        
+
         // Create properly sized source chunk
         xt::xarray<uint8_t> srcChunk = xt::zeros<uint8_t>({src_nz, src_ny, src_nx});
-        
+
         // Thread-safe read
         #pragma omp critical(zarr_read_pyramid)
         {
             z5::types::ShapeType srcOffset = {src_z, src_y, src_x};
             z5::multiarray::readSubarray<uint8_t>(srcDs, srcChunk, srcOffset.begin());
         }
-        
+
         // Max-pooling: if any voxel in 2x2x2 block is set, output is set
         for (size_t z = 0; z < chunk_nz; ++z) {
             for (size_t y = 0; y < chunk_ny; ++y) {
@@ -463,7 +463,7 @@ void SurfaceVoxelizer::downsampleLevel(
                 }
             }
         }
-        
+
         // Thread-safe write
         #pragma omp critical(zarr_write_pyramid)
         {
