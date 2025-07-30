@@ -23,7 +23,7 @@ void CWindow::onRenderSegment(const SurfaceID& segmentId)
     QString outputFormat = settings.value("rendering/output_path_format", "%s/layers/%02d.tif").toString();
     float scale = settings.value("rendering/scale", 1.0f).toFloat();
     int resolution = settings.value("rendering/resolution", 0).toInt();
-    int layers = settings.value("rendering/layers", 21).toInt();
+    int layers = settings.value("rendering/layers", 31).toInt();
     
     QString segmentPath = QString::fromStdString(_vol_qsurfs[segmentId]->path.string());
     QString segmentOutDir = QString::fromStdString(_vol_qsurfs[segmentId]->path.string());
