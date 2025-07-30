@@ -76,7 +76,7 @@ public slots:
     void onVolumeChanged(std::shared_ptr<volcart::Volume> vol, const std::string& volumeId);
     
     /** Handle mouse events from volume viewers */
-    void onMousePress(cv::Vec3f vol_point, Qt::MouseButton button, Qt::KeyboardModifiers modifiers);
+    void onMousePress(cv::Vec3f vol_point, cv::Vec3f normal, Qt::MouseButton button, Qt::KeyboardModifiers modifiers);
     void onMouseMove(cv::Vec3f vol_point, Qt::MouseButtons buttons, Qt::KeyboardModifiers modifiers);
     void onMouseRelease(cv::Vec3f vol_point, Qt::MouseButton button, Qt::KeyboardModifiers modifiers);
     

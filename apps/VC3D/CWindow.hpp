@@ -4,10 +4,12 @@
 #include <cstdint>
 
 #include <opencv2/core.hpp>
+#include <QComboBox>
 #include "ui_VCMain.h"
 
 #include "CommandLineToolRunner.hpp"
 #include "vc/core/util/SurfaceDef.hpp"
+#include "VCCollection.hpp"
 
 #include <QShortcut>
 
@@ -41,6 +43,8 @@ namespace ChaoVis
 
 class CVolumeViewer;
 class CSurfaceCollection;
+class POI;
+class CPointCollectionWidget;
 class CSegmentationEditorWindow;
 class SeedingWidget;
 class DrawingWidget;
@@ -59,7 +63,6 @@ signals:
     void sendVolumeChanged(std::shared_ptr<volcart::Volume> vol, const std::string& volumeId);
     void sendSliceChanged(std::string,Surface*);
     void sendOpChainSelected(OpChain*);
-    void sendPointsChanged(const std::vector<cv::Vec3f> red, const std::vector<cv::Vec3f> blue);
     void sendSurfacesLoaded();
     void sendVolumeClosing(); // Signal to notify viewers before closing volume
 
@@ -70,7 +73,6 @@ public slots:
     void onVolumeClicked(cv::Vec3f vol_loc, cv::Vec3f normal, Surface *surf, Qt::MouseButton buttons, Qt::KeyboardModifiers modifiers);
     void onOpChainChanged(OpChain *chain);
     void onTagChanged(void);
-    void onResetPoints(void);
     void onSurfaceContextMenuRequested(const QPoint& pos);
     void onRenderSegment(const SurfaceID& segmentId);
     void onGrowSegmentFromSegment(const SurfaceID& segmentId);
@@ -80,6 +82,8 @@ public slots:
     void onToggleConsoleOutput();
     void onDeleteSegments(const std::vector<SurfaceID>& segmentIds);
     void onVoxelizePaths();
+   void onFocusPOIChanged(std::string name, POI* poi);
+    void onPointDoubleClicked(uint64_t pointId);
 
 public:
     CWindow();
@@ -87,6 +91,7 @@ public:
     
     // Helper method to get the current volume path
     QString getCurrentVolumePath() const;
+    VCCollection* pointCollection() { return _point_collection; }
 
 protected:
     void keyPressEvent(QKeyEvent* event) override;
@@ -189,8 +194,11 @@ private:
 
     QComboBox* volSelect;
     QCheckBox* chkFilterFocusPoints;
-    QCheckBox* chkFilterPointSets;
-    QCheckBox* chkFilterUnreviewed;
+   QComboBox* cmbPointSetFilter;
+   QPushButton* btnPointSetFilterAll;
+   QPushButton* btnPointSetFilterNone;
+   QComboBox* cmbPointSetFilterMode;
+   QCheckBox* chkFilterUnreviewed;
     QCheckBox* chkFilterRevisit;
     QCheckBox* chkFilterNoExpansion;
     QCheckBox* chkFilterNoDefective;
@@ -201,17 +209,15 @@ private:
     QCheckBox* _chkDefective;
     QCheckBox* _chkReviewed;
     QCheckBox* _chkRevisit;
-    QLabel* _lblPointsInfo;
-    QPushButton* _btnResetPoints;
     QuadSurface *_surf;
     SurfaceID _surfID;
     
   
     SeedingWidget* _seedingWidget;
     DrawingWidget* _drawingWidget;
+    CPointCollectionWidget* _point_collection_widget;
 
-    std::vector<cv::Vec3f> _red_points;
-    std::vector<cv::Vec3f> _blue_points;
+    VCCollection* _point_collection;
     
     SurfaceTreeWidget *treeWidgetSurfaces;
     OpsList *wOpsList;

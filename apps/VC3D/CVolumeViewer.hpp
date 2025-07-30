@@ -7,6 +7,8 @@
 
 #include <set>
 #include "PathData.hpp"
+#include "VCCollection.hpp"
+#include "COutlinedTextItem.hpp"
 
 class ChunkCache;
 class Surface;
@@ -26,7 +28,8 @@ class CSurfaceCollection;
 class POI;
 class Intersection;
 class SeedingWidget;
-
+class VCCollection;
+ 
 class CVolumeViewer : public QWidget
 {
     Q_OBJECT
@@ -36,6 +39,7 @@ public:
     ~CVolumeViewer(void);
 
     void setCache(ChunkCache *cache);
+    void setPointCollection(VCCollection* point_collection);
     void setSurface(const std::string &name);
     void renderVisible(bool force = false);
     void renderIntersections();
@@ -47,7 +51,6 @@ public:
     void setIntersects(const std::set<std::string> &set);
     std::string surfName() { return _surf_name; };
     void recalcScales();
-    void renderPoints();
     void renderPaths();
     
     // Composite view methods
@@ -78,20 +81,26 @@ public slots:
     void onVolumeClicked(QPointF scene_loc,Qt::MouseButton buttons, Qt::KeyboardModifiers modifiers);
     void onPanRelease(Qt::MouseButton buttons, Qt::KeyboardModifiers modifiers);
     void onPanStart(Qt::MouseButton buttons, Qt::KeyboardModifiers modifiers);
+    void onCollectionSelected(uint64_t collectionId);
+    void onCollectionChanged(uint64_t collectionId);
     void onSurfaceChanged(std::string name, Surface *surf);
     void onPOIChanged(std::string name, POI *poi);
     void onIntersectionChanged(std::string a, std::string b, Intersection *intersection);
     void onScrolled();
     void onZoom(int steps, QPointF scene_point, Qt::KeyboardModifiers modifiers);
     void onCursorMove(QPointF);
-    void onPointsChanged(const std::vector<cv::Vec3f> red, const std::vector<cv::Vec3f> blue);
+    void onPointAdded(const ColPoint& point);
+    void onPointChanged(const ColPoint& point);
+    void onPointRemoved(uint64_t pointId);
     void onPathsChanged(const QList<PathData>& paths);
+    void onPointSelected(uint64_t pointId);
     
     // Mouse event handlers for drawing (transform coordinates)
     void onMousePress(QPointF scene_loc, Qt::MouseButton button, Qt::KeyboardModifiers modifiers);
     void onMouseMove(QPointF scene_loc, Qt::MouseButtons buttons, Qt::KeyboardModifiers modifiers);
     void onMouseRelease(QPointF scene_loc, Qt::MouseButton button, Qt::KeyboardModifiers modifiers);
     void onVolumeClosing(); // Clear surface pointers when volume is closing
+    void onKeyRelease(int key, Qt::KeyboardModifiers modifiers);
     void onDrawingModeActive(bool active, float brushSize = 3.0f, bool isSquare = false);
 
 signals:
@@ -102,13 +111,18 @@ signals:
     void sendZSliceChanged(int z_value);
     
     // Mouse event signals with transformed volume coordinates
-    void sendMousePressVolume(cv::Vec3f vol_loc, Qt::MouseButton button, Qt::KeyboardModifiers modifiers);
+    void sendMousePressVolume(cv::Vec3f vol_loc, cv::Vec3f normal, Qt::MouseButton button, Qt::KeyboardModifiers modifiers);
     void sendMouseMoveVolume(cv::Vec3f vol_loc, Qt::MouseButtons buttons, Qt::KeyboardModifiers modifiers);
     void sendMouseReleaseVolume(cv::Vec3f vol_loc, Qt::MouseButton button, Qt::KeyboardModifiers modifiers);
+    void sendCollectionSelected(uint64_t collectionId);
+    void pointSelected(uint64_t pointId);
 
 protected:
     void ScaleImage(double nFactor);
     void CenterOn(const QPointF& point);
+    QPointF volumeToScene(const cv::Vec3f& vol_point);
+    void refreshPointPositions();
+    void renderOrUpdatePoint(const ColPoint& point);
 
 protected:
     // widget components
@@ -165,9 +179,20 @@ protected:
     
     CSurfaceCollection *_surf_col = nullptr;
     
-    std::vector<cv::Vec3f> _red_points;
-    std::vector<cv::Vec3f> _blue_points;
-    std::vector<QGraphicsItem*> _points_items;
+    VCCollection* _point_collection = nullptr;
+    struct PointGraphics {
+        QGraphicsEllipseItem* circle;
+        COutlinedTextItem* text;
+    };
+    std::unordered_map<uint64_t, PointGraphics> _points_items;
+    
+    // Point interaction state
+    uint64_t _highlighted_point_id = 0;
+    uint64_t _selected_point_id = 0;
+    uint64_t _dragged_point_id = 0;
+    uint64_t _selected_collection_id = 0;
+    uint64_t _current_shift_collection_id = 0;
+    bool _new_shift_group_required = true;
     
     QList<PathData> _paths;
     std::vector<QGraphicsItem*> _path_items;

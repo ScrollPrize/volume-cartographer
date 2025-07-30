@@ -370,11 +370,25 @@
                 </widget>
                </item>
                <item row="0" column="1">
-                <widget class="QCheckBox" name="chkFilterPointSets">
-                 <property name="text">
-                  <string>Point Sets</string>
-                 </property>
-                </widget>
+                <layout class="QHBoxLayout" name="pointSetFilterLayout">
+                 <item>
+                  <widget class="QComboBox" name="cmbPointSetFilter"/>
+                 </item>
+                 <item>
+                  <widget class="QPushButton" name="btnPointSetFilterAll">
+                   <property name="text">
+                    <string>All</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QPushButton" name="btnPointSetFilterNone">
+                   <property name="text">
+                    <string>None</string>
+                   </property>
+                  </widget>
+                 </item>
+                </layout>
                </item>
                <item row="1" column="0">
                 <widget class="QCheckBox" name="chkFilterUnreviewed">
@@ -466,20 +480,6 @@
               <widget class="QCheckBox" name="chkRevisit">
                <property name="text">
                 <string>Revisit</string>
-               </property>
-              </widget>
-             </item>
-             <item row="2" column="0">
-              <widget class="QLabel" name="lblPointsInfo">
-               <property name="text">
-                <string>Red: 0 Blue: 0</string>
-               </property>
-              </widget>
-             </item>
-             <item row="2" column="1">
-              <widget class="QPushButton" name="btnResetPoints">
-               <property name="text">
-                <string>Reset Points</string>
                </property>
               </widget>
              </item>

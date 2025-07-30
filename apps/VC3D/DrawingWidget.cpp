@@ -231,7 +231,7 @@ void DrawingWidget::toggleDrawingMode()
     toggleModeButton->setChecked(!toggleModeButton->isChecked());
 }
 
-void DrawingWidget::onMousePress(cv::Vec3f vol_point, Qt::MouseButton button, Qt::KeyboardModifiers modifiers)
+void DrawingWidget::onMousePress(cv::Vec3f vol_point, cv::Vec3f normal, Qt::MouseButton button, Qt::KeyboardModifiers modifiers)
 {
     if (!drawingModeActive || button != Qt::LeftButton) {
         return;

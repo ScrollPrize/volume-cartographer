@@ -145,6 +145,12 @@ void CVolumeViewerView::keyPressEvent(QKeyEvent *event)
     QGraphicsView::keyPressEvent(event);
 }
 
+void CVolumeViewerView::keyReleaseEvent(QKeyEvent *event)
+{
+    emit sendKeyRelease(event->key(), event->modifiers());
+    QGraphicsView::keyReleaseEvent(event);
+}
+
 void CVolumeViewerView::mousePressEvent(QMouseEvent *event)
 {
     if (event->button() == Qt::MiddleButton || event->button() == Qt::RightButton)
@@ -161,8 +167,8 @@ void CVolumeViewerView::mousePressEvent(QMouseEvent *event)
         QPointF global_loc = viewport()->mapFromGlobal(event->globalPosition());
         QPointF scene_loc = mapToScene({int(global_loc.x()),int(global_loc.y())});
         
-        _left_button_pressed = true;
         sendMousePress(scene_loc, event->button(), event->modifiers());
+        _left_button_pressed = true;
         event->accept();
         return;
     }

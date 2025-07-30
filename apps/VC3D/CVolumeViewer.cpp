@@ -9,6 +9,8 @@
 
 #include "CVolumeViewerView.hpp"
 #include "CSurfaceCollection.hpp"
+#include "VCCollection.hpp"
+#include "COutlinedTextItem.hpp"
 
 #include "vc/core/types/VolumePkg.hpp"
 #include "vc/core/util/Surface.hpp"
@@ -37,6 +39,9 @@ CVolumeViewer::CVolumeViewer(CSurfaceCollection *col, QWidget* parent)
     , fGraphicsView(nullptr)
     , fBaseImageItem(nullptr)
     , _surf_col(col)
+    , _highlighted_point_id(0)
+    , _selected_point_id(0)
+    , _dragged_point_id(0)
 {
     // Create graphics view
     fGraphicsView = new CVolumeViewerView(this);
@@ -54,6 +59,10 @@ CVolumeViewer::CVolumeViewer(CSurfaceCollection *col, QWidget* parent)
     connect(fGraphicsView, &CVolumeViewerView::sendCursorMove, this, &CVolumeViewer::onCursorMove);
     connect(fGraphicsView, &CVolumeViewerView::sendPanRelease, this, &CVolumeViewer::onPanRelease);
     connect(fGraphicsView, &CVolumeViewerView::sendPanStart, this, &CVolumeViewer::onPanStart);
+    connect(fGraphicsView, &CVolumeViewerView::sendMousePress, this, &CVolumeViewer::onMousePress);
+    connect(fGraphicsView, &CVolumeViewerView::sendMouseMove, this, &CVolumeViewer::onMouseMove);
+    connect(fGraphicsView, &CVolumeViewerView::sendMouseRelease, this, &CVolumeViewer::onMouseRelease);
+    connect(fGraphicsView, &CVolumeViewerView::sendKeyRelease, this, &CVolumeViewer::onKeyRelease);
 
     // Create graphics scene
     fScene = new QGraphicsScene({-2500,-2500,5000,5000}, this);
@@ -101,38 +110,43 @@ QPointF visible_center(QGraphicsView *view)
 }
 
 
-void scene2vol(cv::Vec3f &p, cv::Vec3f &n, Surface *_surf, const std::string &_surf_name, CSurfaceCollection *_surf_col, const QPointF &scene_loc, const cv::Vec2f &_vis_center, float _ds_scale)
+QPointF CVolumeViewer::volumeToScene(const cv::Vec3f& vol_point)
+{
+    PlaneSurface* plane = dynamic_cast<PlaneSurface*>(_surf);
+    QuadSurface* quad = dynamic_cast<QuadSurface*>(_surf);
+    cv::Vec3f p;
+
+    if (plane) {
+        p = plane->project(vol_point, 1.0, _scale);
+    } else if (quad) {
+        SurfacePointer* ptr = quad->pointer();
+        _surf->pointTo(ptr, vol_point, 4.0, 100);
+        p = _surf->loc(ptr) * _scale;
+    }
+
+    return QPointF(p[0], p[1]);
+}
+
+bool scene2vol(cv::Vec3f &p, cv::Vec3f &n, Surface *_surf, const std::string &_surf_name, CSurfaceCollection *_surf_col, const QPointF &scene_loc, const cv::Vec2f &_vis_center, float _ds_scale)
 {
     // Safety check for null surface
     if (!_surf) {
         p = cv::Vec3f(0, 0, 0);
         n = cv::Vec3f(0, 0, 1);
-        return;
+        return false;
     }
     
-    //for PlaneSurface we work with absolute coordinates only
-    // if (dynamic_cast<PlaneSurface*>(_surf)) {
+    try {
         cv::Vec3f surf_loc = {scene_loc.x()/_ds_scale, scene_loc.y()/_ds_scale,0};
         
         SurfacePointer *ptr = _surf->pointer();
         
         n = _surf->normal(ptr, surf_loc);
         p = _surf->coord(ptr, surf_loc);
-//     }
-//     //FIXME quite some assumptions ...
-//     else if (_surf_name == "segmentation") {
-//         // assert(_ptr);
-//         assert(dynamic_cast<OpChain*>(_surf));
-//         
-//         QuadSurface* crop = dynamic_cast<QuadSurface*>(_surf_col->surface("visible_segmentation")); 
-//         
-//         cv::Vec3f delta = {(scene_loc.x()-_vis_center[0])/_ds_scale, (scene_loc.y()-_vis_center[1])/_ds_scale,0};
-//         
-//         //NOTE crop center and original scene _ptr are off by < 0.5 voxels?
-//         SurfacePointer *ptr = crop->pointer();
-//         n = crop->normal(ptr, delta);
-//         p = crop->coord(ptr, delta);
-//     }
+    } catch (const cv::Exception& e) {
+        return false;
+    }
+    return true;
 }
 
 void CVolumeViewer::onCursorMove(QPointF scene_loc)
@@ -140,15 +154,52 @@ void CVolumeViewer::onCursorMove(QPointF scene_loc)
     if (!_surf || !_surf_col)
         return;
 
+    cv::Vec3f p, n;
+    if (!scene2vol(p, n, _surf, _surf_name, _surf_col, scene_loc, _vis_center, _scale)) {
+        if (_cursor) _cursor->hide();
+        return;
+    }
+    if (_cursor) _cursor->show();
+
+    // Standard cursor update
     POI *cursor = _surf_col->poi("cursor");
     if (!cursor)
         cursor = new POI;
     
-    cv::Vec3f p, n;
-    scene2vol(p, n, _surf, _surf_name, _surf_col, scene_loc, _vis_center, _scale);
     cursor->p = p;
     
     _surf_col->setPOI("cursor", cursor);
+
+    // Point highlighting logic
+    if (!_point_collection) return;
+
+    uint64_t old_highlighted_id = _highlighted_point_id;
+    _highlighted_point_id = 0;
+
+    if (_dragged_point_id == 0) { // Only highlight if not dragging
+        const float highlight_dist_threshold = 10.0f; // pixels
+        float min_dist_sq = highlight_dist_threshold * highlight_dist_threshold;
+
+        for (const auto& item_pair : _points_items) {
+            auto item = item_pair.second.circle;
+            QPointF point_scene_pos = item->rect().center();
+            QPointF diff = scene_loc - point_scene_pos;
+            float dist_sq = QPointF::dotProduct(diff, diff);
+            if (dist_sq < min_dist_sq) {
+                min_dist_sq = dist_sq;
+                _highlighted_point_id = item_pair.first;
+            }
+        }
+    }
+
+    if (old_highlighted_id != _highlighted_point_id) {
+        if (auto old_point = _point_collection->getPoint(old_highlighted_id)) {
+            renderOrUpdatePoint(*old_point);
+        }
+        if (auto new_point = _point_collection->getPoint(_highlighted_point_id)) {
+            renderOrUpdatePoint(*new_point);
+        }
+    }
 }
 
 void CVolumeViewer::recalcScales()
@@ -240,6 +291,9 @@ void CVolumeViewer::onZoom(int steps, QPointF scene_loc, Qt::KeyboardModifiers m
         int max_size = 100000; //std::max(volume->sliceWidth(), std::max(volume->numSlices(), volume->sliceHeight()))*_ds_scale + 512;
         fGraphicsView->setSceneRect(-max_size/2, -max_size/2, max_size, max_size);
         renderVisible();
+
+        // Re-render all points to update their positions according to the new scale
+        refreshPointPositions();
     }
 
     _lbl->setText(QString("%1x %2").arg(_scale).arg(_z_off));
@@ -286,17 +340,42 @@ void CVolumeViewer::onVolumeClicked(QPointF scene_loc, Qt::MouseButton buttons, 
 {
     if (!_surf)
         return;
-    
-    cv::Vec3f p, n;
-    scene2vol(p, n, _surf, _surf_name, _surf_col, scene_loc, _vis_center, _scale);
 
-    //for PlaneSurface we work with absolute coordinates only
+    // If a point was being dragged, don't do anything on release
+    if (_dragged_point_id != 0) {
+        return;
+    }
+
+    cv::Vec3f p, n;
+    if (!scene2vol(p, n, _surf, _surf_name, _surf_col, scene_loc, _vis_center, _scale))
+        return;
+
+    if (buttons == Qt::LeftButton) {
+        bool isShift = modifiers.testFlag(Qt::ShiftModifier);
+
+        if (isShift) {
+            // If a collection is selected, add to it.
+            if (_selected_collection_id != 0) {
+                const auto& collections = _point_collection->getAllCollections();
+                auto it = collections.find(_selected_collection_id);
+                if (it != collections.end()) {
+                    _point_collection->addPoint(it->second.name, p);
+                }
+            } else {
+                // Otherwise, create a new collection.
+                std::string new_name = _point_collection->generateNewCollectionName("col");
+                auto new_point = _point_collection->addPoint(new_name, p);
+                _selected_collection_id = new_point.collectionId;
+                emit sendCollectionSelected(_selected_collection_id);
+            }
+        }
+    }
+
+    // Forward the click for focus
     if (dynamic_cast<PlaneSurface*>(_surf))
         sendVolumeClicked(p, n, _surf, buttons, modifiers);
-    //FIXME quite some assumptions ...
     else if (_surf_name == "segmentation")
         sendVolumeClicked(p, n, _surf_col->surface("segmentation"), buttons, modifiers);
-    // sendVolumeClicked(p, n, _surf_col->surface("visible_segmentation"), buttons, modifiers);
     else
         std::cout << "FIXME: onVolumeClicked()" << std::endl;
 }
@@ -304,6 +383,17 @@ void CVolumeViewer::onVolumeClicked(QPointF scene_loc, Qt::MouseButton buttons, 
 void CVolumeViewer::setCache(ChunkCache *cache_)
 {
     cache = cache_;
+}
+
+void CVolumeViewer::setPointCollection(VCCollection* point_collection)
+{
+    if (_point_collection) {
+        disconnect(_point_collection, &VCCollection::collectionChanged, this, &CVolumeViewer::onCollectionChanged);
+    }
+    _point_collection = point_collection;
+    if (_point_collection) {
+        connect(_point_collection, &VCCollection::collectionChanged, this, &CVolumeViewer::onCollectionChanged);
+    }
 }
 
 void CVolumeViewer::setSurface(const std::string &name)
@@ -560,6 +650,7 @@ void CVolumeViewer::onPOIChanged(std::string name, POI *poi)
             return;
         
         plane->setOrigin(poi->p);
+        refreshPointPositions();
         
         _surf_col->setSurface(_surf_name, plane);
     }
@@ -769,7 +860,6 @@ void CVolumeViewer::renderVisible(bool force)
     if (!force && QRectF(curr_img_area).contains(bbox))
         return;
     
-    renderPoints();
     renderPaths();
     
     curr_img_area = {bbox.left()-128,bbox.top()-128, bbox.width()+256, bbox.height()+256};
@@ -1197,60 +1287,87 @@ void CVolumeViewer::renderPaths()
     }
 }
 
-void CVolumeViewer::renderPoints()
+void CVolumeViewer::renderOrUpdatePoint(const ColPoint& point)
 {
-    for(auto &item : _points_items) {
-        // Only remove item if it's actually in our scene
-        if (item && item->scene() == fScene) {
-            fScene->removeItem(item);
-        }
-        delete item;
-    }
-    _points_items.resize(0);
-    
-    std::vector<cv::Vec3f> all_ps(_red_points);
-    all_ps.insert(all_ps.end(), _blue_points.begin(), _blue_points.end());
-    
-    int n = -1;
-    for(auto &wp : all_ps) {
-        n++;
-        PlaneSurface *plane = dynamic_cast<PlaneSurface*>(_surf);
-        QuadSurface *quad = dynamic_cast<QuadSurface*>(_surf);
-        
-        cv::Vec3f p;
-        
-        if (plane) {
-            if (plane->pointDist(wp) >= 4.0)
-                continue;
-            p = plane->project(wp, 1.0, _scale);
-        }
-        else if (quad) {
-            SurfacePointer *ptr = quad->pointer();
-            float res = _surf->pointTo(ptr, wp, 4.0, 100);
-            p = _surf->loc(ptr)*_scale;
-            if (res >= 4.0)
-                continue;
-        }
-        else
-            continue;
-        
-        QColor col = QColor(100, 100, 255);
-        if (n < _red_points.size())
-            col = QColor(255, 100, 100);
-        
-        QGraphicsItem *item = fScene->addEllipse(p[0]-4, p[1]-4, 8, 8, QPen(Qt::white), QBrush(col, Qt::SolidPattern));
-        item->setZValue(30);
-        _points_items.push_back(item);
-    }
-}
+    if (!_surf) return;
 
-
-void CVolumeViewer::onPointsChanged(const std::vector<cv::Vec3f> red, const std::vector<cv::Vec3f> blue)
-{
-    _red_points = red;
-    _blue_points = blue;
+    QPointF scene_pos = volumeToScene(point.p);
+    float radius = 5.0f; // pixels
     
-    renderPoints();
+    const auto& collections = _point_collection->getAllCollections();
+    auto col_it = collections.find(point.collectionId);
+    cv::Vec3f cv_color = (col_it != collections.end()) ? col_it->second.color : cv::Vec3f(1,0,0);
+    QColor color(cv_color[0] * 255, cv_color[1] * 255, cv_color[2] * 255, 255);
+
+    QColor border_color(255, 255, 255, 200);
+    float border_width = 1.5f;
+
+    if (point.id == _highlighted_point_id) {
+        radius = 7.0f;
+        border_color = Qt::yellow;
+        border_width = 2.5f;
+    }
+ 
+    if (point.id == _selected_point_id) {
+        border_color = QColor(255, 0, 255, 255); // Bright magenta for selection
+        border_width = 2.5f;
+        radius = 7.0f;
+    }
+
+    PointGraphics pg;
+    bool exists = _points_items.count(point.id);
+    if (exists) {
+        pg = _points_items[point.id];
+    }
+
+    // Update circle
+    if (exists) {
+        pg.circle->setRect(scene_pos.x() - radius, scene_pos.y() - radius, radius * 2, radius * 2);
+        pg.circle->setPen(QPen(border_color, border_width));
+        pg.circle->setBrush(QBrush(color));
+    } else {
+        pg.circle = fScene->addEllipse(
+            scene_pos.x() - radius, scene_pos.y() - radius, radius * 2, radius * 2,
+            QPen(border_color, border_width), QBrush(color)
+        );
+        pg.circle->setZValue(10);
+    }
+
+    // Update or create text
+    bool has_winding = !std::isnan(point.winding_annotation);
+    if (exists) {
+        pg.text->setPos(scene_pos.x() + radius, scene_pos.y() - radius);
+        pg.text->setVisible(has_winding);
+    } else {
+        pg.text = new COutlinedTextItem();
+        fScene->addItem(pg.text);
+        pg.text->setZValue(11); // Above points
+        pg.text->setDefaultTextColor(Qt::white);
+        pg.text->setPos(scene_pos.x() + radius, scene_pos.y() - radius);
+        pg.text->setVisible(has_winding);
+    }
+    
+    if (has_winding) {
+        bool absolute = col_it != collections.end() ? col_it->second.metadata.absolute_winding_number : false;
+        
+        // Adaptive decimal formatting
+        QString num_text = QString::number(point.winding_annotation, 'g');
+
+        if (!absolute) {
+            if (point.winding_annotation >= 0) {
+                num_text.prepend("+");
+            }
+        }
+        
+        pg.text->setPlainText(num_text);
+
+        // Fixed positioning
+        pg.text->setPos(scene_pos.x() + radius, scene_pos.y() - radius);
+    }
+
+    if (!exists) {
+        _points_items[point.id] = pg;
+    }
 }
 
 void CVolumeViewer::onPathsChanged(const QList<PathData>& paths)
@@ -1261,38 +1378,82 @@ void CVolumeViewer::onPathsChanged(const QList<PathData>& paths)
 
 void CVolumeViewer::onMousePress(QPointF scene_loc, Qt::MouseButton button, Qt::KeyboardModifiers modifiers)
 {
-    if (!_surf) {
-        return;
+    if (!_point_collection || !_surf) return;
+
+    if (button == Qt::LeftButton) {
+        if (_highlighted_point_id != 0) {
+           if (_selected_point_id != _highlighted_point_id) {
+               uint64_t old_selected_id = _selected_point_id;
+               _selected_point_id = _highlighted_point_id;
+               emit pointSelected(_selected_point_id);
+
+               if (auto old_point = _point_collection->getPoint(old_selected_id)) {
+                   renderOrUpdatePoint(*old_point);
+               }
+               if (auto new_point = _point_collection->getPoint(_selected_point_id)) {
+                   renderOrUpdatePoint(*new_point);
+               }
+           }
+            _dragged_point_id = _highlighted_point_id;
+            // Do not return, allow forwarding for other widgets
+        }
+    } else if (button == Qt::RightButton) {
+        if (_highlighted_point_id != 0) {
+            _point_collection->removePoint(_highlighted_point_id);
+        }
     }
-    
+
+    // Forward for drawing widgets
     cv::Vec3f p, n;
-    scene2vol(p, n, _surf, _surf_name, _surf_col, scene_loc, _vis_center, _scale);
-    
-    emit sendMousePressVolume(p, button, modifiers);
+    if (scene2vol(p, n, _surf, _surf_name, _surf_col, scene_loc, _vis_center, _scale)) {
+        sendMousePressVolume(p, n, button, modifiers);
+    }
 }
 
 void CVolumeViewer::onMouseMove(QPointF scene_loc, Qt::MouseButtons buttons, Qt::KeyboardModifiers modifiers)
 {
-    if (!_surf) {
-        return;
+    onCursorMove(scene_loc); // Keep highlighting up to date
+
+    if ((buttons & Qt::LeftButton) && _dragged_point_id != 0) {
+        cv::Vec3f p, n;
+        if (scene2vol(p, n, _surf, _surf_name, _surf_col, scene_loc, _vis_center, _scale)) {
+            if (auto point_opt = _point_collection->getPoint(_dragged_point_id)) {
+                ColPoint updated_point = *point_opt;
+                updated_point.p = p;
+                _point_collection->updatePoint(updated_point);
+            }
+        }
+    } else {
+        if (!_surf) {
+            return;
+        }
+        
+        cv::Vec3f p, n;
+        if (!scene2vol(p, n, _surf, _surf_name, _surf_col, scene_loc, _vis_center, _scale))
+            return;
+        
+        emit sendMouseMoveVolume(p, buttons, modifiers);
     }
-    
-    cv::Vec3f p, n;
-    scene2vol(p, n, _surf, _surf_name, _surf_col, scene_loc, _vis_center, _scale);
-    
-    emit sendMouseMoveVolume(p, buttons, modifiers);
 }
 
 void CVolumeViewer::onMouseRelease(QPointF scene_loc, Qt::MouseButton button, Qt::KeyboardModifiers modifiers)
 {
-    if (!_surf) {
-        return;
+    if (button == Qt::LeftButton && _dragged_point_id != 0) {
+        _dragged_point_id = 0;
+        // Re-run highlight logic
+        onCursorMove(scene_loc);
     }
-    
+
+    // Forward for drawing widgets
     cv::Vec3f p, n;
-    scene2vol(p, n, _surf, _surf_name, _surf_col, scene_loc, _vis_center, _scale);
-    
-    emit sendMouseReleaseVolume(p, button, modifiers);
+    if (scene2vol(p, n, _surf, _surf_name, _surf_col, scene_loc, _vis_center, _scale)) {
+        if (dynamic_cast<PlaneSurface*>(_surf))
+            emit sendMouseReleaseVolume(p, button, modifiers);
+        else if (_surf_name == "segmentation")
+            emit sendMouseReleaseVolume(p, button, modifiers);
+        else
+            std::cout << "FIXME: onMouseRelease()" << std::endl;
+    }
 }
 
 void CVolumeViewer::setCompositeEnabled(bool enabled)
@@ -1465,7 +1626,89 @@ void CVolumeViewer::onDrawingModeActive(bool active, float brushSize, bool isSqu
     }
 }
 
+void CVolumeViewer::refreshPointPositions()
+{
+    if (!_point_collection) {
+        return;
+    }
+
+    for (const auto& col_pair : _point_collection->getAllCollections()) {
+        for (const auto& point_pair : col_pair.second.points) {
+            if (_points_items.count(point_pair.first)) {
+                renderOrUpdatePoint(point_pair.second);
+            }
+        }
+    }
+}
+void CVolumeViewer::onPointAdded(const ColPoint& point)
+{
+    renderOrUpdatePoint(point);
+}
+
+void CVolumeViewer::onPointChanged(const ColPoint& point)
+{
+    renderOrUpdatePoint(point);
+}
+
+void CVolumeViewer::onPointRemoved(uint64_t pointId)
+{
+    if (_points_items.count(pointId)) {
+        auto& pg = _points_items[pointId];
+        fScene->removeItem(pg.circle);
+        fScene->removeItem(pg.text);
+        delete pg.circle;
+        delete pg.text;
+        _points_items.erase(pointId);
+    }
+}
+
+void CVolumeViewer::onCollectionSelected(uint64_t collectionId)
+{
+    _selected_collection_id = collectionId;
+}
+
+void CVolumeViewer::onCollectionChanged(uint64_t collectionId)
+{
+    if (!_point_collection) {
+        return;
+    }
+
+    const auto& collections = _point_collection->getAllCollections();
+    auto it = collections.find(collectionId);
+    if (it != collections.end()) {
+        const auto& collection = it->second;
+        for (const auto& point_pair : collection.points) {
+            renderOrUpdatePoint(point_pair.second);
+        }
+    }
+}
+
+void CVolumeViewer::onKeyRelease(int key, Qt::KeyboardModifiers modifiers)
+{
+    if (key == Qt::Key_Shift) {
+        _new_shift_group_required = true;
+    }
+}
+
+void CVolumeViewer::onPointSelected(uint64_t pointId)
+{
+    if (_selected_point_id == pointId) {
+        return;
+    }
+
+    uint64_t old_selected_id = _selected_point_id;
+    _selected_point_id = pointId;
+
+    if (auto old_point = _point_collection->getPoint(old_selected_id)) {
+        renderOrUpdatePoint(*old_point);
+    }
+    if (auto new_point = _point_collection->getPoint(_selected_point_id)) {
+        renderOrUpdatePoint(*new_point);
+    }
+}
+
 void CVolumeViewer::setResetViewOnSurfaceChange(bool reset)
 {
     _resetViewOnSurfaceChange = reset;
 }
+

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QWidget>
+#include <QComboBox>
 #include <QSpinBox>
 #include <QDoubleSpinBox>
 #include <QPushButton>
@@ -16,6 +17,7 @@
 #include <memory>
 #include <map>
 #include "PathData.hpp"
+#include "VCCollection.hpp"
 
 namespace volcart {
     class Volume;
@@ -26,11 +28,13 @@ class ChunkCache;
 
 namespace ChaoVis {
 
+class CSurfaceCollection;
+
 class SeedingWidget : public QWidget {
     Q_OBJECT
     
 public:
-    explicit SeedingWidget(QWidget* parent = nullptr);
+    explicit SeedingWidget(VCCollection* point_collection, CSurfaceCollection* surface_collection, QWidget* parent = nullptr);
     ~SeedingWidget();
     
     void setVolumePkg(std::shared_ptr<volcart::VolumePkg> vpkg);
@@ -38,30 +42,31 @@ public:
     void setCache(ChunkCache* cache);
     
 signals:
-    void sendPointsChanged(const std::vector<cv::Vec3f> red, const std::vector<cv::Vec3f> blue);
     void sendPathsChanged(const QList<PathData>& paths);
     void sendStatusMessageAvailable(QString text, int timeout);
     
 public slots:
     void onSurfacesLoaded();  // Called when surfaces have been loaded/reloaded
+    void onCollectionAdded(uint64_t collectionId);
+    void onCollectionChanged(uint64_t collectionId);
+    void onCollectionRemoved(uint64_t collectionId);
     
 public slots:
-    void onPointSelected(cv::Vec3f point, cv::Vec3f normal);
     void onVolumeChanged(std::shared_ptr<volcart::Volume> vol, const std::string& volumeId);
     void updateCurrentZSlice(int z);
-    void onUserPointAdded(cv::Vec3f point);
-    void onMousePress(cv::Vec3f vol_point, Qt::MouseButton button, Qt::KeyboardModifiers modifiers);
+    void onMousePress(cv::Vec3f vol_point, cv::Vec3f normal, Qt::MouseButton button, Qt::KeyboardModifiers modifiers);
     void onMouseMove(cv::Vec3f vol_point, Qt::MouseButtons buttons, Qt::KeyboardModifiers modifiers);
     void onMouseRelease(cv::Vec3f vol_point, Qt::MouseButton button, Qt::KeyboardModifiers modifiers);
     
 private slots:
-    void onSetSeedClicked();
+    void onPreviewRaysClicked();
+    void onClearPreviewClicked();
     void onCastRaysClicked();
+    void onClearPeaksClicked();
     void onRunSegmentationClicked();
     void onExpandSeedsClicked();
     void onResetPointsClicked();
     void onCancelClicked();
-    void onDrawModeToggled();
     
 private:
     // Mode enum
@@ -93,7 +98,7 @@ private:
     
     // UI elements
     QLabel* infoLabel;
-    QPushButton* setSeedButton;
+    QComboBox* collectionComboBox;
     QDoubleSpinBox* angleStepSpinBox;
     QSpinBox* processesSpinBox;
     QSpinBox* thresholdSpinBox;  // Intensity threshold for peak detection
@@ -109,7 +114,10 @@ private:
     
     QString executablePath;
     
+    QPushButton* previewRaysButton;
+    QPushButton* clearPreviewButton;
     QPushButton* castRaysButton;
+    QPushButton* clearPeaksButton;
     QPushButton* runSegmentationButton;
     QPushButton* expandSeedsButton;
     QPushButton* resetPointsButton;
@@ -121,13 +129,10 @@ private:
     std::shared_ptr<volcart::Volume> currentVolume;
     std::string currentVolumeId;
     ChunkCache* chunkCache;
-    cv::Vec3f selectedPoint;
     int currentZSlice;
-    std::vector<cv::Vec3f> peakPoints;
-    std::vector<cv::Vec3f> userPlacedPoints; // Points placed via shift+click
+    VCCollection* _point_collection;
+    CSurfaceCollection* _surface_collection;
     cv::Mat distanceTransform;
-    bool hasSelectedPoint;
-    bool waitingForSeedPoint;
     
     // Drawing mode data
     Mode currentMode;

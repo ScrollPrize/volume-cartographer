@@ -19,7 +19,9 @@
 #include <QProgressDialog>
 #include <QMessageBox>
 #include <QThread>
+#include <QStandardItemModel>
 #include <QtConcurrent/QtConcurrent>
+#include <QComboBox>
 #include <QFutureWatcher>
 #include <atomic>
 #include <omp.h>
@@ -31,6 +33,7 @@
 #include "UDataManipulateUtils.hpp"
 #include "SettingsDialog.hpp"
 #include "CSurfaceCollection.hpp"
+#include "CPointCollectionWidget.hpp"
 #include "OpChain.hpp"
 #include "OpsList.hpp"
 #include "OpsSettings.hpp"
@@ -62,8 +65,10 @@ CWindow::CWindow() :
     fVpkg(nullptr),
     _cmdRunner(nullptr),
     _seedingWidget(nullptr),
-    _drawingWidget(nullptr)
+    _drawingWidget(nullptr),
+    _point_collection_widget(nullptr)
 {
+    _point_collection = new VCCollection(this);
     const QSettings settings("VC.ini", QSettings::IniFormat);
     setWindowIcon(QPixmap(":/images/logo.png"));
     ui.setupUi(this);
@@ -192,6 +197,7 @@ CWindow::~CWindow(void)
     CloseVolume();
     delete chunk_cache;
     delete _surf_col;
+    delete _point_collection;
 }
 
 CVolumeViewer *CWindow::newConnectedCVolumeViewer(std::string surfaceName, QString title, QMdiArea *mdiArea)
@@ -202,9 +208,13 @@ CVolumeViewer *CWindow::newConnectedCVolumeViewer(std::string surfaceName, QStri
     win->setWindowFlags(Qt::WindowTitleHint | Qt::WindowMinMaxButtonsHint);
     volView->setCache(chunk_cache);
     connect(this, &CWindow::sendVolumeChanged, volView, &CVolumeViewer::OnVolumeChanged);
-    connect(this, &CWindow::sendPointsChanged, volView, &CVolumeViewer::onPointsChanged);
+    volView->setPointCollection(_point_collection);
+    connect(_point_collection, &VCCollection::pointAdded, volView, &CVolumeViewer::onPointAdded);
+    connect(_point_collection, &VCCollection::pointChanged, volView, &CVolumeViewer::onPointChanged);
+    connect(_point_collection, &VCCollection::pointRemoved, volView, &CVolumeViewer::onPointRemoved);
     connect(_surf_col, &CSurfaceCollection::sendSurfaceChanged, volView, &CVolumeViewer::onSurfaceChanged);
     connect(_surf_col, &CSurfaceCollection::sendPOIChanged, volView, &CVolumeViewer::onPOIChanged);
+    connect(_surf_col, &CSurfaceCollection::sendPOIChanged, this, &CWindow::onFocusPOIChanged);
     connect(_surf_col, &CSurfaceCollection::sendIntersectionChanged, volView, &CVolumeViewer::onIntersectionChanged);
     connect(volView, &CVolumeViewer::sendVolumeClicked, this, &CWindow::onVolumeClicked);
     connect(this, &CWindow::sendVolumeClosing, volView, &CVolumeViewer::onVolumeClosing);
@@ -257,11 +267,6 @@ void CWindow::setVolume(std::shared_ptr<volcart::Volume> newvol)
     poi->n = cv::Vec3f(0, 0, 1); // Default normal for XY plane
     _surf_col->setPOI("focus", poi);
 
-    // Update location labels
-    lblLoc[0]->setText(QString::number(poi->p[0]));
-    lblLoc[1]->setText(QString::number(poi->p[1]));
-    lblLoc[2]->setText(QString::number(poi->p[2]));
-    
     onManualPlaneChanged();
 }
 
@@ -311,7 +316,7 @@ void CWindow::CreateWidgets(void)
     _drawingWidget->setCache(chunk_cache);
     
     // Create Seeding widget
-    _seedingWidget = new SeedingWidget(ui.dockWidgetDistanceTransform);
+    _seedingWidget = new SeedingWidget(_point_collection, _surf_col, ui.dockWidgetDistanceTransform);
     ui.dockWidgetDistanceTransform->setWidget(_seedingWidget);
     
     connect(this, &CWindow::sendVolumeChanged, _seedingWidget, 
@@ -351,8 +356,6 @@ void CWindow::CreateWidgets(void)
     }
     
     for (auto& viewer : _viewers) {
-        connect(_seedingWidget, &SeedingWidget::sendPointsChanged, 
-                viewer, &CVolumeViewer::onPointsChanged);
         connect(_seedingWidget, &SeedingWidget::sendPathsChanged,
                 viewer, &CVolumeViewer::onPathsChanged);
         connect(viewer, &CVolumeViewer::sendMousePressVolume,
@@ -365,6 +368,60 @@ void CWindow::CreateWidgets(void)
                 _seedingWidget, &SeedingWidget::updateCurrentZSlice);
     }
     
+    // Create and add the point collection widget
+    _point_collection_widget = new CPointCollectionWidget(_point_collection, this);
+    _point_collection_widget->setObjectName("pointCollectionDock");
+    addDockWidget(Qt::RightDockWidgetArea, _point_collection_widget);
+
+    for (auto& viewer : _viewers) {
+        connect(_point_collection_widget, &CPointCollectionWidget::collectionSelected, viewer, &CVolumeViewer::onCollectionSelected);
+        connect(viewer, &CVolumeViewer::sendCollectionSelected, _point_collection_widget, &CPointCollectionWidget::selectCollection);
+        connect(_point_collection_widget, &CPointCollectionWidget::pointSelected, viewer, &CVolumeViewer::onPointSelected);
+        connect(viewer, &CVolumeViewer::pointSelected, _point_collection_widget, &CPointCollectionWidget::selectPoint);
+    }
+    connect(_point_collection_widget, &CPointCollectionWidget::pointDoubleClicked, this, &CWindow::onPointDoubleClicked);
+
+   connect(_point_collection, &VCCollection::collectionAdded, this, [this](uint64_t id) {
+       const auto& collections = _point_collection->getAllCollections();
+       auto it = collections.find(id);
+       if (it != collections.end()) {
+           const auto& collection = it->second;
+           QStandardItem* item = new QStandardItem(QString::fromStdString(collection.name));
+           item->setFlags(Qt::ItemIsUserCheckable | Qt::ItemIsEnabled);
+           item->setData(Qt::Unchecked, Qt::CheckStateRole);
+           qobject_cast<QStandardItemModel*>(cmbPointSetFilter->model())->appendRow(item);
+       }
+       onSegFilterChanged(0);
+   });
+   connect(_point_collection, &VCCollection::collectionRemoved, this, [this](uint64_t id) {
+       // This is inefficient, but simple. A better way would be to store the mapping from id to combobox index.
+       const auto& collections = _point_collection->getAllCollections();
+       cmbPointSetFilter->clear();
+       for (const auto& pair : collections) {
+           QStandardItem* item = new QStandardItem(QString::fromStdString(pair.second.name));
+           item->setFlags(Qt::ItemIsUserCheckable | Qt::ItemIsEnabled);
+           item->setData(Qt::Unchecked, Qt::CheckStateRole);
+           qobject_cast<QStandardItemModel*>(cmbPointSetFilter->model())->appendRow(item);
+       }
+       onSegFilterChanged(0);
+   });
+   connect(_point_collection, &VCCollection::collectionChanged, this, [this](uint64_t id) {
+       // This is inefficient, but simple. A better way would be to store the mapping from id to combobox index.
+       const auto& collections = _point_collection->getAllCollections();
+       cmbPointSetFilter->clear();
+       for (const auto& pair : collections) {
+           QStandardItem* item = new QStandardItem(QString::fromStdString(pair.second.name));
+           item->setFlags(Qt::ItemIsUserCheckable | Qt::ItemIsEnabled);
+           item->setData(Qt::Unchecked, Qt::CheckStateRole);
+           qobject_cast<QStandardItemModel*>(cmbPointSetFilter->model())->appendRow(item);
+       }
+       onSegFilterChanged(0);
+   });
+
+   connect(_point_collection, &VCCollection::pointAdded, this, [this](const ColPoint&) { onSegFilterChanged(0); });
+   connect(_point_collection, &VCCollection::pointChanged, this, [this](const ColPoint&) { onSegFilterChanged(0); });
+   connect(_point_collection, &VCCollection::pointRemoved, this, [this](uint64_t) { onSegFilterChanged(0); });
+
     // Tab the docks - Drawing first, then Seeding, then Tools
     tabifyDockWidget(ui.dockWidgetSegmentation, ui.dockWidgetDistanceTransform);
     tabifyDockWidget(ui.dockWidgetDistanceTransform, ui.dockWidgetDrawing);
@@ -406,7 +463,13 @@ void CWindow::CreateWidgets(void)
         });
 
     chkFilterFocusPoints = ui.chkFilterFocusPoints;
-    chkFilterPointSets = ui.chkFilterPointSets;
+   cmbPointSetFilter = ui.cmbPointSetFilter;
+   btnPointSetFilterAll = ui.btnPointSetFilterAll;
+   btnPointSetFilterNone = ui.btnPointSetFilterNone;
+    cmbPointSetFilterMode = new QComboBox();
+    cmbPointSetFilterMode->addItem("Any (OR)");
+    cmbPointSetFilterMode->addItem("All (AND)");
+    ui.pointSetFilterLayout->insertWidget(1, cmbPointSetFilterMode);
     chkFilterUnreviewed = ui.chkFilterUnreviewed;
     chkFilterRevisit = ui.chkFilterRevisit;
     chkFilterNoExpansion = ui.chkFilterNoExpansion;
@@ -414,8 +477,20 @@ void CWindow::CreateWidgets(void)
     chkFilterPartialReview = ui.chkFilterPartialReview;
     
     connect(chkFilterFocusPoints, &QCheckBox::toggled, [this]() { onSegFilterChanged(0); });
-    connect(chkFilterPointSets, &QCheckBox::toggled, [this]() { onSegFilterChanged(0); });
+   connect(btnPointSetFilterAll, &QPushButton::clicked, [this]() {
+       for (int i = 0; i < cmbPointSetFilter->count(); ++i) {
+           cmbPointSetFilter->model()->setData(cmbPointSetFilter->model()->index(i, 0), Qt::Checked, Qt::CheckStateRole);
+       }
+       onSegFilterChanged(0);
+   });
+   connect(btnPointSetFilterNone, &QPushButton::clicked, [this]() {
+       for (int i = 0; i < cmbPointSetFilter->count(); ++i) {
+           cmbPointSetFilter->model()->setData(cmbPointSetFilter->model()->index(i, 0), Qt::Unchecked, Qt::CheckStateRole);
+       }
+       onSegFilterChanged(0);
+   });
     connect(chkFilterUnreviewed, &QCheckBox::toggled, [this]() { onSegFilterChanged(0); });
+    connect(cmbPointSetFilterMode, &QComboBox::currentIndexChanged, this, [this]() { onSegFilterChanged(0); });
     connect(chkFilterRevisit, &QCheckBox::toggled, [this]() { onSegFilterChanged(0); });
     connect(chkFilterNoExpansion, &QCheckBox::toggled, [this]() { onSegFilterChanged(0); });
     connect(chkFilterNoDefective, &QCheckBox::toggled, [this]() { onSegFilterChanged(0); });
@@ -470,9 +545,6 @@ void CWindow::CreateWidgets(void)
     connect(_chkRevisit, &QCheckBox::checkStateChanged, this, &CWindow::onTagChanged);
 #endif
 
-    _lblPointsInfo = ui.lblPointsInfo;
-    _btnResetPoints = ui.btnResetPoints;
-    connect(_btnResetPoints, &QPushButton::pressed, this, &CWindow::onResetPoints);
     connect(ui.btnEditMask, &QPushButton::pressed, this, &CWindow::onEditMaskPressed);
     
     // Connect composite view controls
@@ -803,6 +875,9 @@ void CWindow::UpdateView(void)
 
 void CWindow::UpdateVolpkgLabel(int filterCounter)
 {
+    if (!fVpkg) {
+        return;
+    }
     QString label = tr("%1 (%2 Surfaces | %3 filtered)").arg(QString::fromStdString(fVpkg->name())).arg(fVpkg->segmentationIDs().size()).arg(filterCounter);
     ui.lblVpkgName->setText(label);
 }
@@ -907,9 +982,24 @@ void CWindow::OpenVolume(const QString& path)
     UpdateRecentVolpkgList(aVpkgPath);
     
     // Set volume package in Seeding widget
-    if (_seedingWidget) {
-        _seedingWidget->setVolumePkg(fVpkg);
-    }
+   if (_seedingWidget) {
+       _seedingWidget->setVolumePkg(fVpkg);
+   }
+
+   // Populate point set filter
+   cmbPointSetFilter->clear();
+   cmbPointSetFilter->setModel(new QStandardItemModel(this));
+   connect(cmbPointSetFilter->model(), &QStandardItemModel::dataChanged, this, [this](const QModelIndex &topLeft, const QModelIndex &bottomRight, const QVector<int> &roles) {
+        if (roles.contains(Qt::CheckStateRole)) {
+            onSegFilterChanged(0);
+        }
+   });
+   for (const auto& pair : _point_collection->getAllCollections()) {
+       QStandardItem* item = new QStandardItem(QString::fromStdString(pair.second.name));
+       item->setFlags(Qt::ItemIsUserCheckable | Qt::ItemIsEnabled);
+       item->setData(Qt::Unchecked, Qt::CheckStateRole);
+       qobject_cast<QStandardItemModel*>(cmbPointSetFilter->model())->appendRow(item);
+   }
 }
 
 void CWindow::CloseVolume(void)
@@ -935,9 +1025,7 @@ void CWindow::CloseVolume(void)
     _opchains.clear();
     
     // Clear points
-    _red_points.clear();
-    _blue_points.clear();
-    sendPointsChanged(_red_points, _blue_points);
+    _point_collection->clearAll();
 }
 
 // Handle open request
@@ -1171,26 +1259,8 @@ void CWindow::onLocChanged(void)
 
 void CWindow::onVolumeClicked(cv::Vec3f vol_loc, cv::Vec3f normal, Surface *surf, Qt::MouseButton buttons, Qt::KeyboardModifiers modifiers)
 {
-    // Forward to Seeding widget if it exists
-    if (_seedingWidget) {
-        _seedingWidget->onPointSelected(vol_loc, normal);
-    }
-    
     if (modifiers & Qt::ShiftModifier) {
-        if (modifiers & Qt::ControlModifier)
-            _blue_points.push_back(vol_loc);
-        else
-            _red_points.push_back(vol_loc);
-        sendPointsChanged(_red_points, _blue_points);
-        _lblPointsInfo->setText(QString("Red: %1 Blue: %2").arg(_red_points.size()).arg(_blue_points.size()));
-
-        // Also forward to Seeding widget for user-placed points
-        if (_seedingWidget) {
-            _seedingWidget->onUserPointAdded(vol_loc);
-        }
-
-        // Force an update of the filter
-        onSegFilterChanged(0);
+        return;
     }
     else if (modifiers & Qt::ControlModifier) {
         std::cout << "clicked on vol loc " << vol_loc << std::endl;
@@ -1236,12 +1306,6 @@ void CWindow::onVolumeClicked(cv::Vec3f vol_loc, cv::Vec3f normal, Surface *surf
         
         _surf_col->setPOI("focus", poi);
 
-        lblLoc[0]->setText(QString::number(poi->p[0]));
-        lblLoc[1]->setText(QString::number(poi->p[1]));
-        lblLoc[2]->setText(QString::number(poi->p[2]));
-
-        // Force an update of the filter
-        onSegFilterChanged(0);
     }
     else {
     }
@@ -1541,6 +1605,9 @@ void CWindow::UpdateSurfaceTreeIcon(SurfaceTreeWidgetItem *item)
 
 void CWindow::onSegFilterChanged(int index)
 {
+    if (!fVpkg) {
+        return;
+    }
     std::set<std::string> dbg_intersects = {"segmentation"};
     
     POI *poi = _surf_col->poi("focus");
@@ -1548,7 +1615,7 @@ void CWindow::onSegFilterChanged(int index)
 
     // Check if any filters are active
     bool hasActiveFilters = chkFilterFocusPoints->isChecked() ||
-                           chkFilterPointSets->isChecked() ||
+                          (cmbPointSetFilter->currentIndex() != -1) ||
                            chkFilterUnreviewed->isChecked() ||
                            chkFilterRevisit->isChecked() ||
                            chkFilterNoExpansion->isChecked() ||
@@ -1574,28 +1641,41 @@ void CWindow::onSegFilterChanged(int index)
                 show = show && contains(*_vol_qsurfs[id], poi->p);
             }
             
-            // Filter by point sets (red and blue points)
-            if (chkFilterPointSets->isChecked()) {
-                bool containsAnyPoint = false;
+            // Filter by point sets
+           if (cmbPointSetFilter->currentIndex() != -1) {
+               bool any_checked = false;
+               for (int i = 0; i < cmbPointSetFilter->count(); ++i) {
+                   if (cmbPointSetFilter->itemData(i, Qt::CheckStateRole) == Qt::Checked) {
+                       any_checked = true;
+                       break;
+                   }
+               }
 
-                for (const auto& point : _red_points) {
-                    if (contains(*_vol_qsurfs[id], point)) {
-                        containsAnyPoint = true;
-                        break;
-                    }
-                }
+               if (any_checked) {
+                   bool match = false;
+                   bool all_match = true;
+                   for (int i = 0; i < cmbPointSetFilter->count(); ++i) {
+                       if (cmbPointSetFilter->itemData(i, Qt::CheckStateRole) == Qt::Checked) {
+                           std::vector<cv::Vec3f> points;
+                           auto collection = _point_collection->getPoints(cmbPointSetFilter->itemText(i).toStdString());
+                           points.reserve(collection.size());
+                           for (const auto& p : collection) {
+                               points.push_back(p.p);
+                           }
+                           if (all_match && !contains(*_vol_qsurfs[id], points))
+                               all_match = false;
+                           if (!match && contains_any(*_vol_qsurfs[id], points))
+                               match = true;
 
-                if (!containsAnyPoint) {
-                    for (const auto& point : _blue_points) {
-                        if (contains(*_vol_qsurfs[id], point)) {
-                            containsAnyPoint = true;
-                            break;
-                        }
-                    }
-                }
-
-                show = show && containsAnyPoint;
-            }
+                       }
+                   }
+                   if (cmbPointSetFilterMode->currentIndex() == 0) { // Any (OR)
+                       show = show && match;
+                   } else { // All (AND)
+                       show = show && all_match;
+                   }
+               }
+           }
             
             // Filter by unreviewed
             if (chkFilterUnreviewed->isChecked()) {
@@ -1682,14 +1762,6 @@ void CWindow::onSegFilterChanged(int index)
 
 }
 
-void CWindow::onResetPoints(void)
-{
-    _lblPointsInfo->setText(QString("Red: %1 Blue: %2").arg(_red_points.size()).arg(_blue_points.size()));
-    _red_points.resize(0);
-    _blue_points.resize(0);
-    
-    sendPointsChanged(_red_points, _blue_points);
-}
 
 void CWindow::onEditMaskPressed(void)
 {
@@ -2416,6 +2488,32 @@ void CWindow::onZoomIn()
     viewer->onZoom(3, center, Qt::NoModifier);
 }
 
+void CWindow::onFocusPOIChanged(std::string name, POI* poi)
+{
+    if (name == "focus" && poi) {
+        lblLoc[0]->setText(QString::number(poi->p[0]));
+        lblLoc[1]->setText(QString::number(poi->p[1]));
+        lblLoc[2]->setText(QString::number(poi->p[2]));
+
+        // Force an update of the filter
+        onSegFilterChanged(0);
+    }
+}
+
+void CWindow::onPointDoubleClicked(uint64_t pointId)
+{
+    auto point_opt = _point_collection->getPoint(pointId);
+    if (point_opt) {
+        POI *poi = _surf_col->poi("focus");
+        if (!poi) {
+            poi = new POI;
+        }
+        poi->p = point_opt->p;
+        poi->n = cv::Vec3f(0, 0, 1); // Default normal
+        _surf_col->setPOI("focus", poi);
+    }
+}
+
 void CWindow::onZoomOut()
 {
     // Get the active sub-window
@@ -2433,3 +2531,4 @@ void CWindow::onZoomOut()
     // Trigger zoom out (negative steps)
     viewer->onZoom(-3, center, Qt::NoModifier);
 }
+
