@@ -18,7 +18,7 @@ CommandLineToolRunner::CommandLineToolRunner(QStatusBar* statusBar, CWindow* mai
     , _autoShowConsole(true)
     , _scale(1.0f)
     , _resolution(0)
-    , _layers(21)
+    , _layers(31)
     , _seed_x(0)
     , _seed_y(0)
     , _seed_z(0)
@@ -379,12 +379,12 @@ QStringList CommandLineToolRunner::buildArguments(Tool tool)
     
     switch (tool) {
         case Tool::RenderTifXYZ:
-            args << _volumePath
-                 << _outputPattern
-                 << _segmentPath
-                 << QString::number(_scale)
-                 << QString::number(_resolution)
-                 << QString::number(_layers);
+            args << "--volume" << _volumePath
+                 << "--output" << _outputPattern
+                 << "--segmentation" << _segmentPath
+                 << "--scale" << QString::number(_scale)
+                 << "--group-idx" << QString::number(_resolution)
+                 << "--num-slices" << QString::number(_layers);
             break;
             
         case Tool::GrowSegFromSegment:
