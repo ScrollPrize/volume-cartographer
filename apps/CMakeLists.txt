@@ -23,6 +23,7 @@ target_link_libraries(vc_render_tifxyz
     opencv_core
     VC::slicing
     VC::surface
+    Boost::program_options
 )
 
 add_executable(vc_objrefine src/ObjAlphaCompRefinement.cpp)
@@ -59,6 +60,13 @@ target_link_libraries(vc_grow_seg_from_segments
 
 add_executable(vc_tifxyz2obj src/vc_tifxyz2obj.cpp)
 target_link_libraries(vc_tifxyz2obj
+    opencv_highgui
+    VC::slicing
+    VC::surface
+)
+
+add_executable(vc_obj2tifxyz src/vc_obj2tifxyz.cpp)
+target_link_libraries(vc_obj2tifxyz
     opencv_highgui
     VC::slicing
     VC::surface
@@ -114,6 +122,7 @@ install(
         vc_grow_seg_from_segments
         vc_seg_add_overlap
         vc_tifxyz2obj
+        vc_obj2tifxyz
         vc_tifxyz_winding
         vc_fill_quadmesh
         ${extra_apps}

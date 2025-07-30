@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Script to convert overlapping directories to overlapping.json files
-Usage: python migrate_overlapping_to_json.py ~/PHerc332.volpkg/paths/
+Usage: python overlapping_to_json.py ~/PHerc332.volpkg/paths/
 """
 
 import os

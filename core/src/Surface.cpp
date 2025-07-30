@@ -709,51 +709,214 @@ bool face_contains_vertex(cv::Vec3i face, int vertex)
     return false;
 }
 
-//try to interpret triangle surface as quads - only works in cases where an actual quad surface is stored as a triangle surface
+//load quad surface from OBJ file using texture coordinates to determine grid structure
 QuadSurface *load_quad_from_obj(const std::string &path)
 {
-    //triangle ID to 3d location
+    // vertex ID to 3d location (1-indexed in OBJ)
     std::unordered_map<int,cv::Vec3f> vertices;
-    //any face corner vertex id to the actual face id
-    std::unordered_multimap<int,cv::Vec3i> faces;
+    // texture coordinate ID to UV (1-indexed in OBJ)
+    std::unordered_map<int,cv::Vec2f> texcoords;
+    // Store faces with vertex and texture coordinate indices
+    struct Face {
+        std::vector<int> v_indices;
+        std::vector<int> vt_indices;
+    };
+    std::vector<Face> faces;
 
     std::ifstream obj(path);
+    if (!obj.is_open()) {
+        std::cerr << "Cannot open OBJ file: " << path << std::endl;
+        return nullptr;
+    }
+
     std::string line;
     while (std::getline(obj, line))
     {
-        if (line.size() <  7)
+        if (line.empty())
             continue;
-        if (line[0] == 'v' && line[1] == ' ') {
+        
+        if (line[0] == 'v' && (line.size() < 2 || line[1] == ' ')) {
+            // Parse vertex
             std::istringstream iss(line);
             float x, y, z;
             char v;
             if (!(iss >> v >> x >> y >> z)) {
-                //something went wrong
-                return nullptr;
+                continue;
             }
-            vertices[vertices.size()] = {x,y,z};
+            vertices[vertices.size() + 1] = {x,y,z}; // OBJ uses 1-based indexing
         }
-        else if (line[0] == 'f' && line[1] == ' ') {
+        else if (line[0] == 'v' && line[1] == 't' && (line.size() < 3 || line[2] == ' ')) {
+            // Parse texture coordinate
             std::istringstream iss(line);
-            std::string idstring;
-            int a, b, c;
-            char f;
-            if (!(iss >> f >> idstring)) {
-                //something went wrong
-                return nullptr;
+            float u, v;
+            char vt1, vt2;
+            if (!(iss >> vt1 >> vt2 >> u >> v)) {
+                continue;
             }
-            std::replace(idstring.begin(), idstring.end(), '/', ' ');
-            iss.str(idstring);
-            if (!(iss >> a >> b >> c)) {
-                //something went wrong
-                return nullptr;
+            texcoords[texcoords.size() + 1] = {u,v}; // OBJ uses 1-based indexing
+        }
+        else if (line[0] == 'f' && (line.size() < 2 || line[1] == ' ')) {
+            // Parse face
+            std::istringstream iss(line.substr(2));
+            Face face;
+            std::string vertex_str;
+            
+            while (iss >> vertex_str) {
+                // Handle f v/vt/vn or f v/vt format
+                std::vector<std::string> parts;
+                size_t pos = 0;
+                while ((pos = vertex_str.find('/')) != std::string::npos) {
+                    parts.push_back(vertex_str.substr(0, pos));
+                    vertex_str.erase(0, pos + 1);
+                }
+                parts.push_back(vertex_str);
+                
+                if (parts.size() >= 2) {
+                    face.v_indices.push_back(std::stoi(parts[0]));
+                    if (!parts[1].empty()) {
+                        face.vt_indices.push_back(std::stoi(parts[1]));
+                    }
+                } else if (parts.size() == 1) {
+                    face.v_indices.push_back(std::stoi(parts[0]));
+                }
             }
-            cv::Vec3i face = {a,b,c};
-            faces.insert({{a,face},{b,face},{c,face}});
+            
+            if (!face.v_indices.empty()) {
+                faces.push_back(face);
+            }
+        }
+    }
+    obj.close();
+
+    if (vertices.empty() || texcoords.empty() || faces.empty()) {
+        std::cerr << "Missing vertices, texture coordinates, or faces in OBJ file" << std::endl;
+        return nullptr;
+    }
+
+    // Infer grid dimensions from texture coordinates
+    float min_u = 1.0f, max_u = 0.0f;
+    float min_v = 1.0f, max_v = 0.0f;
+    std::set<float> unique_u, unique_v;
+    
+    for (const auto& [idx, uv] : texcoords) {
+        min_u = std::min(min_u, uv[0]);
+        max_u = std::max(max_u, uv[0]);
+        min_v = std::min(min_v, uv[1]);
+        max_v = std::max(max_v, uv[1]);
+        unique_u.insert(uv[0]);
+        unique_v.insert(uv[1]);
+    }
+
+    // Try to determine grid dimensions from unique UV values
+    int width = unique_u.size();
+    int height = unique_v.size();
+    
+    // If we have too many unique values, try a different approach
+    if (width * height > vertices.size() * 2) {
+        // Estimate based on assuming normalized UVs with regular spacing
+        // Find minimum spacing between unique values
+        float min_u_spacing = 1.0f;
+        float min_v_spacing = 1.0f;
+        
+        auto u_it = unique_u.begin();
+        if (unique_u.size() > 1) {
+            float prev_u = *u_it++;
+            for (; u_it != unique_u.end(); ++u_it) {
+                float spacing = *u_it - prev_u;
+                if (spacing > 0.0001f) {
+                    min_u_spacing = std::min(min_u_spacing, spacing);
+                }
+                prev_u = *u_it;
+            }
+        }
+        
+        auto v_it = unique_v.begin();
+        if (unique_v.size() > 1) {
+            float prev_v = *v_it++;
+            for (; v_it != unique_v.end(); ++v_it) {
+                float spacing = *v_it - prev_v;
+                if (spacing > 0.0001f) {
+                    min_v_spacing = std::min(min_v_spacing, spacing);
+                }
+                prev_v = *v_it;
+            }
+        }
+        
+        width = std::round((max_u - min_u) / min_u_spacing) + 1;
+        height = std::round((max_v - min_v) / min_v_spacing) + 1;
+    }
+
+    std::cout << "Inferred grid dimensions: " << width << "x" << height << std::endl;
+    std::cout << "UV range: u[" << min_u << ", " << max_u << "], v[" << min_v << ", " << max_v << "]" << std::endl;
+
+    // Create the points matrix
+    cv::Mat_<cv::Vec3f>* points = new cv::Mat_<cv::Vec3f>(height, width, cv::Vec3f(-1, -1, -1));
+
+    // Map vertices to grid positions using texture coordinates
+    std::set<cv::Vec2i, std::function<bool(const cv::Vec2i&, const cv::Vec2i&)>> used_cells(
+        [](const cv::Vec2i& a, const cv::Vec2i& b) {
+            return a[1] < b[1] || (a[1] == b[1] && a[0] < b[0]);
+        }
+    );
+    
+    for (const auto& face : faces) {
+        for (size_t i = 0; i < face.v_indices.size() && i < face.vt_indices.size(); i++) {
+            int v_idx = face.v_indices[i];
+            int vt_idx = face.vt_indices[i];
+            
+            if (vertices.find(v_idx) != vertices.end() && texcoords.find(vt_idx) != texcoords.end()) {
+                cv::Vec3f vertex = vertices[v_idx];
+                cv::Vec2f uv = texcoords[vt_idx];
+                
+                // Map UV to grid position
+                int grid_x = std::round((uv[0] - min_u) / (max_u - min_u) * (width - 1));
+                int grid_y = std::round((uv[1] - min_v) / (max_v - min_v) * (height - 1));
+                
+                // Clamp to valid range
+                grid_x = std::max(0, std::min(width - 1, grid_x));
+                grid_y = std::max(0, std::min(height - 1, grid_y));
+                
+                cv::Vec2i cell(grid_x, grid_y);
+                
+                // Only set if this cell hasn't been used yet (taking the first)
+                if (used_cells.find(cell) == used_cells.end()) {
+                    (*points)(grid_y, grid_x) = vertex;
+                    used_cells.insert(cell);
+                }
+            }
         }
     }
 
-    return nullptr;
+    // Calculate scale based on average edge lengths
+    double sx = 1.0, sy = 1.0;
+    int count_x = 0, count_y = 0;
+    double sum_x = 0.0, sum_y = 0.0;
+    
+    for (int j = 0; j < height; j++) {
+        for (int i = 0; i < width - 1; i++) {
+            if ((*points)(j, i)[0] != -1 && (*points)(j, i + 1)[0] != -1) {
+                sum_x += cv::norm((*points)(j, i) - (*points)(j, i + 1));
+                count_x++;
+            }
+        }
+    }
+    
+    for (int j = 0; j < height - 1; j++) {
+        for (int i = 0; i < width; i++) {
+            if ((*points)(j, i)[0] != -1 && (*points)(j + 1, i)[0] != -1) {
+                sum_y += cv::norm((*points)(j, i) - (*points)(j + 1, i));
+                count_y++;
+            }
+        }
+    }
+    
+    if (count_x > 0) sx = sum_x / count_x;
+    if (count_y > 0) sy = sum_y / count_y;
+    
+    std::cout << "Calculated scale: sx=" << sx << ", sy=" << sy << std::endl;
+    std::cout << "Grid fill rate: " << used_cells.size() << "/" << (width * height) << " cells" << std::endl;
+    
+    return new QuadSurface(points, {static_cast<float>(sx), static_cast<float>(sy)});
 }
 
 void QuadSurface::gen(cv::Mat_<cv::Vec3f> *coords, cv::Mat_<cv::Vec3f> *normals, cv::Size size, SurfacePointer *ptr, float scale, const cv::Vec3f &offset)
