@@ -1,4 +1,4 @@
-option(VC_BUILD_Z5 "Build in-source z5 header only library" off)
+option(VC_BUILD_Z5 "Build in-source z5 header only library" on)
 if(VC_BUILD_Z5)
   # Declare the project
   FetchContent_Declare(
