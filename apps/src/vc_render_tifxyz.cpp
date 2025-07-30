@@ -7,14 +7,190 @@
 
 #include <opencv2/highgui.hpp>
 #include <opencv2/imgproc.hpp>
+#include <fstream>
+#include <sstream>
+#include <boost/program_options.hpp>
 
 namespace fs = std::filesystem;
+namespace po = boost::program_options;
 
 using json = nlohmann::json;
 
 /**
- * @brief Calculate the centroid of valid 3D points in the mesh
+ * @brief Structure to hold affine transform data
+ */
+struct AffineTransform {
+    cv::Mat_<float> matrix;  // 3x4 matrix in ZYX format
+    cv::Vec3f offset;        // optional pre-transform offset
+    bool hasOffset;
+    
+    AffineTransform() : hasOffset(false), offset(0, 0, 0) {
+        matrix = cv::Mat_<float>::eye(3, 4);
+    }
+};
+
+/**
+ * @brief Load affine transform from file (JSON or text format)
  * 
+ * @param filename Path to affine transform file
+ * @return AffineTransform Loaded transform data
+ */
+AffineTransform loadAffineTransform(const std::string& filename) {
+    AffineTransform transform;
+    
+    std::ifstream file(filename);
+    if (!file.is_open()) {
+        throw std::runtime_error("Cannot open affine transform file: " + filename);
+    }
+    
+    // Try to parse as JSON first
+    try {
+        json j;
+        file >> j;
+        
+        if (j.contains("affine")) {
+            auto affine = j["affine"];
+            if (affine.size() != 3) {
+                throw std::runtime_error("Affine matrix must have 3 rows");
+            }
+            
+            transform.matrix = cv::Mat_<float>(3, 4);
+            for (int i = 0; i < 3; i++) {
+                if (affine[i].size() != 4) {
+                    throw std::runtime_error("Each row of affine matrix must have 4 elements");
+                }
+                for (int j = 0; j < 4; j++) {
+                    transform.matrix(i, j) = affine[i][j].get<float>();
+                }
+            }
+        }
+        
+        if (j.contains("offset")) {
+            auto offset = j["offset"];
+            if (offset.size() != 3) {
+                throw std::runtime_error("Offset must have 3 elements");
+            }
+            transform.offset = cv::Vec3f(offset[0].get<float>(), 
+                                        offset[1].get<float>(), 
+                                        offset[2].get<float>());
+            transform.hasOffset = true;
+        }
+    } catch (json::parse_error&) {
+        // Not JSON, try plain text format
+        file.clear();
+        file.seekg(0);
+        
+        std::vector<float> values;
+        float val;
+        while (file >> val) {
+            values.push_back(val);
+        }
+        
+        if (values.size() != 12 && values.size() != 15) {
+            throw std::runtime_error("Text file must contain 12 values (3x4 matrix) or 15 values (3x4 matrix + 3 offset values)");
+        }
+        
+        // Load the 3x4 matrix
+        transform.matrix = cv::Mat_<float>(3, 4);
+        for (int i = 0; i < 3; i++) {
+            for (int j = 0; j < 4; j++) {
+                transform.matrix(i, j) = values[i * 4 + j];
+            }
+        }
+        
+        // Load offset if present
+        if (values.size() == 15) {
+            transform.offset = cv::Vec3f(values[12], values[13], values[14]);
+            transform.hasOffset = true;
+        }
+    }
+    
+    return transform;
+}
+
+/**
+ * @brief Apply affine transform to points and normals
+ * 
+ * @param points Points to transform (modified in-place)
+ * @param normals Normals to transform (modified in-place)
+ * @param transform Affine transform to apply
+ */
+void applyAffineTransform(cv::Mat_<cv::Vec3f>& points, 
+                         cv::Mat_<cv::Vec3f>& normals, 
+                         const AffineTransform& transform) {
+    // Apply transform to each point
+    for (int y = 0; y < points.rows; y++) {
+        for (int x = 0; x < points.cols; x++) {
+            cv::Vec3f& pt = points(y, x);
+            
+            // Skip NaN points
+            if (std::isnan(pt[0]) || std::isnan(pt[1]) || std::isnan(pt[2])) {
+                continue;
+            }
+            
+            // Apply optional offset first
+            if (transform.hasOffset) {
+                pt += transform.offset;
+            }
+            
+            // Apply affine transform (note: matrix is in ZYX format as per the Rust example)
+            float px = pt[0];
+            float py = pt[1];
+            float pz = pt[2];
+            
+            // Row 0 (Z in output)
+            float z_new = transform.matrix(0, 2) * px + transform.matrix(0, 1) * py + 
+                         transform.matrix(0, 0) * pz + transform.matrix(0, 3);
+            // Row 1 (Y in output) 
+            float y_new = transform.matrix(1, 2) * px + transform.matrix(1, 1) * py + 
+                         transform.matrix(1, 0) * pz + transform.matrix(1, 3);
+            // Row 2 (X in output)
+            float x_new = transform.matrix(2, 2) * px + transform.matrix(2, 1) * py + 
+                         transform.matrix(2, 0) * pz + transform.matrix(2, 3);
+            
+            pt[0] = x_new;
+            pt[1] = y_new;
+            pt[2] = z_new;
+        }
+    }
+    
+    // Apply transform to normals (rotation only, no translation)
+    for (int y = 0; y < normals.rows; y++) {
+        for (int x = 0; x < normals.cols; x++) {
+            cv::Vec3f& n = normals(y, x);
+            
+            // Skip NaN normals
+            if (std::isnan(n[0]) || std::isnan(n[1]) || std::isnan(n[2])) {
+                continue;
+            }
+            
+            float nx = n[0];
+            float ny = n[1];
+            float nz = n[2];
+            
+            // Apply rotation part of affine transform
+            float nz_new = transform.matrix(0, 2) * nx + transform.matrix(0, 1) * ny + 
+                          transform.matrix(0, 0) * nz;
+            float ny_new = transform.matrix(1, 2) * nx + transform.matrix(1, 1) * ny + 
+                          transform.matrix(1, 0) * nz;
+            float nx_new = transform.matrix(2, 2) * nx + transform.matrix(2, 1) * ny + 
+                          transform.matrix(2, 0) * nz;
+            
+            // Normalize the transformed normal
+            float norm = std::sqrt(nx_new * nx_new + ny_new * ny_new + nz_new * nz_new);
+            if (norm > 0) {
+                n[0] = nx_new / norm;
+                n[1] = ny_new / norm;
+                n[2] = nz_new / norm;
+            }
+        }
+    }
+}
+
+
+/**
+ * @brief Calculate the centroid of valid 3D points in the mesh
+ *
  * @param points Matrix of 3D points (cv::Mat_<cv::Vec3f>)
  * @return cv::Vec3f The centroid of all valid points
  */
@@ -22,7 +198,7 @@ cv::Vec3f calculateMeshCentroid(const cv::Mat_<cv::Vec3f>& points)
 {
     cv::Vec3f centroid(0, 0, 0);
     int count = 0;
-    
+
     for (int y = 0; y < points.rows; y++) {
         for (int x = 0; x < points.cols; x++) {
             const cv::Vec3f& pt = points(y, x);
@@ -32,7 +208,7 @@ cv::Vec3f calculateMeshCentroid(const cv::Mat_<cv::Vec3f>& points)
             }
         }
     }
-    
+
     if (count > 0) {
         centroid /= static_cast<float>(count);
     }
@@ -41,33 +217,33 @@ cv::Vec3f calculateMeshCentroid(const cv::Mat_<cv::Vec3f>& points)
 
 /**
  * @brief Determine if normals should be flipped based on a reference point
- * 
+ *
  * @param points Matrix of 3D points (cv::Mat_<cv::Vec3f>)
  * @param normals Matrix of normal vectors
  * @param referencePoint The reference point to orient normals towards/away from
  * @return bool True if normals should be flipped, false otherwise
  */
 bool shouldFlipNormals(
-    const cv::Mat_<cv::Vec3f>& points, 
+    const cv::Mat_<cv::Vec3f>& points,
     const cv::Mat_<cv::Vec3f>& normals,
     const cv::Vec3f& referencePoint)
 {
     size_t pointingToward = 0;
     size_t pointingAway = 0;
-    
+
     for (int y = 0; y < points.rows; y++) {
         for (int x = 0; x < points.cols; x++) {
             const cv::Vec3f& pt = points(y, x);
             const cv::Vec3f& n = normals(y, x);
-            
+
             if (std::isnan(pt[0]) || std::isnan(pt[1]) || std::isnan(pt[2]) ||
                 std::isnan(n[0]) || std::isnan(n[1]) || std::isnan(n[2])) {
                 continue;
             }
-            
+
             // Calculate direction from point to reference
             cv::Vec3f toRef = referencePoint - pt;
-            
+
             // Check if normal points toward or away from reference
             float dotProduct = toRef.dot(n);
             if (dotProduct > 0) {
@@ -77,14 +253,14 @@ bool shouldFlipNormals(
             }
         }
     }
-    
+
     // Flip if majority point away from reference
     return pointingAway > pointingToward;
 }
 
 /**
  * @brief Apply normal flipping decision to a set of normals
- * 
+ *
  * @param normals Matrix of normal vectors to potentially flip (modified in-place)
  * @param shouldFlip Whether to flip the normals
  */
@@ -104,7 +280,7 @@ void applyNormalOrientation(cv::Mat_<cv::Vec3f>& normals, bool shouldFlip)
 
 /**
  * @brief Apply rotation to an image
- * 
+ *
  * @param img Image to rotate (modified in-place)
  * @param angleDegrees Rotation angle in degrees (counterclockwise)
  */
@@ -113,30 +289,30 @@ void rotateImage(cv::Mat& img, double angleDegrees)
     if (std::abs(angleDegrees) < 1e-6) {
         return; // No rotation needed
     }
-    
+
     // Get the center of the image
     cv::Point2f center(img.cols / 2.0f, img.rows / 2.0f);
-    
+
     // Get the rotation matrix
     cv::Mat rotMatrix = cv::getRotationMatrix2D(center, angleDegrees, 1.0);
-    
+
     // Calculate the new image bounds
     cv::Rect2f bbox = cv::RotatedRect(cv::Point2f(), img.size(), angleDegrees).boundingRect2f();
-    
+
     // Adjust transformation matrix to account for translation
     rotMatrix.at<double>(0, 2) += bbox.width / 2.0 - img.cols / 2.0;
     rotMatrix.at<double>(1, 2) += bbox.height / 2.0 - img.rows / 2.0;
-    
+
     // Apply the rotation
     cv::Mat rotated;
     cv::warpAffine(img, rotated, rotMatrix, bbox.size(), cv::INTER_LINEAR, cv::BORDER_CONSTANT, cv::Scalar(0));
-    
+
     img = rotated;
 }
 
 /**
  * @brief Apply flip transformation to an image
- * 
+ *
  * @param img Image to flip (modified in-place)
  * @param flipType Flip type: 0=Vertical, 1=Horizontal, 2=Both
  */
@@ -145,7 +321,7 @@ void flipImage(cv::Mat& img, int flipType)
     if (flipType < 0 || flipType > 2) {
         return; // Invalid flip type
     }
-    
+
     if (flipType == 0) {
         // Vertical flip (flip around horizontal axis)
         cv::flip(img, img, 0);
@@ -168,67 +344,91 @@ std::ostream& operator<< (std::ostream& out, const xt::svector<size_t> &v) {
     return out;
 }
 
-void printUsage(const char* programName)
-{
-    std::cout << "Usage: " << programName << " <ome-zarr-volume> <output> <seg-path> <tgt-scale> <ome-zarr-group-idx> [options]" << std::endl;
-    std::cout << "Options:" << std::endl;
-    std::cout << "  <num-slices>                    Number of slices to render (default: 1)" << std::endl;
-    std::cout << "  <crop-x> <crop-y> <crop-w> <crop-h>  Crop parameters" << std::endl;
-    std::cout << "  --rotate <degrees>              Rotate output image by angle in degrees (counterclockwise)" << std::endl;
-    std::cout << "  --flip <axis>                   Flip output image. Axis: 0=Vertical, 1=Horizontal, 2=Both" << std::endl;
-}
 
 int main(int argc, char *argv[])
 {
-    if (argc < 6) {
-        printUsage(argv[0]);
+    ///// Parse the command line options /////
+    // clang-format off
+    po::options_description required("Required arguments");
+    required.add_options()
+        ("volume,v", po::value<std::string>()->required(),
+            "Path to the OME-Zarr volume")
+        ("output,o", po::value<std::string>()->required(),
+            "Output path/pattern for rendered images")
+        ("segmentation,s", po::value<std::string>()->required(),
+            "Path to the segmentation file")
+        ("scale", po::value<float>()->required(),
+            "Target scale for rendering")
+        ("group-idx,g", po::value<int>()->required(),
+            "OME-Zarr group index");
+
+    po::options_description optional("Optional arguments");
+    optional.add_options()
+        ("help,h", "Show this help message")
+        ("num-slices,n", po::value<int>()->default_value(1),
+            "Number of slices to render")
+        ("crop-x", po::value<int>()->default_value(0),
+            "Crop region X coordinate")
+        ("crop-y", po::value<int>()->default_value(0),
+            "Crop region Y coordinate")
+        ("crop-width", po::value<int>()->default_value(0),
+            "Crop region width (0 = no crop)")
+        ("crop-height", po::value<int>()->default_value(0),
+            "Crop region height (0 = no crop)")
+        ("affine-transform,a", po::value<std::string>(),
+            "Path to affine transform file (JSON or text format)")
+        ("rotate", po::value<double>()->default_value(0.0),
+            "Rotate output image by angle in degrees (counterclockwise)")
+        ("flip", po::value<int>()->default_value(-1),
+            "Flip output image. 0=Vertical, 1=Horizontal, 2=Both");
+    // clang-format on
+
+    po::options_description all("Usage");
+    all.add(required).add(optional);
+
+    // Parse command line
+    po::variables_map parsed;
+    try {
+        po::store(po::command_line_parser(argc, argv).options(all).run(), parsed);
+        
+        // Show help message
+        if (parsed.count("help") > 0 || argc < 2) {
+            std::cout << "vc_render_tifxyz: Render volume data using segmentation surfaces\n\n";
+            std::cout << all << '\n';
+            return EXIT_SUCCESS;
+        }
+        
+        po::notify(parsed);
+    } catch (po::error& e) {
+        std::cerr << "Error: " << e.what() << '\n';
+        std::cerr << "Use --help for usage information\n";
         return EXIT_FAILURE;
     }
+
+    // Extract parsed arguments
+    fs::path vol_path = parsed["volume"].as<std::string>();
+    std::string tgt_ptn = parsed["output"].as<std::string>();
+    fs::path seg_path = parsed["segmentation"].as<std::string>();
+    float tgt_scale = parsed["scale"].as<float>();
+    int group_idx = parsed["group-idx"].as<int>();
+    int num_slices = parsed["num-slices"].as<int>();
     
-    // Parse basic arguments
-    fs::path vol_path = argv[1];
-    const char *tgt_ptn = argv[2];
-    fs::path seg_path = argv[3];
-    float tgt_scale = atof(argv[4]);
-    int group_idx = atoi(argv[5]);
+    // Transformation parameters
+    double rotate_angle = parsed["rotate"].as<double>();
+    int flip_axis = parsed["flip"].as<int>();
     
-    int num_slices = 1;
-    int arg_idx = 6;
+    // Load affine transform if provided
+    AffineTransform affineTransform;
+    bool hasAffine = false;
     
-    // Check if we have num_slices
-    if (argc > arg_idx && std::string(argv[arg_idx]).find("--") != 0) {
-        num_slices = atoi(argv[arg_idx]);
-        arg_idx++;
-    }
-    
-    // Check for crop parameters
-    cv::Rect crop;
-    bool has_crop = false;
-    if (argc > arg_idx + 3 && 
-        std::string(argv[arg_idx]).find("--") != 0 &&
-        std::string(argv[arg_idx+1]).find("--") != 0 &&
-        std::string(argv[arg_idx+2]).find("--") != 0 &&
-        std::string(argv[arg_idx+3]).find("--") != 0) {
-        crop = {atoi(argv[arg_idx]), atoi(argv[arg_idx+1]), atoi(argv[arg_idx+2]), atoi(argv[arg_idx+3])};
-        has_crop = true;
-        arg_idx += 4;
-    }
-    
-    // Parse optional transformation parameters
-    double rotate_angle = 0.0;
-    int flip_axis = -1;
-    
-    while (arg_idx < argc) {
-        std::string arg(argv[arg_idx]);
-        if (arg == "--rotate" && arg_idx + 1 < argc) {
-            rotate_angle = atof(argv[arg_idx + 1]);
-            arg_idx += 2;
-        } else if (arg == "--flip" && arg_idx + 1 < argc) {
-            flip_axis = atoi(argv[arg_idx + 1]);
-            arg_idx += 2;
-        } else {
-            std::cerr << "Unknown option: " << arg << std::endl;
-            printUsage(argv[0]);
+    if (parsed.count("affine-transform") > 0) {
+        std::string affineFile = parsed["affine-transform"].as<std::string>();
+        try {
+            affineTransform = loadAffineTransform(affineFile);
+            hasAffine = true;
+            std::cout << "Loaded affine transform from: " << affineFile << std::endl;
+        } catch (const std::exception& e) {
+            std::cerr << "Error loading affine transform: " << e.what() << std::endl;
             return EXIT_FAILURE;
         }
     }
@@ -240,14 +440,14 @@ int main(int argc, char *argv[])
     std::cout << "zarr dataset size for scale group " << group_idx << ds->shape() << std::endl;
     std::cout << "chunk shape shape " << ds->chunking().blockShape() << std::endl;
     std::cout << "saving output to " << tgt_ptn << std::endl;
-    
+
     if (std::abs(rotate_angle) > 1e-6) {
         std::cout << "Rotation: " << rotate_angle << " degrees" << std::endl;
     }
     if (flip_axis >= 0) {
         std::cout << "Flip: " << (flip_axis == 0 ? "Vertical" : flip_axis == 1 ? "Horizontal" : "Both") << std::endl;
     }
-    
+
     fs::path output_path(tgt_ptn);
     fs::create_directories(output_path.parent_path());
     
@@ -273,10 +473,18 @@ int main(int argc, char *argv[])
     full_size.height *= tgt_scale/surf->_scale[1];
     
     cv::Size tgt_size = full_size;
-    if (!has_crop) {
-        crop = {0, 0, tgt_size.width, tgt_size.height};
-    }
-    tgt_size = crop.size();
+    cv::Rect crop = {0,0,tgt_size.width, tgt_size.height};
+    
+    // Handle crop parameters
+    int crop_x = parsed["crop-x"].as<int>();
+    int crop_y = parsed["crop-y"].as<int>();
+    int crop_width = parsed["crop-width"].as<int>();
+    int crop_height = parsed["crop-height"].as<int>();
+    
+    if (crop_width > 0 && crop_height > 0) {
+        crop = {crop_x, crop_y, crop_width, crop_height};
+        tgt_size = crop.size();
+    }        
     
     std::cout << "rendering size " << tgt_size << " at scale " << tgt_scale << " crop " << crop << std::endl;
     
@@ -288,7 +496,7 @@ int main(int argc, char *argv[])
     bool globalFlipDecision = false;
     bool orientationDetermined = false;
     cv::Vec3f meshCentroid;
-    
+
     if (tgt_size.width >= 10000 && num_slices > 1)
         slice_gen = true;
     else {
@@ -298,10 +506,12 @@ int main(int argc, char *argv[])
         meshCentroid = calculateMeshCentroid(points);
         globalFlipDecision = shouldFlipNormals(points, normals, meshCentroid);
         orientationDetermined = true;
-        
-        // Apply the orientation
+
         applyNormalOrientation(normals, globalFlipDecision);
-        
+
+        if (hasAffine) {
+            applyAffineTransform(points, normals, affineTransform);
+        }
         if (globalFlipDecision) {
             std::cout << "Orienting normals to point consistently (flipped)" << std::endl;
         } else {
@@ -318,7 +528,7 @@ int main(int argc, char *argv[])
 
     if (num_slices == 1) {
         readInterpolated3D(img, ds.get(), points, &chunk_cache);
-        
+
         // Apply transformations
         if (std::abs(rotate_angle) > 1e-6) {
             rotateImage(img, rotate_angle);
@@ -326,8 +536,8 @@ int main(int argc, char *argv[])
         if (flip_axis >= 0) {
             flipImage(img, flip_axis);
         }
-        
-        cv::imwrite(tgt_ptn, img);
+
+        cv::imwrite(tgt_ptn.c_str(), img);
     }
     else {
         char buf[1024];
@@ -335,36 +545,46 @@ int main(int argc, char *argv[])
             float off = i-num_slices/2;
             if (slice_gen) {
                 img.create(tgt_size);
-                
+
                 // For chunked processing, we need to determine orientation from the first chunk
                 // or a representative sample to ensure consistency
                 for(int x=crop.x;x<crop.x+crop.width;x+=1024) {
                     int w = std::min(tgt_size.width+crop.x-x, 1024);
                     surf->gen(&points, &normals, {w,crop.height}, nullptr, tgt_scale, {-full_size.width/2+x,-full_size.height/2+crop.y,0});
                     
+                    // Apply affine transform if provided
+                    if (hasAffine) {
+                        applyAffineTransform(points, normals, affineTransform);
+                    }
                     // Determine orientation from first chunk if not yet determined
                     if (!orientationDetermined) {
                         meshCentroid = calculateMeshCentroid(points);
                         globalFlipDecision = shouldFlipNormals(points, normals, meshCentroid);
                         orientationDetermined = true;
-                        
+
                         if (globalFlipDecision) {
                             std::cout << "Orienting normals to point consistently (flipped) - determined from first chunk" << std::endl;
                         } else {
                             std::cout << "Orienting normals to point consistently (not flipped) - determined from first chunk" << std::endl;
                         }
                     }
-                    
+
                     // Apply the consistent orientation decision to all chunks
                     applyNormalOrientation(normals, globalFlipDecision);
-                    
+
                     cv::Mat_<uint8_t> slice;
                     readInterpolated3D(slice, ds.get(), points*ds_scale+off*normals*ds_scale, &chunk_cache);
                     slice.copyTo(img(cv::Rect(x-crop.x,0,w,crop.height)));
                 }
             }
             else {
-                readInterpolated3D(img, ds.get(), points+off*ds_scale*normals, &chunk_cache);
+                cv::Mat_<cv::Vec3f> offsetPoints = points + off*ds_scale*normals;
+                // Apply affine transform if provided (for non-slice_gen case)
+                if (hasAffine && !slice_gen) {
+                    cv::Mat_<cv::Vec3f> offsetNormals = normals.clone();
+                    applyAffineTransform(offsetPoints, offsetNormals, affineTransform);
+                }
+                readInterpolated3D(img, ds.get(), offsetPoints, &chunk_cache);
             }
             
             // Apply transformations
@@ -374,8 +594,7 @@ int main(int argc, char *argv[])
             if (flip_axis >= 0) {
                 flipImage(img, flip_axis);
             }
-            
-            snprintf(buf, 1024, tgt_ptn, i);
+            snprintf(buf, 1024, tgt_ptn.c_str(), i);
             cv::imwrite(buf, img);
         }
     }
