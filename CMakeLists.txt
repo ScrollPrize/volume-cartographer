@@ -4,7 +4,7 @@ include(CMakeDependentOption)
 
 set(VC_VERSION 3.0.2)
 
-list(PREPEND CMAKE_PREFIX_PATH "/home/forrest/ceres-install")
+list(PREPEND CMAKE_PREFIX_PATH "$ENV{HOME}/vc-dependencies")
 
 option(VC_VERSION_DATESTAMP "Append date stamp to version number" off)
 if(VC_VERSION_DATESTAMP)
@@ -18,7 +18,7 @@ set(EXECUTABLE_OUTPUT_PATH ${CMAKE_BINARY_DIR}/bin)
 set(LIBRARY_OUTPUT_PATH ${CMAKE_BINARY_DIR}/lib)
 set(CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
 
-set(CMAKE_CXX_FLAGS " -Wno-narrowing -std=c++20" )
+set(CMAKE_CXX_FLAGS " -Wno-narrowing -std=c++20 -DWITH_BLOSC=1 -DWITH_ZLIB=1" )
 
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -ggdb -Og  -g3 ")

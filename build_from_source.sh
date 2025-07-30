@@ -4,15 +4,15 @@ set -e
 
 export CC="ccache clang"
 export CXX="ccache clang++"
-export INSTALL_PREFIX="$HOME/ceres-install"
-export BUILD_DIR="$HOME/ceres-build"
+export INSTALL_PREFIX="$HOME/vc-dependencies"
+export BUILD_DIR="$HOME/vc-dependencies-build"
 export JOBS=$(nproc)
 export COMMON_FLAGS="-march=native -w"
 export COMMON_LDFLAGS="-fuse-ld=lld"
 
-sudo apt-get update
-sudo apt-get install -y libgmp-dev libmpfr-dev ccache ninja-build lld \
-    libcurl4-openssl-dev libboost-system-dev libboost-program-options-dev qt6-base-dev
+#sudo apt-get update
+#sudo apt-get install -y libgmp-dev libmpfr-dev ccache ninja-build lld \
+#    libcurl4-openssl-dev libboost-system-dev libboost-program-options-dev qt6-base-dev
 
 rm -rf "$BUILD_DIR" "$INSTALL_PREFIX"
 mkdir -p "$BUILD_DIR" "$INSTALL_PREFIX"
@@ -160,8 +160,6 @@ cmake .. -G Ninja \
     -DCMAKE_PREFIX_PATH="$INSTALL_PREFIX" \
     -DWITH_BLOSC=ON \
     -DWITH_ZLIB=ON \
-    -DWITH_XZ=ON \
-    -DWITH_LZ4=ON \
     -DBUILD_Z5PY=OFF \
     -DBUILD_TESTS=OFF
 ninja -j$JOBS
@@ -194,11 +192,55 @@ ninja -j$JOBS
 ninja install
 cd "$BUILD_DIR"
 
+
+# OpenCV
+rm -rf opencv
+git clone --depth 1 https://github.com/opencv/opencv.git
+cd opencv
+mkdir -p build && cd build
+cmake .. -G Ninja \
+    -DCMAKE_INSTALL_PREFIX="$INSTALL_PREFIX" \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_C_COMPILER=clang \
+    -DCMAKE_CXX_COMPILER=clang++ \
+    -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+    -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+    -DCMAKE_C_FLAGS="${COMMON_FLAGS}" \
+    -DBUILD_SHARED_LIBS=OFF \
+    -DCMAKE_CXX_FLAGS="${COMMON_FLAGS}" \
+    -DCMAKE_EXE_LINKER_FLAGS="${COMMON_LDFLAGS}" \
+    -DCMAKE_SHARED_LINKER_FLAGS="${COMMON_LDFLAGS}" \
+    -DCMAKE_MODULE_LINKER_FLAGS="${COMMON_LDFLAGS}" \
+    -DBUILD_SHARED_LIBS=OFF \
+    -DBUILD_opencv_apps=OFF \
+    -DBUILD_opencv_python2=OFF \
+    -DBUILD_opencv_python3=OFF \
+    -DBUILD_TESTS=OFF \
+    -DBUILD_PERF_TESTS=OFF \
+    -DBUILD_EXAMPLES=OFF \
+    -DBUILD_DOCS=OFF \
+    -DWITH_CUDA=OFF \
+    -DWITH_OPENMP=OFF \
+    -DWITH_TBB=OFF \
+    -DWITH_IPP=OFF \
+    -DWITH_VTK=OFF \
+    -DWITH_FFMPEG=ON \
+    -DWITH_GSTREAMER=OFF \
+    -DWITH_V4L=ON \
+    -DWITH_QT=OFF \
+    -DWITH_GTK=OFF \
+    -DWITH_OPENCL=ON \
+    -DWITH_OPENEXR=OFF \
+    -DOPENCV_ENABLE_NONFREE=ON
+ninja -j$JOBS
+ninja install
+cd "$BUILD_DIR"
+
 # Ceres Solver
 rm -rf ceres-solver
 git clone --depth 1 --recurse-submodules --shallow-submodules https://github.com/ceres-solver/ceres-solver.git
 cd ceres-solver
-mkdir -p build && cd build
+mkdir -p ceresbuild && cd ceresbuild
 
 cmake .. -G Ninja \
     -DCMAKE_INSTALL_PREFIX="$INSTALL_PREFIX" \
