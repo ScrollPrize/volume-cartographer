@@ -847,7 +847,6 @@ float local_optimization(int radius, const cv::Vec2i &p, cv::Mat_<uint8_t> &stat
 //        options.use_inner_iterations = true;
 //    }
 #ifdef VC_USE_CUDA_SPARSE
-    options.sparse_linear_algebra_library_type = ceres::CUDA_SPARSE;
     // Check if Ceres was actually built with CUDA sparse support
     if (ceres::IsSparseLinearAlgebraLibraryTypeAvailable(ceres::CUDA_SPARSE)) {
         options.linear_solver_type = ceres::SPARSE_SCHUR;
@@ -1123,7 +1122,6 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *c
     options_big.linear_solver_type = ceres::SPARSE_SCHUR;
     options_big.use_nonmonotonic_steps = true;
 #ifdef VC_USE_CUDA_SPARSE
-    options.sparse_linear_algebra_library_type = ceres::CUDA_SPARSE;
     // Check if Ceres was actually built with CUDA sparse support
     if (ceres::IsSparseLinearAlgebraLibraryTypeAvailable(ceres::CUDA_SPARSE)) {
         options.linear_solver_type = ceres::SPARSE_SCHUR;
@@ -2269,7 +2267,6 @@ void optimize_surface_mapping(SurfTrackerData &data, cv::Mat_<uint8_t> &state, c
     ceres::Solver::Options options;
     options.linear_solver_type = ceres::SPARSE_SCHUR;
 #ifdef VC_USE_CUDA_SPARSE
-    options.sparse_linear_algebra_library_type = ceres::CUDA_SPARSE;
     // Check if Ceres was actually built with CUDA sparse support
     if (ceres::IsSparseLinearAlgebraLibraryTypeAvailable(ceres::CUDA_SPARSE)) {
         options.linear_solver_type = ceres::SPARSE_SCHUR;
