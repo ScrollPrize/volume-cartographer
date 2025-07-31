@@ -847,12 +847,17 @@ float local_optimization(int radius, const cv::Vec2i &p, cv::Mat_<uint8_t> &stat
 //        options.use_inner_iterations = true;
 //    }
 #ifdef VC_USE_CUDA_SPARSE
-    options.linear_solver_type = ceres::SPARSE_SCHUR;
-    options.sparse_linear_algebra_library_type = ceres::CUDA_SPARSE;
+    // Check if Ceres was actually built with CUDA sparse support
+    if (ceres::IsSparseLinearAlgebraLibraryTypeAvailable(ceres::CUDA_SPARSE)) {
+        options.linear_solver_type = ceres::SPARSE_SCHUR;
+        options.sparse_linear_algebra_library_type = ceres::CUDA_SPARSE;
 
-    // Enable mixed precision for SPARSE_SCHUR
-    if (options.linear_solver_type == ceres::SPARSE_SCHUR) {
-        options.use_mixed_precision_solves = true;
+        // Enable mixed precision for SPARSE_SCHUR
+        if (options.linear_solver_type == ceres::SPARSE_SCHUR) {
+            options.use_mixed_precision_solves = true;
+        }
+    } else {
+        std::cerr << "Warning: CUDA_SPARSE requested but Ceres was not built with CUDA sparse support. Falling back to default solver." << std::endl;
     }
 #endif
     ceres::Solver::Summary summary;
@@ -1117,11 +1122,17 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *c
     options_big.linear_solver_type = ceres::SPARSE_SCHUR;
     options_big.use_nonmonotonic_steps = true;
 #ifdef VC_USE_CUDA_SPARSE
-    options_big.sparse_linear_algebra_library_type = ceres::CUDA_SPARSE;
+    // Check if Ceres was actually built with CUDA sparse support
+    if (ceres::IsSparseLinearAlgebraLibraryTypeAvailable(ceres::CUDA_SPARSE)) {
+        options_big.linear_solver_type = ceres::SPARSE_SCHUR;
+        options_big.sparse_linear_algebra_library_type = ceres::CUDA_SPARSE;
 
-    // Enable mixed precision for SPARSE_SCHUR
-    if (options_big.linear_solver_type == ceres::SPARSE_SCHUR) {
-        options_big.use_mixed_precision_solves = true;
+        // Enable mixed precision for SPARSE_SCHUR
+        if (options_big.linear_solver_type == ceres::SPARSE_SCHUR) {
+            options_big.use_mixed_precision_solves = true;
+        }
+    } else {
+        std::cerr << "Warning: CUDA_SPARSE requested but Ceres was not built with CUDA sparse support. Falling back to default solver." << std::endl;
     }
 #endif
     options_big.minimizer_progress_to_stdout = false;
@@ -2256,8 +2267,18 @@ void optimize_surface_mapping(SurfTrackerData &data, cv::Mat_<uint8_t> &state, c
     ceres::Solver::Options options;
     options.linear_solver_type = ceres::SPARSE_SCHUR;
 #ifdef VC_USE_CUDA_SPARSE
-    options.sparse_linear_algebra_library_type = ceres::CUDA_SPARSE;
-    options.use_mixed_precision_solves = true;
+    // Check if Ceres was actually built with CUDA sparse support
+    if (ceres::IsSparseLinearAlgebraLibraryTypeAvailable(ceres::CUDA_SPARSE)) {
+        options.linear_solver_type = ceres::SPARSE_SCHUR;
+        options.sparse_linear_algebra_library_type = ceres::CUDA_SPARSE;
+
+        // Enable mixed precision for SPARSE_SCHUR
+        if (options.linear_solver_type == ceres::SPARSE_SCHUR) {
+            options.use_mixed_precision_solves = true;
+        }
+    } else {
+        std::cerr << "Warning: CUDA_SPARSE requested but Ceres was not built with CUDA sparse support. Falling back to default solver." << std::endl;
+    }
 #endif
     options.minimizer_progress_to_stdout = false;
     options.max_num_iterations = 100;
