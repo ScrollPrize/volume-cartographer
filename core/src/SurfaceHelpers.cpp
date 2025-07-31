@@ -1124,12 +1124,12 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *c
 #ifdef VC_USE_CUDA_SPARSE
     // Check if Ceres was actually built with CUDA sparse support
     if (ceres::IsSparseLinearAlgebraLibraryTypeAvailable(ceres::CUDA_SPARSE)) {
-        options.linear_solver_type = ceres::SPARSE_SCHUR;
-        options.sparse_linear_algebra_library_type = ceres::CUDA_SPARSE;
+        options_big.linear_solver_type = ceres::SPARSE_SCHUR;
+        options_big.sparse_linear_algebra_library_type = ceres::CUDA_SPARSE;
 
         // Enable mixed precision for SPARSE_SCHUR
-        if (options.linear_solver_type == ceres::SPARSE_SCHUR) {
-            options.use_mixed_precision_solves = true;
+        if (options_big.linear_solver_type == ceres::SPARSE_SCHUR) {
+            options_big.use_mixed_precision_solves = true;
         }
     } else {
         std::cerr << "Warning: CUDA_SPARSE requested but Ceres was not built with CUDA sparse support. Falling back to default solver." << std::endl;
