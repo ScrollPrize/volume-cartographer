@@ -167,7 +167,6 @@ std::ostream& operator<< (std::ostream& out, const xt::xarray<uint8_t>::shape_ty
 
 z5::Dataset *Volume::zarrDataset(int level)
 {
-    std::cout << "zarr dataset level: " << level << std::endl;
     if (level >= zarrDs_.size())
         return nullptr;
 
