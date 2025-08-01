@@ -74,6 +74,7 @@ CVolumeViewer::CVolumeViewer(CSurfaceCollection *col, QWidget* parent)
     // fCenterOnZoomEnabled = settings.value("viewer/center_on_zoom", false).toInt() != 0;
     // fScrollSpeed = settings.value("viewer/scroll_speed", false).toInt();
     fSkipImageFormatConv = settings.value("perf/chkSkipImageFormatConvExp", false).toBool();
+    _downscale_override = settings.value("perf/downscale_override", 0).toInt();
 
     QVBoxLayout* aWidgetLayout = new QVBoxLayout;
     aWidgetLayout->addWidget(fGraphicsView);
@@ -214,6 +215,11 @@ void CVolumeViewer::recalcScales()
     if      (_scale >= _max_scale) { _ds_sd_idx = 0;                         }
     else if (_scale <  _min_scale) { _ds_sd_idx = volume->numScales()-1;     }
     else  { _ds_sd_idx = int(std::round(-std::log2(_scale))); }
+    if (_downscale_override > 0) {
+        _ds_sd_idx += _downscale_override;
+        // Clamp to available scales
+        _ds_sd_idx = std::min(_ds_sd_idx, (int)volume->numScales() - 1);
+    }
     _ds_scale = std::pow(2.0f, -_ds_sd_idx);
     /* ---------------------------------------------------------------- */
 

@@ -202,6 +202,8 @@ protected:
     float _brushSize = 3.0f;
     bool _brushIsSquare = false;
     bool _resetViewOnSurfaceChange = true;
+
+    int _downscale_override = 0;  // 0=auto, 1=2x, 2=4x, 3=8x, 4=16x, 5=32x
 };  // class CVolumeViewer
 
 }  // namespace ChaoVis
