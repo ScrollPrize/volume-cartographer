@@ -82,7 +82,7 @@ CVolumeViewer::CVolumeViewer(CSurfaceCollection *col, QWidget* parent)
 
     _deferredUpdateTimer = new QTimer(this);
     _deferredUpdateTimer->setSingleShot(true);
-    _deferredUpdateTimer->setInterval(150); // 150ms delay after last interaction
+    _deferredUpdateTimer->setInterval(50); // 150ms delay after last interaction
     connect(_deferredUpdateTimer, &QTimer::timeout, this, &CVolumeViewer::performDeferredUpdates);
 
 
@@ -237,6 +237,10 @@ void CVolumeViewer::onZoom(int steps, QPointF scene_loc, Qt::KeyboardModifiers m
     _deferredInvalidateIntersect = true;
     _deferredUpdateTimer->stop();
     _deferredUpdateTimer->start();
+
+    for(auto &col : _intersect_items)
+        for(auto &item : col.second)
+            item->setVisible(false);
 
     if (!_surf)
         return;
@@ -1126,11 +1130,6 @@ void CVolumeViewer::renderIntersections()
 
 void CVolumeViewer::onPanRelease(Qt::MouseButton buttons, Qt::KeyboardModifiers modifiers)
 {
-    // Make intersections visible again
-    for(auto &col : _intersect_items)
-        for(auto &item : col.second)
-            item->setVisible(true);
-
     renderVisible();
 
     // Defer intersection rendering
