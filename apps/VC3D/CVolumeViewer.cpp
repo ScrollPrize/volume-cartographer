@@ -80,6 +80,11 @@ CVolumeViewer::CVolumeViewer(CSurfaceCollection *col, QWidget* parent)
 
     setLayout(aWidgetLayout);
 
+    _deferredUpdateTimer = new QTimer(this);
+    _deferredUpdateTimer->setSingleShot(true);
+    _deferredUpdateTimer->setInterval(150); // 150ms delay after last interaction
+    connect(_deferredUpdateTimer, &QTimer::timeout, this, &CVolumeViewer::performDeferredUpdates);
+
 
     _lbl = new QLabel(this);
     _lbl->setStyleSheet("QLabel { color : white; }");
@@ -227,21 +232,24 @@ void CVolumeViewer::recalcScales()
 
 void CVolumeViewer::onZoom(int steps, QPointF scene_loc, Qt::KeyboardModifiers modifiers)
 {
-    invalidateVis();
-    invalidateIntersect();
-    
+    // Defer expensive invalidations
+    _deferredInvalidateVis = true;
+    _deferredInvalidateIntersect = true;
+    _deferredUpdateTimer->stop();
+    _deferredUpdateTimer->start();
+
     if (!_surf)
         return;
-    
+
     if (modifiers & Qt::ShiftModifier) {
         // Z slice navigation with shift+scroll
         int adjustedSteps = steps;
-        
-        // Use single z step for segmentation surface 
+
+        // Use single z step for segmentation surface
         if (_surf_name == "segmentation") {
             adjustedSteps = (steps > 0) ? 1 : -1;  // Always step by 1 slice regardless of wheel delta
         }
-        
+
         _z_off += adjustedSteps;
 
         // Update the focus POI Z position
@@ -290,15 +298,16 @@ void CVolumeViewer::onZoom(int steps, QPointF scene_loc, Qt::KeyboardModifiers m
         //FIXME get correct size for slice!
         int max_size = 100000; //std::max(volume->sliceWidth(), std::max(volume->numSlices(), volume->sliceHeight()))*_ds_scale + 512;
         fGraphicsView->setSceneRect(-max_size/2, -max_size/2, max_size, max_size);
-        renderVisible();
+        renderVisible(); // Keep immediate render for smooth interaction
 
         // Re-render all points to update their positions according to the new scale
         refreshPointPositions();
     }
 
     _lbl->setText(QString("%1x %2").arg(_scale).arg(_z_off));
-    
-    renderIntersections();
+
+    // Defer rendering intersections
+    _deferredRenderIntersections = true;
 }
 
 void CVolumeViewer::OnVolumeChanged(volcart::Volume::Pointer volume_)
@@ -1117,26 +1126,36 @@ void CVolumeViewer::renderIntersections()
 
 void CVolumeViewer::onPanRelease(Qt::MouseButton buttons, Qt::KeyboardModifiers modifiers)
 {
+    // Make intersections visible again
     for(auto &col : _intersect_items)
         for(auto &item : col.second)
             item->setVisible(true);
 
     renderVisible();
-    
-    if (dynamic_cast<PlaneSurface*>(_surf))
-        renderIntersections();
+
+    // Defer intersection rendering
+    if (dynamic_cast<PlaneSurface*>(_surf)) {
+        _deferredRenderIntersections = true;
+        _deferredUpdateTimer->stop();
+        _deferredUpdateTimer->start();
+    }
 }
 
 void CVolumeViewer::onPanStart(Qt::MouseButton buttons, Qt::KeyboardModifiers modifiers)
 {
     renderVisible();
     
+    // Hide intersections immediately for smooth panning
     for(auto &col : _intersect_items)
         for(auto &item : col.second)
             item->setVisible(false);
-    
-    if (dynamic_cast<PlaneSurface*>(_surf))
-        invalidateIntersect();
+
+    // Defer the expensive invalidation
+    if (dynamic_cast<PlaneSurface*>(_surf)) {
+        _deferredInvalidateIntersect = true;
+        _deferredUpdateTimer->stop();
+        _deferredUpdateTimer->start();
+    }
 }
 
 void CVolumeViewer::onScrolled()
@@ -1712,3 +1731,23 @@ void CVolumeViewer::setResetViewOnSurfaceChange(bool reset)
     _resetViewOnSurfaceChange = reset;
 }
 
+void CVolumeViewer::performDeferredUpdates()
+{
+    if (_deferredInvalidateVis) {
+        invalidateVis();
+        _deferredInvalidateVis = false;
+    }
+
+    if (_deferredInvalidateIntersect) {
+        invalidateIntersect();
+        _deferredInvalidateIntersect = false;
+    }
+
+    if (_deferredRenderIntersections) {
+        renderIntersections();
+        _deferredRenderIntersections = false;
+    }
+
+    // Force a final high-quality render
+    renderVisible(true);
+}
