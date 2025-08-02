@@ -6,6 +6,8 @@
 namespace vc::apps
 {
 
-double point_winding_error(const ChaoVis::VCCollection& collection, const QuadSurface* surface);
+#include <opencv2/core.hpp>
+
+double point_winding_error(const ChaoVis::VCCollection& collection, QuadSurface* surface, const cv::Mat_<float>& winding);
 
 } // namespace vc::apps
