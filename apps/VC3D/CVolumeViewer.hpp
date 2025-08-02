@@ -124,6 +124,8 @@ protected:
     void refreshPointPositions();
     void renderOrUpdatePoint(const ColPoint& point);
 
+    void performDeferredUpdates();
+
 protected:
     // widget components
     QGraphicsScene* fScene;
@@ -202,6 +204,13 @@ protected:
     float _brushSize = 3.0f;
     bool _brushIsSquare = false;
     bool _resetViewOnSurfaceChange = true;
+
+    int _downscale_override = 0;  // 0=auto, 1=2x, 2=4x, 3=8x, 4=16x, 5=32x
+    QTimer* _deferredUpdateTimer;
+    bool _deferredInvalidateVis = false;
+    bool _deferredInvalidateIntersect = false;
+    bool _deferredRenderIntersections = false;
+
 };  // class CVolumeViewer
 
 }  // namespace ChaoVis
