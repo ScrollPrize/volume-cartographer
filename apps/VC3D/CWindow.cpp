@@ -23,6 +23,8 @@
 #include <QtConcurrent/QtConcurrent>
 #include <QComboBox>
 #include <QFutureWatcher>
+#include <QRegularExpressionValidator>
+
 #include <atomic>
 #include <omp.h>
 #include <opencv2/imgproc.hpp>
@@ -499,16 +501,14 @@ void CWindow::CreateWidgets(void)
     cmbSegmentationDir = ui.cmbSegmentationDir;
     connect(cmbSegmentationDir, &QComboBox::currentIndexChanged, this, &CWindow::onSegmentationDirChanged);
 
-    // Location input elements (now QLineEdit for manual entry)
-    lblLoc[0] = ui.sliceX;
-    lblLoc[1] = ui.sliceY;
-    lblLoc[2] = ui.sliceZ;
-    
-    // Set up validators for location inputs
-    for (int i = 0; i < 3; i++) {
-        lblLoc[i]->setValidator(new QIntValidator(0, 999999, this));
-        connect(lblLoc[i], &QLineEdit::editingFinished, this, &CWindow::onManualLocationChanged);
-    }
+    // Location input element (single QLineEdit for comma-separated values)
+    lblLocFocus = ui.sliceFocus;
+
+    // Set up validator for location input (accepts digits, commas, and spaces)
+    QRegularExpressionValidator* validator = new QRegularExpressionValidator(
+        QRegularExpression("^\\s*\\d+\\s*,\\s*\\d+\\s*,\\s*\\d+\\s*$"), this);
+    lblLocFocus->setValidator(validator);
+    connect(lblLocFocus, &QLineEdit::editingFinished, this, &CWindow::onManualLocationChanged);
     
     // Zoom buttons
     btnZoomIn = ui.btnZoomIn;
@@ -2423,37 +2423,53 @@ void CWindow::onManualLocationChanged()
         return;
     }
     
-    // Get the current text from the line edits
+    // Parse the comma-separated values
+    QString text = lblLocFocus->text().trimmed();
+    QStringList parts = text.split(',');
+
+    // Validate we have exactly 3 parts
+    if (parts.size() != 3) {
+        // Invalid input - restore the previous values
+        POI* poi = _surf_col->poi("focus");
+        if (poi) {
+            lblLocFocus->setText(QString("%1, %2, %3")
+                .arg(static_cast<int>(poi->p[0]))
+                .arg(static_cast<int>(poi->p[1]))
+                .arg(static_cast<int>(poi->p[2])));
+        }
+        return;
+    }
+
+    // Parse each coordinate
     bool ok[3];
-    int x = lblLoc[0]->text().toInt(&ok[0]);
-    int y = lblLoc[1]->text().toInt(&ok[1]);
-    int z = lblLoc[2]->text().toInt(&ok[2]);
-    
+    int x = parts[0].trimmed().toInt(&ok[0]);
+    int y = parts[1].trimmed().toInt(&ok[1]);
+    int z = parts[2].trimmed().toInt(&ok[2]);
+
     // Validate the input
     if (!ok[0] || !ok[1] || !ok[2]) {
         // Invalid input - restore the previous values
         POI* poi = _surf_col->poi("focus");
         if (poi) {
-            lblLoc[0]->setText(QString::number(static_cast<int>(poi->p[0])));
-            lblLoc[1]->setText(QString::number(static_cast<int>(poi->p[1])));
-            lblLoc[2]->setText(QString::number(static_cast<int>(poi->p[2])));
+            lblLocFocus->setText(QString("%1, %2, %3")
+                .arg(static_cast<int>(poi->p[0]))
+                .arg(static_cast<int>(poi->p[1]))
+                .arg(static_cast<int>(poi->p[2])));
         }
         return;
     }
-    
+
     // Clamp values to volume bounds
     int w = currentVolume->sliceWidth();
     int h = currentVolume->sliceHeight();
     int d = currentVolume->numSlices();
-    
+
     x = std::max(0, std::min(x, w - 1));
     y = std::max(0, std::min(y, h - 1));
     z = std::max(0, std::min(z, d - 1));
-    
-    // Update the line edits with clamped values
-    lblLoc[0]->setText(QString::number(x));
-    lblLoc[1]->setText(QString::number(y));
-    lblLoc[2]->setText(QString::number(z));
+
+    // Update the line edit with clamped values
+    lblLocFocus->setText(QString("%1, %2, %3").arg(x).arg(y).arg(z));
     
     // Update the focus POI
     POI* poi = _surf_col->poi("focus");
@@ -2491,9 +2507,10 @@ void CWindow::onZoomIn()
 void CWindow::onFocusPOIChanged(std::string name, POI* poi)
 {
     if (name == "focus" && poi) {
-        lblLoc[0]->setText(QString::number(poi->p[0]));
-        lblLoc[1]->setText(QString::number(poi->p[1]));
-        lblLoc[2]->setText(QString::number(poi->p[2]));
+        lblLocFocus->setText(QString("%1, %2, %3")
+            .arg(static_cast<int>(poi->p[0]))
+            .arg(static_cast<int>(poi->p[1]))
+            .arg(static_cast<int>(poi->p[2])));
 
         // Force an update of the filter
         onSegFilterChanged(0);
