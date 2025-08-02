@@ -17,7 +17,7 @@
 #include <memory>
 #include <map>
 #include "PathData.hpp"
-#include "VCCollection.hpp"
+#include "vc/core/util/VCCollection.hpp"
 
 namespace volcart {
     class Volume;

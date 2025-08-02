@@ -7,7 +7,7 @@
 
 #include <set>
 #include "PathData.hpp"
-#include "VCCollection.hpp"
+#include "vc/core/util/VCCollection.hpp"
 #include "COutlinedTextItem.hpp"
 
 class ChunkCache;

@@ -60,6 +60,25 @@ target_include_directories(vc_surface
         $<INSTALL_INTERFACE:include>
 )
 
+set(metrics_srcs
+    src/VCCollection.cpp
+    src/surface_metrics.cpp
+)
+add_library(vc_metrics
+    ${metrics_srcs}
+)
+add_library(VC::metrics ALIAS vc_metrics)
+target_link_libraries(vc_metrics
+    PUBLIC
+        VC::core
+        Qt6::Core
+)
+target_include_directories(vc_metrics
+    PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+        $<INSTALL_INTERFACE:include>
+)
+
 configure_file(src/Version.cpp.in Version.cpp)
 
 add_library(vc_core

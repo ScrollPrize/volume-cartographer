@@ -102,6 +102,17 @@ target_link_libraries(vc_tiffxyz_upscale_grounding
     Ceres::ceres
 )
 
+add_executable(vc_calc_surface_metrics src/vc_calc_surface_metrics.cpp)
+set_target_properties(vc_calc_surface_metrics PROPERTIES
+    AUTOMOC ON
+)
+target_link_libraries(vc_calc_surface_metrics
+    VC::metrics
+    VC::surface
+    VC::app_support
+    Boost::program_options
+)
+
 ## experiements for flattening ##
 # add_executable(vc_zarralphacomp src/ZarrAlphaComp.cpp)
 # target_link_libraries(vc_zarralphacomp
@@ -125,6 +136,7 @@ install(
         vc_obj2tifxyz
         vc_tifxyz_winding
         vc_fill_quadmesh
+        vc_calc_surface_metrics
         ${extra_apps}
     RUNTIME DESTINATION bin
     COMPONENT Programs

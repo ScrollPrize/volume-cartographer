@@ -9,7 +9,7 @@
 
 #include "CommandLineToolRunner.hpp"
 #include "vc/core/util/SurfaceDef.hpp"
-#include "VCCollection.hpp"
+#include "vc/core/util/VCCollection.hpp"
 
 #include <QShortcut>
 

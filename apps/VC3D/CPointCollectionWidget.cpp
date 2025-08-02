@@ -6,7 +6,7 @@
 #include <QFileDialog>
 #include <QMessageBox>
  
-#include "VCCollection.hpp"
+#include "vc/core/util/VCCollection.hpp"
  
 namespace ChaoVis {
 

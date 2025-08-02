@@ -9,7 +9,7 @@
 
 #include "CVolumeViewerView.hpp"
 #include "CSurfaceCollection.hpp"
-#include "VCCollection.hpp"
+#include "vc/core/util/VCCollection.hpp"
 #include "COutlinedTextItem.hpp"
 
 #include "vc/core/types/VolumePkg.hpp"

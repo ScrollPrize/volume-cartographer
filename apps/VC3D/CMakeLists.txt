@@ -36,8 +36,6 @@ set(srcs
     CommandLineToolRunner.hpp
     ConsoleOutputWidget.cpp
     ConsoleOutputWidget.hpp
-    VCCollection.cpp
-    VCCollection.hpp
     CPointCollectionWidget.cpp
     COutlinedTextItem.hpp
     COutlinedTextItem.cpp
@@ -89,6 +87,7 @@ find_package(GSL REQUIRED)
 include_directories(${GSL_INCLUDE_DIRS})
 target_link_libraries(${target}
     VC::core
+    VC::metrics
     VC::slicing
     VC::surface
     Qt6::Core
