@@ -95,7 +95,7 @@ float surf_th = 0.5;
 IntersectVec getIntersects(const cv::Vec2i &seed, const cv::Mat_<cv::Vec3f> &points, const cv::Vec2f &step)
 {
     cv::Vec3f o = points(seed[1],seed[0]);
-    cv::Vec3f n = grid_normal(points, {seed[0],seed[1],seed[2]});
+    cv::Vec3f n = grid_normal(points, {seed[0],seed[1],0});
     if (std::isnan(n[0]))
         return {};
     std::vector<cv::Vec2f> locs = {seed};
@@ -379,7 +379,13 @@ int main(int argc, char *argv[])
     cv::Mat_<float> winding(points.size(), 0);
     cv::Mat_<float> wind_w(points.size(), 0);
     
-    cv::Vec2i seed = {intersects[0][0].second[1],intersects[0][0].second[0]};
+    int seed_idx = 0;
+    while (!intersects[seed_idx].size())
+        if (seed_idx == intersects.size()-1)
+            abort();
+        else
+            seed_idx++;
+    cv::Vec2i seed = {intersects[seed_idx][0].second[1],intersects[seed_idx][0].second[0]};
     
     std::vector<cv::Vec3b> wind_cols;
     for(int i=0;i<400;i++) {
@@ -420,7 +426,7 @@ int main(int argc, char *argv[])
                 cv::Vec2i p1i = {iv[n].second[1],iv[n].second[0]};
                 cv::Vec2i p2i = {iv[n+1].second[1],iv[n+1].second[0]};
                 
-                int ref_x = wind_x_ref[(x1+x2)/wind_sd];
+                int ref_x = wind_x_ref[std::min<int>((x1+x2)/wind_sd, wind_x_ref.size()-1)];
                 
                 // std::cout << abs(x2-x1 - ref_x) << " " << x2-x1 << " vs " << ref_x << " wot " << x1 << " " << x2 << p1i << p2i << std::endl;
                 
