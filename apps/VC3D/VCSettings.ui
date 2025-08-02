@@ -349,7 +349,7 @@
            <widget class="QComboBox" name="cmbDownscaleOverride">
              <item>
                <property name="text">
-                 <string>Auto (1x)</string>
+                 <string>1x (full res)</string>
                </property>
              </item>
              <item>
@@ -391,7 +391,7 @@
                </sizepolicy>
              </property>
              <property name="toolTip">
-               <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Forces the viewer to use a more downscaled version of the zarr volume.&lt;/p&gt;&lt;p&gt;This reduces image quality but improves performance and reduces file I/O.&lt;/p&gt;&lt;p&gt;Auto (1x) = Use appropriate scale for zoom level&lt;br/&gt;2x = Use 2x more downscaled data&lt;br/&gt;4x = Use 4x more downscaled data&lt;br/&gt;etc.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+               <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Forces the viewer to use a more downscaled version of the zarr volume.&lt;/p&gt;&lt;p&gt;This reduces image quality but improves performance and reduces file I/O.&lt;/p&gt;&lt;p&gt;1x (full res) = Use appropriate scale for zoom level&lt;br/&gt;2x = Use 2x more downscaled data&lt;br/&gt;4x = Use 4x more downscaled data&lt;br/&gt;etc.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
              </property>
              <property name="text">
                <string/>
