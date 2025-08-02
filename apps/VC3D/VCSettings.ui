@@ -338,6 +338,72 @@
            </property>
           </widget>
          </item>
+         <item row="4" column="0">
+           <widget class="QLabel" name="labelDownscaleOverride">
+             <property name="text">
+               <string>Force downscale level (reduces quality for performance)</string>
+             </property>
+           </widget>
+         </item>
+         <item row="4" column="1">
+           <widget class="QComboBox" name="cmbDownscaleOverride">
+             <item>
+               <property name="text">
+                 <string>1x (full res)</string>
+               </property>
+             </item>
+             <item>
+               <property name="text">
+                 <string>2x</string>
+               </property>
+             </item>
+             <item>
+               <property name="text">
+                 <string>4x</string>
+               </property>
+             </item>
+             <item>
+               <property name="text">
+                 <string>8x</string>
+               </property>
+             </item>
+             <item>
+               <property name="text">
+                 <string>16x</string>
+               </property>
+             </item>
+             <item>
+               <property name="text">
+                 <string>32x</string>
+               </property>
+             </item>
+           </widget>
+         </item>
+         <item row="4" column="2">
+           <widget class="QPushButton" name="btnHelpDownscaleOverride">
+             <property name="enabled">
+               <bool>true</bool>
+             </property>
+             <property name="sizePolicy">
+               <sizepolicy hsizetype="Minimum" vsizetype="Minimum">
+                 <horstretch>0</horstretch>
+                 <verstretch>0</verstretch>
+               </sizepolicy>
+             </property>
+             <property name="toolTip">
+               <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Forces the viewer to use a more downscaled version of the zarr volume.&lt;/p&gt;&lt;p&gt;This reduces image quality but improves performance and reduces file I/O.&lt;/p&gt;&lt;p&gt;1x (full res) = Use appropriate scale for zoom level&lt;br/&gt;2x = Use 2x more downscaled data&lt;br/&gt;4x = Use 4x more downscaled data&lt;br/&gt;etc.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+             </property>
+             <property name="text">
+               <string/>
+             </property>
+             <property name="icon">
+               <iconset theme="help-contents"/>
+             </property>
+             <property name="flat">
+               <bool>true</bool>
+             </property>
+           </widget>
+         </item>
         </layout>
        </widget>
       </item>

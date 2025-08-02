@@ -31,7 +31,9 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent)
     chkSkipImageFormatConvExp->setChecked(settings.value("perf/chkSkipImageFormatConvExp", false).toBool());
     spinParallelProcesses->setValue(settings.value("perf/parallel_processes", 8).toInt());
     spinIterationCount->setValue(settings.value("perf/iteration_count", 1000).toInt());
-    
+    cmbDownscaleOverride->setCurrentIndex(settings.value("perf/downscale_override", 0).toInt());
+
+
     // Load rendering settings
     QString defaultVolume = settings.value("rendering/default_volume", "").toString();
     cmbDefaultVolume->addItem(""); // Empty selection
@@ -43,6 +45,8 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent)
     spinResolution->setValue(settings.value("rendering/resolution", 0).toInt());
     spinLayers->setValue(settings.value("rendering/layers", 21).toInt());
 
+
+    connect(btnHelpDownscaleOverride, &QPushButton::clicked, this, [this]{ QToolTip::showText(QCursor::pos(), btnHelpDownscaleOverride->toolTip()); });
     connect(btnHelpScrollSpeed, &QPushButton::clicked, this, [this]{ QToolTip::showText(QCursor::pos(), btnHelpScrollSpeed->toolTip()); });
     connect(btnHelpDisplayOpacity, &QPushButton::clicked, this, [this]{ QToolTip::showText(QCursor::pos(), btnHelpDisplayOpacity->toolTip()); });
     connect(btnHelpPreloadedSlices, &QPushButton::clicked, this, [this]{ QToolTip::showText(QCursor::pos(), btnHelpPreloadedSlices->toolTip()); });
@@ -70,7 +74,8 @@ void SettingsDialog::accept()
     settings.setValue("perf/chkSkipImageFormatConvExp", chkSkipImageFormatConvExp->isChecked() ? "1" : "0");
     settings.setValue("perf/parallel_processes", spinParallelProcesses->value());
     settings.setValue("perf/iteration_count", spinIterationCount->value());
-    
+    settings.setValue("perf/downscale_override", cmbDownscaleOverride->currentIndex());
+
     // Store rendering settings
     settings.setValue("rendering/default_volume", cmbDefaultVolume->currentText());
     settings.setValue("rendering/output_path_format", edtOutputFormat->text());
