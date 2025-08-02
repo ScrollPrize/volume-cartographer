@@ -64,8 +64,16 @@ set(metrics_srcs
     src/VCCollection.cpp
     src/surface_metrics.cpp
 )
+
+set(metrics_hdrs
+    include/vc/core/util/VCCollection.hpp
+)
+
+qt_wrap_cpp(metrics_moc ${metrics_hdrs})
+
 add_library(vc_metrics
     ${metrics_srcs}
+    ${metrics_moc}
 )
 add_library(VC::metrics ALIAS vc_metrics)
 target_link_libraries(vc_metrics
