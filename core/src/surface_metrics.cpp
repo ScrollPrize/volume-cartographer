@@ -4,11 +4,16 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
+#include <sstream>
+#include <iomanip>
 #include <opencv2/imgproc.hpp>
 #include <opencv2/imgcodecs.hpp>
+#include <nlohmann/json.hpp>
 
 namespace vc::apps
 {
+
+cv::Mat g_debug_image;
 
 // Helper to get point-to-line-segment squared distance
 static float dist_point_segment_sq(const cv::Vec3f& p, const cv::Vec3f& a, const cv::Vec3f& b) {
@@ -76,8 +81,6 @@ float find_intersection_direct(QuadSurface* surface, cv::Vec2f& loc, const cv::V
     return sqrt(best_dist_sq);
 }
 
-// Find the intersection point on the surface that is closest to a given 3D point,
-// among candidates that are within a certain distance to a line segment.
 cv::Vec2f find_closest_intersection(QuadSurface* surface, const cv::Vec3f& p1, const cv::Vec3f& p2, const cv::Vec3f& proximity_point, float& line_dist, float& prox_dist)
 {
     cv::Vec2f best_loc = {-1, -1};
@@ -127,11 +130,19 @@ cv::Vec2f find_closest_intersection(QuadSurface* surface, const cv::Vec3f& p1, c
 }
 
 
-double point_winding_error(const ChaoVis::VCCollection& collection, QuadSurface* surface, const cv::Mat_<float>& winding)
+nlohmann::json calc_point_metrics(const ChaoVis::VCCollection& collection, QuadSurface* surface, const cv::Mat_<float>& winding)
 {
+    g_debug_image = cv::Mat::zeros(winding.size(), CV_8UC3);
+    nlohmann::json results;
+
+    int total_invalid_intersections = 0;
+    int total_correct_winding = 0;
+    int total_correct_winding_inv = 0;
+    int total_comparisons = 0;
+    int total_segments = 0;
+
     for (const auto& pair : collection.getAllCollections()) {
         const auto& coll = pair.second;
-
         std::cout << "Processing collection: " << coll.name << std::endl;
 
         std::vector<ChaoVis::ColPoint> points_with_winding;
@@ -141,8 +152,8 @@ double point_winding_error(const ChaoVis::VCCollection& collection, QuadSurface*
             }
         }
 
-        if (points_with_winding.size() < 3) {
-            std::cout << "  Not enough annotated points (" << points_with_winding.size() << "), skipping." << std::endl;
+        if (points_with_winding.size() < 2) {
+            std::cout << "  Not enough annotated points to form a segment, skipping." << std::endl;
             continue;
         }
 
@@ -150,60 +161,71 @@ double point_winding_error(const ChaoVis::VCCollection& collection, QuadSurface*
             return a.winding_annotation < b.winding_annotation;
         });
 
-        std::vector<float> winding_results;
-        std::vector<float> distance_results;
+        std::vector<float> intersection_windings;
+        for (size_t i = 0; i < points_with_winding.size() - 1; ++i) {
+            total_segments++;
+            const auto& p1_info = points_with_winding[i];
+            const auto& p2_info = points_with_winding[i+1];
 
-        for (size_t i = 1; i < points_with_winding.size() - 1; ++i) {
-            const auto& p_prev = points_with_winding[i-1];
-            const auto& p_curr = points_with_winding[i];
-            const auto& p_next = points_with_winding[i+1];
+            float line_dist = -1.0f, prox_dist = -1.0f;
+            cv::Vec2f loc = find_closest_intersection(surface, p1_info.p, p2_info.p, p1_info.p, line_dist, prox_dist);
 
-            float line_dist1 = -1.0f, prox_dist1 = -1.0f;
-            cv::Vec2f loc1 = find_closest_intersection(surface, p_prev.p, p_curr.p, p_curr.p, line_dist1, prox_dist1);
+            if (loc[0] < 0) {
+                intersection_windings.push_back(NAN);
+                total_invalid_intersections++;
+                std::cout << "  Point " << p1_info.id << ": NOT FOUND" << std::endl;
+            } else {
+                float intersection_winding = winding(loc[1], loc[0]);
+                intersection_windings.push_back(intersection_winding);
+                std::cout << "  Point " << p1_info.id << ": found / " << prox_dist << ", winding: " << intersection_winding << ", ref: " << p1_info.winding_annotation << std::endl;
 
-            float line_dist2 = -1.0f, prox_dist2 = -1.0f;
-            cv::Vec2f loc2 = find_closest_intersection(surface, p_curr.p, p_next.p, p_curr.p, line_dist2, prox_dist2);
+                cv::Point center(loc[0], loc[1]);
+                cv::Vec3f color_f = coll.color;
+                cv::Scalar color(color_f[2] * 255, color_f[1] * 255, color_f[0] * 255);
+                cv::circle(g_debug_image, center, 3, color, -1);
 
-            cv::Vec2f final_loc = {-1, -1};
-            float final_line_dist = -1.0f;
-            float final_prox_dist = -1.0f;
+                std::stringstream stream;
+                stream << std::fixed << std::setprecision(2) << intersection_winding;
+                std::string text = stream.str() + "/" + std::to_string(line_dist);
+                cv::putText(g_debug_image, text, center + cv::Point(5, 5), cv::FONT_HERSHEY_SIMPLEX, 0.4, color, 1);
+            }
+        }
 
-            if (loc1[0] >= 0 && loc2[0] >= 0) {
-                if (prox_dist1 < prox_dist2) {
-                    final_loc = loc1; final_line_dist = line_dist1; final_prox_dist = prox_dist1;
-                } else {
-                    final_loc = loc2; final_line_dist = line_dist2; final_prox_dist = prox_dist2;
+        if (points_with_winding.size() >= 3) {
+            for (size_t i = 0; i < intersection_windings.size() - 1; ++i) {
+                total_comparisons++;
+                float prev_intersection = intersection_windings[i];
+                float curr_intersection = intersection_windings[i+1];
+
+                if (std::isnan(prev_intersection) || std::isnan(curr_intersection)) {
+                    continue;
                 }
-            } else if (loc1[0] >= 0) {
-                final_loc = loc1; final_line_dist = line_dist1; final_prox_dist = prox_dist1;
-            } else if (loc2[0] >= 0) {
-                final_loc = loc2; final_line_dist = line_dist2; final_prox_dist = prox_dist2;
-            }
 
-            if (final_loc[0] < 0) {
-                winding_results.push_back(NAN);
-                distance_results.push_back(NAN);
-                std::cout << "  Metric for point " << p_curr.id << ": NOT FOUND" << std::endl;
-                continue;
-            }
-            
-            TrivialSurfacePointer zero_ptr({0,0,0});
-            cv::Vec3f center_in_points = surface->loc_raw(&zero_ptr);
-            cv::Vec3f ptr_loc = cv::Vec3f(final_loc[0], final_loc[1], 0) - center_in_points;
-            TrivialSurfacePointer ptr(ptr_loc);
-            
-            float intersection_winding = winding(final_loc[1], final_loc[0]);
-            
-            winding_results.push_back(intersection_winding);
-            distance_results.push_back(final_prox_dist);
+                float annotated_winding_diff = points_with_winding[i+1].winding_annotation - points_with_winding[i].winding_annotation;
+                float sampled_winding_diff = curr_intersection - prev_intersection;
 
-            std::cout << "  Metric for point " << p_curr.id << ":" << std::endl;
-            std::cout << "    Intersection Winding: " << intersection_winding << std::endl;
-            std::cout << "    Intersection Distance: " << final_prox_dist << std::endl;
+                if (std::abs(sampled_winding_diff - annotated_winding_diff) < 0.1) {
+                    total_correct_winding++;
+                } else if (std::abs(-sampled_winding_diff - annotated_winding_diff) < 0.1) {
+                    total_correct_winding_inv++;
+                }
+            }
         }
     }
+    
+    if (total_segments > 0) {
+        results["surface_missing_fraction"] = (float)total_invalid_intersections / total_segments;
+    }
 
-    return 0.0;
+    if (total_comparisons > 0) {
+        results["winding_error_fraction"] = (float)(total_comparisons - std::max(total_correct_winding, total_correct_winding_inv)) / total_comparisons;
+    }
+
+    cv::imwrite("dbg.tif", g_debug_image);
+    std::cout << "Debug visualization saved to dbg.tif" << std::endl;
+
+    g_debug_image.release();
+    return results;
 }
 
 } // namespace vc::apps
