@@ -87,6 +87,7 @@ public slots:
     void onPOIChanged(std::string name, POI *poi);
     void onIntersectionChanged(std::string a, std::string b, Intersection *intersection);
     void onScrolled();
+    void onResized();
     void onZoom(int steps, QPointF scene_point, Qt::KeyboardModifiers modifiers);
     void onCursorMove(QPointF);
     void onPointAdded(const ColPoint& point);

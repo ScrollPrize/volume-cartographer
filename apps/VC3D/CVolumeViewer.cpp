@@ -56,6 +56,7 @@ CVolumeViewer::CVolumeViewer(CSurfaceCollection *col, QWidget* parent)
     connect(fGraphicsView, &CVolumeViewerView::sendScrolled, this, &CVolumeViewer::onScrolled);
     connect(fGraphicsView, &CVolumeViewerView::sendVolumeClicked, this, &CVolumeViewer::onVolumeClicked);
     connect(fGraphicsView, &CVolumeViewerView::sendZoom, this, &CVolumeViewer::onZoom);
+    connect(fGraphicsView, &CVolumeViewerView::sendResized, this, &CVolumeViewer::onResized);
     connect(fGraphicsView, &CVolumeViewerView::sendCursorMove, this, &CVolumeViewer::onCursorMove);
     connect(fGraphicsView, &CVolumeViewerView::sendPanRelease, this, &CVolumeViewer::onPanRelease);
     connect(fGraphicsView, &CVolumeViewerView::sendPanStart, this, &CVolumeViewer::onPanStart);
@@ -1171,9 +1172,14 @@ void CVolumeViewer::onScrolled()
         // renderVisible();
 }
 
+void CVolumeViewer::onResized()
+{
+   renderVisible(true);
+}
+
 void CVolumeViewer::renderPaths()
 {
-    // Clear existing path items
+   // Clear existing path items
     for(auto &item : _path_items) {
         if (item && item->scene() == fScene) {
             fScene->removeItem(item);
