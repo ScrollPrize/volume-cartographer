@@ -225,7 +225,7 @@ private:
     QPushButton *btnReloadSurfaces;
     
     //TODO abstract these into separate QWidget class?
-    QLineEdit* lblLoc[3];
+    QLineEdit* lblLocFocus;
     QDoubleSpinBox* spNorm[3];
     QPushButton* btnZoomIn;
     QPushButton* btnZoomOut;
