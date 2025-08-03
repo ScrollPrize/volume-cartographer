@@ -13,8 +13,6 @@
 namespace vc::apps
 {
 
-cv::Mat g_debug_image;
-
 // Helper to get point-to-line-segment squared distance
 static float dist_point_segment_sq(const cv::Vec3f& p, const cv::Vec3f& a, const cv::Vec3f& b) {
     cv::Vec3f ab = b - a;
@@ -132,7 +130,6 @@ cv::Vec2f find_closest_intersection(QuadSurface* surface, const cv::Vec3f& p1, c
 
 nlohmann::json calc_point_metrics(const ChaoVis::VCCollection& collection, QuadSurface* surface, const cv::Mat_<float>& winding)
 {
-    g_debug_image = cv::Mat::zeros(winding.size(), CV_8UC3);
     nlohmann::json results;
 
     int total_invalid_intersections = 0;
@@ -143,7 +140,6 @@ nlohmann::json calc_point_metrics(const ChaoVis::VCCollection& collection, QuadS
 
     for (const auto& pair : collection.getAllCollections()) {
         const auto& coll = pair.second;
-        std::cout << "Processing collection: " << coll.name << std::endl;
 
         std::vector<ChaoVis::ColPoint> points_with_winding;
         for (const auto& p_pair : coll.points) {
@@ -153,7 +149,6 @@ nlohmann::json calc_point_metrics(const ChaoVis::VCCollection& collection, QuadS
         }
 
         if (points_with_winding.size() < 2) {
-            std::cout << "  Not enough annotated points to form a segment, skipping." << std::endl;
             continue;
         }
 
@@ -173,21 +168,9 @@ nlohmann::json calc_point_metrics(const ChaoVis::VCCollection& collection, QuadS
             if (loc[0] < 0) {
                 intersection_windings.push_back(NAN);
                 total_invalid_intersections++;
-                std::cout << "  Point " << p1_info.id << ": NOT FOUND" << std::endl;
             } else {
                 float intersection_winding = winding(loc[1], loc[0]);
                 intersection_windings.push_back(intersection_winding);
-                std::cout << "  Point " << p1_info.id << ": found / " << prox_dist << ", winding: " << intersection_winding << ", ref: " << p1_info.winding_annotation << std::endl;
-
-                cv::Point center(loc[0], loc[1]);
-                cv::Vec3f color_f = coll.color;
-                cv::Scalar color(color_f[2] * 255, color_f[1] * 255, color_f[0] * 255);
-                cv::circle(g_debug_image, center, 3, color, -1);
-
-                std::stringstream stream;
-                stream << std::fixed << std::setprecision(2) << intersection_winding;
-                std::string text = stream.str() + "/" + std::to_string(line_dist);
-                cv::putText(g_debug_image, text, center + cv::Point(5, 5), cv::FONT_HERSHEY_SIMPLEX, 0.4, color, 1);
             }
         }
 
@@ -221,10 +204,6 @@ nlohmann::json calc_point_metrics(const ChaoVis::VCCollection& collection, QuadS
         results["winding_error_fraction"] = (float)(total_comparisons - std::max(total_correct_winding, total_correct_winding_inv)) / total_comparisons;
     }
 
-    cv::imwrite("dbg.tif", g_debug_image);
-    std::cout << "Debug visualization saved to dbg.tif" << std::endl;
-
-    g_debug_image.release();
     return results;
 }
 
