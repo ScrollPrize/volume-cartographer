@@ -4,6 +4,8 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
+#include <opencv2/imgproc.hpp>
+#include <opencv2/imgcodecs.hpp>
 
 namespace vc::apps
 {
@@ -114,6 +116,8 @@ cv::Vec2f find_intersection(QuadSurface* surface, const cv::Vec3f& p1, const cv:
 
 double point_winding_error(const ChaoVis::VCCollection& collection, QuadSurface* surface, const cv::Mat_<float>& winding)
 {
+    cv::Mat debug_image = cv::Mat::zeros(winding.size(), CV_8UC3);
+
     for (const auto& pair : collection.getAllCollections()) {
         const auto& coll = pair.second;
 
@@ -149,11 +153,24 @@ double point_winding_error(const ChaoVis::VCCollection& collection, QuadSurface*
                 std::cout << "  Location (3D world): " << intersection_3d << std::endl;
                 std::cout << "  Winding: " << intersection_winding << std::endl;
                 std::cout << "  Distance to line: " << dist << std::endl;
+
+                cv::Point center(intersection_loc[0], intersection_loc[1]);
+                cv::Vec3f color_f = coll.color;
+                cv::Scalar color(color_f[2] * 255, color_f[1] * 255, color_f[0] * 255); // BGR for OpenCV
+                cv::circle(debug_image, center, 3, color, -1);
+
+                std::string text = std::to_string(intersection_winding);
+                cv::putText(debug_image, text, center + cv::Point(5, 5), cv::FONT_HERSHEY_SIMPLEX, 0.4, color, 1);
+
             } else {
                 std::cout << "Intersection for line " << p1_info.id << " -> " << p2_info.id << " NOT FOUND" << std::endl;
             }
         }
     }
+
+    cv::imwrite("dbg.tif", debug_image);
+    std::cout << "Debug visualization saved to dbg.tif" << std::endl;
+
     return 0.0;
 }
 
