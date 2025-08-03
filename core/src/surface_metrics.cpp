@@ -10,8 +10,6 @@
 namespace vc::apps
 {
 
-cv::Mat g_debug_image;
-
 // Helper to get point-to-line-segment squared distance
 static float dist_point_segment_sq(const cv::Vec3f& p, const cv::Vec3f& a, const cv::Vec3f& b) {
     cv::Vec3f ab = b - a;
@@ -57,11 +55,6 @@ float find_intersection_direct(QuadSurface* surface, cv::Vec2f& loc, const cv::V
             if (!surface->valid(&cand_ptr))
                 continue;
 
-            // if (!g_debug_image.empty()) {
-            //     cv::Vec2f scale = surface->scale();
-            //     g_debug_image.at<cv::Vec3b>(cand_loc_2f[1], cand_loc_2f[0]) = cv::Vec3b(128, 128, 128);
-            // }
-
             surface_point = surface->coord(&cand_ptr);
             current_dist_sq = dist_point_segment_sq(surface_point, p1, p2);
 
@@ -83,11 +76,13 @@ float find_intersection_direct(QuadSurface* surface, cv::Vec2f& loc, const cv::V
     return sqrt(best_dist_sq);
 }
 
-// Iteratively search from random locations until a good intersection is found
-cv::Vec2f find_intersection(QuadSurface* surface, const cv::Vec3f& p1, const cv::Vec3f& p2, float& best_dist)
+// Find the intersection point on the surface that is closest to a given 3D point,
+// among candidates that are within a certain distance to a line segment.
+cv::Vec2f find_closest_intersection(QuadSurface* surface, const cv::Vec3f& p1, const cv::Vec3f& p2, const cv::Vec3f& proximity_point, float& line_dist, float& prox_dist)
 {
     cv::Vec2f best_loc = {-1, -1};
-    best_dist = -1.0f;
+    line_dist = -1.0f;
+    prox_dist = -1.0f;
 
     cv::Size s_size = surface->size();
     cv::Vec2f scale = surface->scale();
@@ -111,35 +106,33 @@ cv::Vec2f find_intersection(QuadSurface* surface, const cv::Vec3f& p1, const cv:
             continue;
         }
 
-        if (!g_debug_image.empty()) {
-            cv::drawMarker(g_debug_image, cv::Point(nominal_loc[0], nominal_loc[1]), cv::Scalar(255, 0, 0), cv::MARKER_CROSS, 5, 1);
-        }
+        float dist = find_intersection_direct(surface, cand_loc_abs, p1, p2, 16.0f, 0.0001f, center_in_points);
 
-        float dist = find_intersection_direct(surface, cand_loc_abs, p1, p2, 16.0f, 0.001f, center_in_points);
-
-        if (dist < 0)
+        if (dist < 0 || dist >= 0.01) {
             continue;
-
-        if (dist < 1e-3) { // Found a very good match
-            best_dist = dist;
-            return cand_loc_abs;
         }
 
-        if (best_dist == -1.0f || dist < best_dist) {
-            best_dist = dist;
+        TrivialSurfacePointer res_ptr(cv::Vec3f(cand_loc_abs[0], cand_loc_abs[1], 0) - center_in_points);
+        cv::Vec3f intersection_3d = surface->coord(&res_ptr);
+        float current_prox_dist = cv::norm(intersection_3d - proximity_point);
+
+        if (prox_dist < 0 || current_prox_dist < prox_dist) {
+            prox_dist = current_prox_dist;
+            line_dist = dist;
             best_loc = cand_loc_abs;
         }
     }
+
     return best_loc;
 }
 
 
 double point_winding_error(const ChaoVis::VCCollection& collection, QuadSurface* surface, const cv::Mat_<float>& winding)
 {
-    g_debug_image = cv::Mat::zeros(winding.size(), CV_8UC3);
-
     for (const auto& pair : collection.getAllCollections()) {
         const auto& coll = pair.second;
+
+        std::cout << "Processing collection: " << coll.name << std::endl;
 
         std::vector<ChaoVis::ColPoint> points_with_winding;
         for (const auto& p_pair : coll.points) {
@@ -148,7 +141,8 @@ double point_winding_error(const ChaoVis::VCCollection& collection, QuadSurface*
             }
         }
 
-        if (points_with_winding.size() < 2) {
+        if (points_with_winding.size() < 3) {
+            std::cout << "  Not enough annotated points (" << points_with_winding.size() << "), skipping." << std::endl;
             continue;
         }
 
@@ -156,47 +150,59 @@ double point_winding_error(const ChaoVis::VCCollection& collection, QuadSurface*
             return a.winding_annotation < b.winding_annotation;
         });
 
-        for (size_t i = 0; i < points_with_winding.size() - 1; ++i) {
-            const auto& p1_info = points_with_winding[i];
-            const auto& p2_info = points_with_winding[i+1];
+        std::vector<float> winding_results;
+        std::vector<float> distance_results;
 
-            float dist = -1.0f;
-            cv::Vec2f intersection_loc = find_intersection(surface, p1_info.p, p2_info.p, dist);
+        for (size_t i = 1; i < points_with_winding.size() - 1; ++i) {
+            const auto& p_prev = points_with_winding[i-1];
+            const auto& p_curr = points_with_winding[i];
+            const auto& p_next = points_with_winding[i+1];
 
-            if (intersection_loc[0] >= 0) {
-                TrivialSurfacePointer zero_ptr({0,0,0});
-                cv::Vec3f center_in_points = surface->loc_raw(&zero_ptr);
-                cv::Vec3f ptr_loc = cv::Vec3f(intersection_loc[0], intersection_loc[1], 0) - center_in_points;
-                TrivialSurfacePointer ptr(ptr_loc);
-                cv::Vec3f intersection_3d = surface->coord(&ptr);
-                float intersection_winding = winding(intersection_loc[1], intersection_loc[0]);
+            float line_dist1 = -1.0f, prox_dist1 = -1.0f;
+            cv::Vec2f loc1 = find_closest_intersection(surface, p_prev.p, p_curr.p, p_curr.p, line_dist1, prox_dist1);
 
-                cv::Vec2f scale = surface->scale();
-                std::cout << "Intersection for line " << p1_info.id << " -> " << p2_info.id << std::endl;
-                std::cout << "  Location (2D grid): " << intersection_loc << std::endl;
-                std::cout << "  Location (3D world): " << intersection_3d << std::endl;
-                std::cout << "  Winding: " << intersection_winding << std::endl;
-                std::cout << "  Distance to line: " << dist << std::endl;
+            float line_dist2 = -1.0f, prox_dist2 = -1.0f;
+            cv::Vec2f loc2 = find_closest_intersection(surface, p_curr.p, p_next.p, p_curr.p, line_dist2, prox_dist2);
 
-                // cv::Point center(intersection_loc[0] / scale[0], intersection_loc[1] / scale[1]);
-                cv::Point center(intersection_loc[0], intersection_loc[1]);
-                cv::Vec3f color_f = coll.color;
-                cv::Scalar color(color_f[2] * 255, color_f[1] * 255, color_f[0] * 255); // BGR for OpenCV
-                cv::circle(g_debug_image, center, 3, color, -1);
+            cv::Vec2f final_loc = {-1, -1};
+            float final_line_dist = -1.0f;
+            float final_prox_dist = -1.0f;
 
-                std::string text = std::to_string(intersection_winding) + "/" + std::to_string(dist);
-                cv::putText(g_debug_image, text, center + cv::Point(5, 5), cv::FONT_HERSHEY_SIMPLEX, 0.4, color, 1);
-
-            } else {
-                std::cout << "Intersection for line " << p1_info.id << " -> " << p2_info.id << " NOT FOUND" << std::endl;
+            if (loc1[0] >= 0 && loc2[0] >= 0) {
+                if (prox_dist1 < prox_dist2) {
+                    final_loc = loc1; final_line_dist = line_dist1; final_prox_dist = prox_dist1;
+                } else {
+                    final_loc = loc2; final_line_dist = line_dist2; final_prox_dist = prox_dist2;
+                }
+            } else if (loc1[0] >= 0) {
+                final_loc = loc1; final_line_dist = line_dist1; final_prox_dist = prox_dist1;
+            } else if (loc2[0] >= 0) {
+                final_loc = loc2; final_line_dist = line_dist2; final_prox_dist = prox_dist2;
             }
+
+            if (final_loc[0] < 0) {
+                winding_results.push_back(NAN);
+                distance_results.push_back(NAN);
+                std::cout << "  Metric for point " << p_curr.id << ": NOT FOUND" << std::endl;
+                continue;
+            }
+            
+            TrivialSurfacePointer zero_ptr({0,0,0});
+            cv::Vec3f center_in_points = surface->loc_raw(&zero_ptr);
+            cv::Vec3f ptr_loc = cv::Vec3f(final_loc[0], final_loc[1], 0) - center_in_points;
+            TrivialSurfacePointer ptr(ptr_loc);
+            
+            float intersection_winding = winding(final_loc[1], final_loc[0]);
+            
+            winding_results.push_back(intersection_winding);
+            distance_results.push_back(final_prox_dist);
+
+            std::cout << "  Metric for point " << p_curr.id << ":" << std::endl;
+            std::cout << "    Intersection Winding: " << intersection_winding << std::endl;
+            std::cout << "    Intersection Distance: " << final_prox_dist << std::endl;
         }
     }
 
-    cv::imwrite("dbg.tif", g_debug_image);
-    std::cout << "Debug visualization saved to dbg.tif" << std::endl;
-
-    g_debug_image.release();
     return 0.0;
 }
 
