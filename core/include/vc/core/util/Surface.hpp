@@ -125,6 +125,8 @@ public:
     cv::Vec3f normal(SurfacePointer *ptr, const cv::Vec3f &offset = {0,0,0}) override;
     void gen(cv::Mat_<cv::Vec3f> *coords, cv::Mat_<cv::Vec3f> *normals, cv::Size size, SurfacePointer *ptr, float scale, const cv::Vec3f &offset) override;
     float pointTo(SurfacePointer *ptr, const cv::Vec3f &tgt, float th, int max_iters = 1000) override;
+    cv::Size size();
+    cv::Vec2f scale() const;
 
     void save(const std::string &path, const std::string &uuid);
     void save(std::filesystem::path &path);

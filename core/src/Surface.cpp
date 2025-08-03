@@ -315,7 +315,7 @@ bool QuadSurface::valid(SurfacePointer *ptr, const cv::Vec3f &offset)
     assert(ptr_inst);
     cv::Vec3f p = internal_loc(offset+_center, ptr_inst->loc, _scale);
     
-    return _bounds.contains(cv::Point(p[0],p[1]));
+    return loc_valid_xy(*_points, {p[0], p[1]});
 }
 
 cv::Vec3f QuadSurface::coord(SurfacePointer *ptr, const cv::Vec3f &offset)
@@ -345,6 +345,16 @@ cv::Vec3f QuadSurface::loc_raw(SurfacePointer *ptr)
     assert(ptr_inst);
 
     return internal_loc(_center, ptr_inst->loc, _scale);
+}
+
+cv::Size QuadSurface::size()
+{
+    return {_points->cols / _scale[0], _points->rows / _scale[1]};
+}
+
+cv::Vec2f QuadSurface::scale() const
+{
+    return _scale;
 }
 
 cv::Vec3f QuadSurface::normal(SurfacePointer *ptr, const cv::Vec3f &offset)
