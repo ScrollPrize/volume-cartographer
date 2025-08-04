@@ -8,7 +8,7 @@
 
 #include <spdlog/spdlog.h>
 
-#include "vc/core/filesystem.hpp"
+#include <filesystem>
 
 /**
  * @namespace volcart::logging
@@ -23,7 +23,7 @@ namespace logging
  *
  * @throw spdlog::spdlog_ex
  */
-void AddLogFile(const volcart::filesystem::path& path);
+void AddLogFile(const std::filesystem::path& path);
 
 /** @brief Set the logging level */
 void SetLogLevel(const std::string& s);

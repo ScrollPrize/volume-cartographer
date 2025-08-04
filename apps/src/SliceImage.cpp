@@ -37,8 +37,8 @@ auto SliceImage::operator<(const SliceImage& b) const -> bool
 auto SliceImage::analyze() -> bool
 {
     // return if the path is wrong or if this isn't a regular file
-    if (!(volcart::filesystem::exists(path)) ||
-        !(volcart::filesystem::is_regular_file(path))) {
+    if (!(std::filesystem::exists(path)) ||
+        !(std::filesystem::is_regular_file(path))) {
         return false;
     }
 

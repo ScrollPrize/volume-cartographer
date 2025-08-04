@@ -6,7 +6,7 @@
 #include <iostream>
 #include <map>
 
-#include "vc/core/filesystem.hpp"
+#include <filesystem>
 #include "vc/core/types/Metadata.hpp"
 #include "vc/core/types/Segmentation.hpp"
 #include "vc/core/types/Volume.hpp"
@@ -46,14 +46,14 @@ public:
      * @param fileLocation The location to store the VolPkg
      * @param version Version of VolumePkg you wish to construct
      */
-    VolumePkg(filesystem::path fileLocation, int version);
+    VolumePkg(std::filesystem::path fileLocation, int version);
 
     /**
      * @brief Construct a VolumePkg from a .volpkg file stored at
      * `fileLocation.`
      * @param fileLocation The root of the VolumePkg file
      */
-    explicit VolumePkg(const filesystem::path& fileLocation);
+    explicit VolumePkg(const std::filesystem::path& fileLocation);
 
     /** VolumePkg shared pointer */
     using Pointer = std::shared_ptr<VolumePkg>;
@@ -63,14 +63,14 @@ public:
      *
      * Returns a shared pointer to the VolumePkg.
      */
-    static auto New(filesystem::path fileLocation, int version) -> Pointer;
+    static auto New(std::filesystem::path fileLocation, int version) -> Pointer;
 
     /**
      * @copybrief VolumePkg(filesystem::path fileLocation)
      *
      * Returns a shared pointer to the VolumePkg.
      */
-    static auto New(filesystem::path fileLocation) -> Pointer;
+    static auto New(std::filesystem::path fileLocation) -> Pointer;
     /**@}*/
 
     /** @name Metadata */
@@ -136,7 +136,7 @@ public:
      * @brief Saves the metadata to a user-specified location.
      * @param filePath Path to output file
      */
-    void saveMetadata(const filesystem::path& filePath);
+    void saveMetadata(const std::filesystem::path& filePath);
     /**@}*/
 
     /** @name Volume Data */
@@ -196,7 +196,7 @@ public:
     [[nodiscard]] auto segmentation(const Segmentation::Identifier& id) const
         -> const Segmentation::Pointer;
 
-    std::vector<filesystem::path> segmentationFiles();
+    std::vector<std::filesystem::path> segmentationFiles();
 
     /** @copydoc VolumePkg::segmentation(const Segmentation::Identifier&) const
      */
@@ -247,7 +247,7 @@ public:
 
     /** Utility function for updating VolumePkgs */
     static void Upgrade(
-        const filesystem::path& path,
+        const std::filesystem::path& path,
         int version = VOLPKG_VERSION_LATEST,
         bool force = false);
 
@@ -255,12 +255,12 @@ private:
     /** VolumePkg metadata */
     Metadata config_;
     /** The root directory of the VolumePkg */
-    filesystem::path rootDir_;
+    std::filesystem::path rootDir_;
     /** The list of all Volumes in the VolumePkg. */
     std::map<Volume::Identifier, Volume::Pointer> volumes_;
     /** The list of all Segmentations in the VolumePkg. */
     std::map<Segmentation::Identifier, Segmentation::Pointer> segmentations_;
-    std::vector<filesystem::path> segmentation_files_;
+    std::vector<std::filesystem::path> segmentation_files_;
     /** Current segmentation directory name */
     std::string currentSegmentationDir_ = "paths";
     /** Track which directory each segmentation came from */

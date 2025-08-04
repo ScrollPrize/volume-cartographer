@@ -21,7 +21,7 @@
 #include "vc/core/util/xtensor_include.hpp"
 #include XTENSORINCLUDE(containers, xarray.hpp)
 
-namespace fs = volcart::filesystem;
+namespace fs = std::filesystem;
 
 using namespace volcart;
 

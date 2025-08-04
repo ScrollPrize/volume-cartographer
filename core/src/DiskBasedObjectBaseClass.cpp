@@ -2,13 +2,13 @@
 
 using namespace volcart;
 
-namespace fs = volcart::filesystem;
+namespace fs = std::filesystem;
 
 static const fs::path METADATA_FILE = "meta.json";
 
 // Load file from disk
 DiskBasedObjectBaseClass::DiskBasedObjectBaseClass(
-    volcart::filesystem::path path)
+    std::filesystem::path path)
     : path_(std::move(path))
 {
     metadata_ = volcart::Metadata(path_ / METADATA_FILE);
@@ -25,7 +25,7 @@ DiskBasedObjectBaseClass::DiskBasedObjectBaseClass(
 }
 
 //return wether dir could be a volume
-bool DiskBasedObjectBaseClass::checkDir(volcart::filesystem::path path)
+bool DiskBasedObjectBaseClass::checkDir(std::filesystem::path path)
 {
     return fs::is_directory(path) && fs::exists(path / METADATA_FILE);
 }

@@ -8,7 +8,7 @@
 #include <opencv2/core.hpp>
 #include <smgl/Node.hpp>
 
-#include "vc/core/filesystem.hpp"
+#include <filesystem>
 #include "vc/core/neighborhood/NeighborhoodGenerator.hpp"
 #include "vc/core/types/ITKMesh.hpp"
 #include "vc/core/types/PerPixelMap.hpp"

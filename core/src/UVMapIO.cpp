@@ -12,7 +12,7 @@
 using namespace volcart;
 using namespace volcart::io;
 
-namespace fs = volcart::filesystem;
+namespace fs = std::filesystem;
 namespace vio = volcart::io;
 
 void vio::WriteUVMap(const fs::path& path, const UVMap& uvMap)

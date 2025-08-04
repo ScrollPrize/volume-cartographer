@@ -24,7 +24,7 @@ namespace lt
 
 namespace vc = volcart;
 namespace tio = volcart::tiffio;
-namespace fs = volcart::filesystem;
+namespace fs = std::filesystem;
 
 namespace
 {
@@ -71,7 +71,7 @@ inline auto NeedBigTIFF(
 
 }  // namespace
 
-auto tio::ReadTIFF(const volcart::filesystem::path& path) -> cv::Mat
+auto tio::ReadTIFF(const std::filesystem::path& path) -> cv::Mat
 {
     // Make sure input file exists
     if (!fs::exists(path)) {

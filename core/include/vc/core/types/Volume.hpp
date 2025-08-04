@@ -6,7 +6,7 @@
 #include <cstdint>
 #include <mutex>
 
-#include "vc/core/filesystem.hpp"
+#include <filesystem>
 #include "vc/core/types/BoundingBox.hpp"
 #include "vc/core/types/Cache.hpp"
 #include "vc/core/types/DiskBasedObjectBaseClass.hpp"
@@ -83,17 +83,17 @@ public:
     Volume() = delete;
 
     /** @brief Load the Volume from a directory path */
-    explicit Volume(volcart::filesystem::path path);
+    explicit Volume(std::filesystem::path path);
 
     /** @brief Make a new Volume at the specified path */
-    Volume(volcart::filesystem::path path, Identifier uuid, std::string name);
+    Volume(std::filesystem::path path, Identifier uuid, std::string name);
 
-    /** @overload Volume(volcart::filesystem::path) */
-    static Pointer New(volcart::filesystem::path path);
+    /** @overload Volume(std::filesystem::path) */
+    static Pointer New(std::filesystem::path path);
 
-    /** @overload Volume(volcart::filesystem::path, Identifier, std::string) */
+    /** @overload Volume(std::filesystem::path, Identifier, std::string) */
     static Pointer New(
-        volcart::filesystem::path path, Identifier uuid, std::string name);
+        std::filesystem::path path, Identifier uuid, std::string name);
     /**@}*/
     
     /** is ZARR volume **/
@@ -167,7 +167,7 @@ public:
     void setSliceData(int index, const cv::Mat& slice, bool compress = true);
 
     /** @brief Get the file path of a slice by index */
-    volcart::filesystem::path getSlicePath(int index) const;
+    std::filesystem::path getSlicePath(int index) const;
     /**@}*/
 
     /**@{*/

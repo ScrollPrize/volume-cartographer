@@ -1,6 +1,6 @@
 #pragma once
 
-#include "vc/core/filesystem.hpp"
+#include <filesystem>
 #include "vc/core/types/UVMap.hpp"
 
 namespace volcart::io

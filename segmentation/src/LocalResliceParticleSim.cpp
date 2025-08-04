@@ -10,7 +10,7 @@
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
 
-#include "vc/core/filesystem.hpp"
+#include <filesystem>
 #include "vc/core/math/StructureTensor.hpp"
 #include "vc/segmentation/LocalResliceParticleSim.hpp"
 #include "vc/segmentation/lrps/Common.hpp"
@@ -20,7 +20,7 @@
 #include "vc/segmentation/lrps/IntensityMap.hpp"
 
 using namespace volcart::segmentation;
-namespace fs = volcart::filesystem;
+namespace fs = std::filesystem;
 using std::begin;
 using std::end;
 

@@ -66,7 +66,6 @@ target_link_libraries(${target}
     VC::gui_support
     VC::core
     VC::meshing
-    ${VC_FS_LIB}
     VTK::CommonCore
     VTK::CommonDataModel
     VTK::FiltersGeneral
