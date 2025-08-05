@@ -959,7 +959,7 @@ void CVolumeViewer::renderIntersections()
         for(int n=0;n<intersect_cands.size();n++) {
             std::string key = intersect_cands[n];
 
-            if (!intersections[n].size()) {  // Fixed: check specific intersection
+            if (!intersections[n].size()) {
                 _intersect_items[key] = {};
                 continue;
             }
@@ -1331,7 +1331,6 @@ void CVolumeViewer::renderOrUpdatePoint(const ColPoint& point)
         
         pg.text->setPlainText(num_text);
 
-        // Fixed positioning
         pg.text->setPos(scene_pos.x() + radius, scene_pos.y() - radius);
     }
 
