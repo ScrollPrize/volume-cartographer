@@ -238,94 +238,56 @@ void CVolumeViewer::recalcScales()
 
 void CVolumeViewer::onZoom(int steps, QPointF scene_loc, Qt::KeyboardModifiers modifiers)
 {
-    // Defer expensive invalidations
-    _deferredInvalidateVis = true;
-    _deferredInvalidateIntersect = true;
-    _deferredUpdateTimer->stop();
-    _deferredUpdateTimer->start();
-
-    for(auto &col : _intersect_items)
-        for(auto &item : col.second)
-            item->setVisible(false);
-
     if (!_surf)
         return;
 
-    if (modifiers & Qt::ShiftModifier) {
-        // Z slice navigation with shift+scroll
-        int adjustedSteps = steps;
+    hideAllOverlays();  // Hide everything immediately
 
-        // Use single z step for segmentation surface
-        if (_surf_name == "segmentation") {
-            adjustedSteps = (steps > 0) ? 1 : -1;
-        }
+    if (modifiers & Qt::ShiftModifier) {
+        // Z slice navigation
+        int adjustedSteps = (_surf_name == "segmentation") ?
+            ((steps > 0) ? 1 : -1) : steps;
 
         _z_off += adjustedSteps;
 
-        // Calculate the new Z value but defer the expensive POI update
         POI *poi = _surf_col->poi("focus");
         if (poi && volume) {
-            int newZ = static_cast<int>(poi->p[2] + adjustedSteps);
-            newZ = std::max(0, std::min(newZ, static_cast<int>(volume->numSlices() - 1)));
-
-            // Store pending focus position
-            _pendingFocusPos = poi->p;
-            _pendingFocusPos[2] = newZ;
-            _deferredFocusUpdate = true;
-
-            // Emit signal for UI updates (cheap)
+            int currentZ = static_cast<int>(poi->p[2]);
+            int newZ = std::clamp(
+                currentZ + adjustedSteps,
+                0,
+                static_cast<int>(volume->numSlices() - 1)
+            );
             emit sendZSliceChanged(newZ);
-
-            // Hide intersections immediately for smooth scrolling
-            for(auto &col : _intersect_items)
-                for(auto &item : col.second)
-                    item->setVisible(false);
-
-            // Start/restart the deferred update timer
-            _deferredUpdateTimer->stop();
-            _deferredUpdateTimer->start();
         }
 
-        // Immediate visual update (relatively cheap)
         renderVisible(true);
     } else {
-        float zoom = pow(ZOOM_FACTOR, steps);
+        // Regular zoom
+        if (_z_off != 0) {
+            _z_off = 0;
+        }
 
-        // update the scale used when projecting voxels to scene space
+        float zoom = pow(ZOOM_FACTOR, steps);
         _scale *= zoom;
         round_scale(_scale);
         recalcScales();
 
-        // Cache the view-space mouse position; used later for cursor update
         QPoint pointViewportBefore = fGraphicsView->mapFromScene(scene_loc);
-
-        // The above scale is *not* part of Qt's scene-to-view transform, but part of the voxel-to-scene transform
-        // implemented in PlaneSurface::project; it causes a zoom around the surface origin
-        // Translations are represented in the Qt scene-to-view transform; these move the surface origin within the viewpoint
-        // To zoom centered on the mouse, we adjust the scene-to-view translation appropriately
-        // If the mouse were at the plane/surface origin, this adjustment should be zero
-        // If the mouse were right of the plane origin, should translate to the left so that point ends up where it was
         fGraphicsView->translate(scene_loc.x() * (1 - zoom), scene_loc.y() * (1 - zoom));
-
-        // Update the cursor (which lives in scene space) to still lie under the mouse even after the above translation
         QPointF pointSceneAfter = fGraphicsView->mapToScene(pointViewportBefore);
         onCursorMove(pointSceneAfter);
 
         curr_img_area = {0,0,0,0};
-        // Update scene rect
-        //FIXME get correct size for slice!
-        int max_size = 100000; //std::max(volume->sliceWidth(), std::max(volume->numSlices(), volume->sliceHeight()))*_ds_scale + 512;
+        int max_size = 100000;
         fGraphicsView->setSceneRect(-max_size/2, -max_size/2, max_size, max_size);
-        renderVisible(); // Keep immediate render for smooth interaction
-
-        // Re-render all points to update their positions according to the new scale
-        refreshPointPositions();
+        renderVisible();
     }
 
     _lbl->setText(QString("%1x %2").arg(_scale).arg(_z_off));
 
-    // Defer rendering intersections
-    _deferredRenderIntersections = true;
+    _deferredUpdateTimer->stop();
+    _deferredUpdateTimer->start();
 }
 
 void CVolumeViewer::OnVolumeChanged(volcart::Volume::Pointer volume_)
@@ -654,44 +616,37 @@ QGraphicsItem *crossItem()
     return parent;
 }
 
-//TODO make poi tracking optional and configurable
 void CVolumeViewer::onPOIChanged(std::string name, POI *poi)
-{    
+{
     if (!poi || !_surf)
         return;
-    
-    if (name == "focus") {
-        // Skip expensive plane updates if we're actively scrolling
-        if (_deferredUpdateTimer->isActive() && _deferredFocusUpdate) {
-            return;  // Will be handled in performDeferredUpdates
-        }
 
+    if (name == "focus") {
         PlaneSurface *plane = dynamic_cast<PlaneSurface*>(_surf);
         if (!plane)
             return;
-        
+
         fGraphicsView->centerOn(0,0);
-        
+
         if (poi->p == plane->origin())
             return;
-        
+
         plane->setOrigin(poi->p);
         refreshPointPositions();
-        
+
         _surf_col->setSurface(_surf_name, plane);
     } else if (name == "cursor") {
-        // Add safety check before dynamic_cast
+        // cursor case remains unchanged
         if (!_surf) {
             return;
         }
-        
+
         PlaneSurface *slice_plane = dynamic_cast<PlaneSurface*>(_surf);
-        // QuadSurface *crop = dynamic_cast<QuadSurface*>(_surf_col->surface("visible_segmentation"));
         QuadSurface *crop = dynamic_cast<QuadSurface*>(_surf_col->surface("segmentation"));
-        
+
         cv::Vec3f sp;
         float dist = -1;
-        if (slice_plane) {            
+        if (slice_plane) {
             dist = slice_plane->pointDist(poi->p);
             sp = slice_plane->project(poi->p, 1.0, _scale);
         }
@@ -699,7 +654,7 @@ void CVolumeViewer::onPOIChanged(std::string name, POI *poi)
         {
             SurfacePointer *ptr = crop->pointer();
             dist = crop->pointTo(ptr, poi->p, 2.0);
-            sp = crop->loc(ptr)*_scale ;//+ cv::Vec3f(_vis_center[0],_vis_center[1],0);
+            sp = crop->loc(ptr)*_scale;
         }
         
         if (!_cursor) {
@@ -942,18 +897,21 @@ void CVolumeViewer::renderIntersections()
         _intersect_items.erase(key);
 
     PlaneSurface *plane = dynamic_cast<PlaneSurface*>(_surf);
-    
-    if (_z_off)
-        return;
-    
+
     if (plane) {
         cv::Rect plane_roi = {curr_img_area.x()/_scale, curr_img_area.y()/_scale, curr_img_area.width()/_scale, curr_img_area.height()/_scale};
 
-        cv::Vec3f corner = plane->coord(nullptr, {plane_roi.x, plane_roi.y, 0.0});
+        // Create temporary plane at the offset position for intersection calculation
+        PlaneSurface offset_plane(*plane);
+        cv::Vec3f offset_origin = plane->origin();
+        offset_origin[2] += _z_off;
+        offset_plane.setOrigin(offset_origin);
+
+        cv::Vec3f corner = offset_plane.coord(nullptr, {plane_roi.x, plane_roi.y, 0});
         Rect3D view_bbox = {corner, corner};
-        view_bbox = expand_rect(view_bbox, plane->coord(nullptr, {plane_roi.br().x, plane_roi.y, 0}));
-        view_bbox = expand_rect(view_bbox, plane->coord(nullptr, {plane_roi.x, plane_roi.br().y, 0}));
-        view_bbox = expand_rect(view_bbox, plane->coord(nullptr, {plane_roi.br().x, plane_roi.br().y, 0}));
+        view_bbox = expand_rect(view_bbox, offset_plane.coord(nullptr, {plane_roi.br().x, plane_roi.y, 0}));
+        view_bbox = expand_rect(view_bbox, offset_plane.coord(nullptr, {plane_roi.x, plane_roi.br().y, 0}));
+        view_bbox = expand_rect(view_bbox, offset_plane.coord(nullptr, {plane_roi.br().x, plane_roi.br().y, 0}));
 
         std::vector<std::string> intersect_cands;
         std::vector<std::string> intersect_tgts_v;
@@ -988,10 +946,11 @@ void CVolumeViewer::renderIntersections()
 
             std::vector<std::vector<cv::Vec2f>> xy_seg_;
             if (key == "segmentation") {
-                find_intersect_segments(intersections[n], xy_seg_, segmentation->rawPoints(), plane, plane_roi, 4/_scale, 1000);
+                // Use offset_plane for intersection calculation
+                find_intersect_segments(intersections[n], xy_seg_, segmentation->rawPoints(), &offset_plane, plane_roi, 4/_scale, 1000);
             }
             else
-                find_intersect_segments(intersections[n], xy_seg_, segmentation->rawPoints(), plane, plane_roi, 4/_scale);
+                find_intersect_segments(intersections[n], xy_seg_, segmentation->rawPoints(), &offset_plane, plane_roi, 4/_scale);
 
         }
 
@@ -1000,7 +959,7 @@ void CVolumeViewer::renderIntersections()
         for(int n=0;n<intersect_cands.size();n++) {
             std::string key = intersect_cands[n];
 
-            if (!intersections.size()) {
+            if (!intersections[n].size()) {  // Fixed: check specific intersection
                 _intersect_items[key] = {};
                 continue;
             }
@@ -1038,6 +997,7 @@ void CVolumeViewer::renderIntersections()
                 for (auto wp : seg)
                 {
                     len++;
+                    // Use original plane for projection (visual position)
                     cv::Vec3f p = plane->project(wp, 1.0, _scale);
 
                     if (last[0] != -1 && cv::norm(p-last) >= 8) {
@@ -1064,40 +1024,32 @@ void CVolumeViewer::renderIntersections()
             _ignore_intersect_change = nullptr;
         }
     }
-    else if (_surf_name == "segmentation" /*&& dynamic_cast<QuadSurface*>(_surf_col->surface("visible_segmentation"))*/) {
-        // QuadSurface *crop = dynamic_cast<QuadSurface*>(_surf_col->surface("visible_segmentation"));
-
-        //TODO make configurable, for now just show everything!
+    else if (_surf_name == "segmentation") {
         std::vector<std::pair<std::string,std::string>> intersects = _surf_col->intersections("segmentation");
         for(auto pair : intersects) {
             std::string key = pair.first;
             if (key == "segmentation")
                 key = pair.second;
-            
+
             if (_intersect_items.count(key) || !_intersect_tgts.count(key))
                 continue;
-            
+
             std::unordered_map<cv::Vec3f,cv::Vec3f,vec3f_hash> location_cache;
             std::vector<cv::Vec3f> src_locations;
 
             for (auto seg : _surf_col->intersection(pair.first, pair.second)->lines)
                 for (auto wp : seg)
                     src_locations.push_back(wp);
-            
+
 #pragma omp parallel
             {
-                // SurfacePointer *ptr = crop->pointer();
                 SurfacePointer *ptr = _surf->pointer();
 #pragma omp for
                 for (auto wp : src_locations) {
-                    // float res = crop->pointTo(ptr, wp, 2.0, 100);
-                    // cv::Vec3f p = crop->loc(ptr)*_ds_scale + cv::Vec3f(_vis_center[0],_vis_center[1],0);
                     float res = _surf->pointTo(ptr, wp, 2.0, 100);
-                    cv::Vec3f p = _surf->loc(ptr)*_scale ;//+ cv::Vec3f(_vis_center[0],_vis_center[1],0);
-                    //FIXME still happening?
+                    cv::Vec3f p = _surf->loc(ptr)*_scale;
                     if (res >= 2.0)
                         p = {-1,-1,-1};
-                        // std::cout << "WARNING pointTo() high residual in renderIntersections()" << std::endl;
 #pragma omp critical
                     location_cache[wp] = p;
                 }
@@ -1144,29 +1096,17 @@ void CVolumeViewer::onPanRelease(Qt::MouseButton buttons, Qt::KeyboardModifiers 
 {
     renderVisible();
 
-    // Defer intersection rendering
-    if (dynamic_cast<PlaneSurface*>(_surf)) {
-        _deferredRenderIntersections = true;
-        _deferredUpdateTimer->stop();
-        _deferredUpdateTimer->start();
-    }
+    _deferredUpdateTimer->stop();
+    _deferredUpdateTimer->start();
 }
 
 void CVolumeViewer::onPanStart(Qt::MouseButton buttons, Qt::KeyboardModifiers modifiers)
 {
+    hideAllOverlays();
     renderVisible();
-    
-    // Hide intersections immediately for smooth panning
-    for(auto &col : _intersect_items)
-        for(auto &item : col.second)
-            item->setVisible(false);
 
-    // Defer the expensive invalidation
-    if (dynamic_cast<PlaneSurface*>(_surf)) {
-        _deferredInvalidateIntersect = true;
-        _deferredUpdateTimer->stop();
-        _deferredUpdateTimer->start();
-    }
+    _deferredUpdateTimer->stop();
+    _deferredUpdateTimer->start();
 }
 
 void CVolumeViewer::onScrolled()
@@ -1744,31 +1684,60 @@ void CVolumeViewer::setResetViewOnSurfaceChange(bool reset)
 
 void CVolumeViewer::performDeferredUpdates()
 {
-    // Handle deferred focus update FIRST (before other updates)
-    if (_deferredFocusUpdate) {
-        POI *poi = _surf_col->poi("focus");
-        if (poi) {
-            poi->p = _pendingFocusPos;
-            _surf_col->setPOI("focus", poi);  // This triggers expensive operations
-        }
-        _deferredFocusUpdate = false;
-    }
-
-    if (_deferredInvalidateVis) {
-        invalidateVis();
-        _deferredInvalidateVis = false;
-    }
-
-    if (_deferredInvalidateIntersect) {
-        invalidateIntersect();
-        _deferredInvalidateIntersect = false;
-    }
-
-    if (_deferredRenderIntersections) {
-        renderIntersections();
-        _deferredRenderIntersections = false;
-    }
-
-    // Force a final high-quality render
+    // Recalculate everything
+    invalidateVis();
+    invalidateIntersect();
+    renderIntersections();
+    renderPaths();
+    refreshPointPositions();
     renderVisible(true);
+
+    // Show everything that was calculated
+    showAllOverlays();
+}
+
+void CVolumeViewer::resetZOffset()
+{
+    _z_off = 0;
+    _lbl->setText(QString("%1x %2").arg(_scale).arg(_z_off));
+
+    // Re-enable intersections
+    invalidateIntersect();
+    renderIntersections();
+}
+
+void CVolumeViewer::hideAllOverlays()
+{
+    // Hide intersections
+    for(auto &col : _intersect_items)
+        for(auto &item : col.second)
+            item->setVisible(false);
+
+    // Hide paths
+    for(auto &item : _path_items)
+        if (item) item->setVisible(false);
+
+    // Hide points
+    for(auto &pg : _points_items) {
+        if (pg.second.circle) pg.second.circle->setVisible(false);
+        if (pg.second.text) pg.second.text->setVisible(false);
+    }
+}
+
+void CVolumeViewer::showAllOverlays()
+{
+    // Show intersections
+    for(auto &col : _intersect_items)
+        for(auto &item : col.second)
+            item->setVisible(true);
+
+    // Show paths
+    for(auto &item : _path_items)
+        if (item) item->setVisible(true);
+
+    // Show points
+    for(auto &pg : _points_items) {
+        if (pg.second.circle) pg.second.circle->setVisible(true);
+        if (pg.second.text) pg.second.text->setVisible(pg.second.text->toPlainText().length() > 0);
+    }
 }

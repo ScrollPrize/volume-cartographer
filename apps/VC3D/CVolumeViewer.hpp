@@ -69,6 +69,11 @@ public:
 
     void fitSurfaceInView();
 
+    void resetZOffset();
+
+    void hideAllOverlays();
+    void showAllOverlays();
+
     // Get current scale for coordinate transformation
     float getCurrentScale() const { return _scale; }
     // Transform scene coordinates to volume coordinates
@@ -207,12 +212,6 @@ protected:
 
     int _downscale_override = 0;  // 0=auto, 1=2x, 2=4x, 3=8x, 4=16x, 5=32x
     QTimer* _deferredUpdateTimer;
-    bool _deferredInvalidateVis = false;
-    bool _deferredInvalidateIntersect = false;
-    bool _deferredRenderIntersections = false;
-
-    bool _deferredFocusUpdate = false;
-    cv::Vec3f _pendingFocusPos;
 
 };  // class CVolumeViewer
 
