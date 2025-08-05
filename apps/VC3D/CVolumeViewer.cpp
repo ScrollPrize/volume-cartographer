@@ -257,30 +257,38 @@ void CVolumeViewer::onZoom(int steps, QPointF scene_loc, Qt::KeyboardModifiers m
 
         // Use single z step for segmentation surface
         if (_surf_name == "segmentation") {
-            adjustedSteps = (steps > 0) ? 1 : -1;  // Always step by 1 slice regardless of wheel delta
+            adjustedSteps = (steps > 0) ? 1 : -1;
         }
 
         _z_off += adjustedSteps;
 
-        // Update the focus POI Z position
+        // Calculate the new Z value but defer the expensive POI update
         POI *poi = _surf_col->poi("focus");
         if (poi && volume) {
-            // Calculate the new Z value
             int newZ = static_cast<int>(poi->p[2] + adjustedSteps);
-            // Make sure it's within bounds
             newZ = std::max(0, std::min(newZ, static_cast<int>(volume->numSlices() - 1)));
 
-            // Update POI z position
-            poi->p[2] = newZ;
-            _surf_col->setPOI("focus", poi);
+            // Store pending focus position
+            _pendingFocusPos = poi->p;
+            _pendingFocusPos[2] = newZ;
+            _deferredFocusUpdate = true;
 
-            // Emit signal for Z slice change
+            // Emit signal for UI updates (cheap)
             emit sendZSliceChanged(newZ);
+
+            // Hide intersections immediately for smooth scrolling
+            for(auto &col : _intersect_items)
+                for(auto &item : col.second)
+                    item->setVisible(false);
+
+            // Start/restart the deferred update timer
+            _deferredUpdateTimer->stop();
+            _deferredUpdateTimer->start();
         }
 
+        // Immediate visual update (relatively cheap)
         renderVisible(true);
-    }
-    else {
+    } else {
         float zoom = pow(ZOOM_FACTOR, steps);
 
         // update the scale used when projecting voxels to scene space
@@ -653,13 +661,12 @@ void CVolumeViewer::onPOIChanged(std::string name, POI *poi)
         return;
     
     if (name == "focus") {
-        // Add safety check before dynamic_cast
-        if (!_surf) {
-            return;
+        // Skip expensive plane updates if we're actively scrolling
+        if (_deferredUpdateTimer->isActive() && _deferredFocusUpdate) {
+            return;  // Will be handled in performDeferredUpdates
         }
-        
+
         PlaneSurface *plane = dynamic_cast<PlaneSurface*>(_surf);
-        
         if (!plane)
             return;
         
@@ -672,8 +679,7 @@ void CVolumeViewer::onPOIChanged(std::string name, POI *poi)
         refreshPointPositions();
         
         _surf_col->setSurface(_surf_name, plane);
-    }
-    else if (name == "cursor") {
+    } else if (name == "cursor") {
         // Add safety check before dynamic_cast
         if (!_surf) {
             return;
@@ -1738,6 +1744,16 @@ void CVolumeViewer::setResetViewOnSurfaceChange(bool reset)
 
 void CVolumeViewer::performDeferredUpdates()
 {
+    // Handle deferred focus update FIRST (before other updates)
+    if (_deferredFocusUpdate) {
+        POI *poi = _surf_col->poi("focus");
+        if (poi) {
+            poi->p = _pendingFocusPos;
+            _surf_col->setPOI("focus", poi);  // This triggers expensive operations
+        }
+        _deferredFocusUpdate = false;
+    }
+
     if (_deferredInvalidateVis) {
         invalidateVis();
         _deferredInvalidateVis = false;

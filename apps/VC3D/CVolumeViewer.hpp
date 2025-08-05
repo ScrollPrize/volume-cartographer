@@ -211,6 +211,9 @@ protected:
     bool _deferredInvalidateIntersect = false;
     bool _deferredRenderIntersections = false;
 
+    bool _deferredFocusUpdate = false;
+    cv::Vec3f _pendingFocusPos;
+
 };  // class CVolumeViewer
 
 }  // namespace ChaoVis
