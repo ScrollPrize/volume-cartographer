@@ -1683,7 +1683,6 @@ void CVolumeViewer::setResetViewOnSurfaceChange(bool reset)
 
 void CVolumeViewer::performDeferredUpdates()
 {
-    // Recalculate everything
     invalidateVis();
     invalidateIntersect();
     renderIntersections();
@@ -1691,7 +1690,6 @@ void CVolumeViewer::performDeferredUpdates()
     refreshPointPositions();
     renderVisible(true);
 
-    // Show everything that was calculated
     showAllOverlays();
 }
 
@@ -1700,23 +1698,19 @@ void CVolumeViewer::resetZOffset()
     _z_off = 0;
     _lbl->setText(QString("%1x %2").arg(_scale).arg(_z_off));
 
-    // Re-enable intersections
     invalidateIntersect();
     renderIntersections();
 }
 
 void CVolumeViewer::hideAllOverlays()
 {
-    // Hide intersections
     for(auto &col : _intersect_items)
         for(auto &item : col.second)
             item->setVisible(false);
 
-    // Hide paths
     for(auto &item : _path_items)
         if (item) item->setVisible(false);
 
-    // Hide points
     for(auto &pg : _points_items) {
         if (pg.second.circle) pg.second.circle->setVisible(false);
         if (pg.second.text) pg.second.text->setVisible(false);
@@ -1725,16 +1719,13 @@ void CVolumeViewer::hideAllOverlays()
 
 void CVolumeViewer::showAllOverlays()
 {
-    // Show intersections
     for(auto &col : _intersect_items)
         for(auto &item : col.second)
             item->setVisible(true);
 
-    // Show paths
     for(auto &item : _path_items)
         if (item) item->setVisible(true);
 
-    // Show points
     for(auto &pg : _points_items) {
         if (pg.second.circle) pg.second.circle->setVisible(true);
         if (pg.second.text) pg.second.text->setVisible(pg.second.text->toPlainText().length() > 0);
