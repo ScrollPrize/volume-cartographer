@@ -347,7 +347,7 @@ class S3SyncManager:
                 print("  ⚠️  Both files have been modified since last sync!")
 
             while True:
-                response = input("\nChoose: [l]ocal → S3, [r]emote → local, [s]kip? ").strip().lower()
+                response = input("\nChoose: [l]ocal → remote, [r]emote → local, [s]kip? ").strip().lower()
                 if response == 'l':
                     return SyncAction.UPLOAD
                 elif response == 'r':
@@ -364,7 +364,7 @@ class S3SyncManager:
         local_path = os.path.join(self.local_dir, path)
         s3_path = self._get_s3_url(path)
 
-        print(f"  Uploading: {path} → S3")
+        print(f"  Uploading: {path} → remote")
 
         cmd = ['aws', 's3', 'cp', local_path, s3_path]
         result = self._run_aws_command(cmd)
@@ -384,7 +384,7 @@ class S3SyncManager:
         # Create directory if needed
         os.makedirs(os.path.dirname(local_path), exist_ok=True)
 
-        print(f"  Downloading: S3 → {path}")
+        print(f"  Downloading: remote → {path}")
 
         cmd = ['aws', 's3', 'cp', s3_path, local_path]
         result = self._run_aws_command(cmd)
