@@ -8,10 +8,10 @@ Automatically ignores:
 - The .s3sync.json configuration file and .s3sync.db database
 
 Usage:
-    python s3_sync.py init <directory> <s3_bucket> <s3_prefix> [--profile=<aws_profile>]
-    python s3_sync.py status <directory> [--verbose]
-    python s3_sync.py sync <directory> [--dry-run]
-    python s3_sync.py update <directory>
+    python vc_sync.py init <directory> <s3_bucket> <s3_prefix> [--profile=<aws_profile>]
+    python vc_sync.py status <directory> [--verbose]
+    python vc_sync.py sync <directory> [--dry-run]
+    python vc_sync.py update <directory>
 """
 
 import os
