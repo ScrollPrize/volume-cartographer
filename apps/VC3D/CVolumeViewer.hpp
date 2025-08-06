@@ -100,8 +100,7 @@ public slots:
     void onPointRemoved(uint64_t pointId);
     void onPathsChanged(const QList<PathData>& paths);
     void onPointSelected(uint64_t pointId);
-    void deferredRender();
-    
+
     // Mouse event handlers for drawing (transform coordinates)
     void onMousePress(QPointF scene_loc, Qt::MouseButton button, Qt::KeyboardModifiers modifiers);
     void onMouseMove(QPointF scene_loc, Qt::MouseButtons buttons, Qt::KeyboardModifiers modifiers);
@@ -214,7 +213,6 @@ protected:
 
     int _downscale_override = 0;  // 0=auto, 1=2x, 2=4x, 3=8x, 4=16x, 5=32x
     QTimer* _deferredUpdateTimer;
-    QTimer* _renderTimer;
 
 };  // class CVolumeViewer
 

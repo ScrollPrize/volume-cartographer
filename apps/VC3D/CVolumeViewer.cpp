@@ -84,13 +84,9 @@ CVolumeViewer::CVolumeViewer(CSurfaceCollection *col, QWidget* parent)
 
     _deferredUpdateTimer = new QTimer(this);
     _deferredUpdateTimer->setSingleShot(true);
-    _deferredUpdateTimer->setInterval(50); // 150ms delay after last interaction
+    _deferredUpdateTimer->setInterval(50);
     connect(_deferredUpdateTimer, &QTimer::timeout, this, &CVolumeViewer::performDeferredUpdates);
 
-    _renderTimer = new QTimer(this);
-    _renderTimer->setSingleShot(true);
-    _renderTimer->setInterval(0);
-    connect(_renderTimer, &QTimer::timeout, this, &CVolumeViewer::deferredRender);
 
     _lbl = new QLabel(this);
     _lbl->setStyleSheet("QLabel { color : white; }");
@@ -551,7 +547,8 @@ void CVolumeViewer::onSurfaceChanged(std::string name, Surface *surf)
     //FIXME do not re-render surf if only segmentation changed?
     if (name == _surf_name) {
         curr_img_area = {0,0,0,0};
-        _renderTimer->start();
+        _deferredUpdateTimer->stop();
+        _deferredUpdateTimer->start();
     }
 
     invalidateIntersect(name);
@@ -1698,8 +1695,6 @@ void CVolumeViewer::performDeferredUpdates()
     renderIntersections();
     renderPaths();
     refreshPointPositions();
-    renderVisible(true);
-
     showAllOverlays();
 }
 
@@ -1741,10 +1736,5 @@ void CVolumeViewer::showAllOverlays()
         if (pg.second.text) pg.second.text->setVisible(pg.second.text->toPlainText().length() > 0);
     }
     // Force a final high-quality render
-    renderVisible(true);
-}
-
-void CVolumeViewer::deferredRender()
-{
     renderVisible(true);
 }
