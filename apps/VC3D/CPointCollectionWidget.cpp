@@ -2,8 +2,11 @@
 
 #include <QStandardItem>
 #include <stdexcept>
+#include <vector>
+#include <algorithm>
 #include <QColorDialog>
 #include <QFileDialog>
+#include <QKeyEvent>
 #include <QMessageBox>
  
 #include "vc/core/util/VCCollection.hpp"
@@ -77,7 +80,7 @@ void CPointCollectionWidget::setupUi()
     collection_layout->addWidget(_auto_fill_winding_button);
 
     layout->addWidget(_collection_metadata_group);
-
+ 
     connect(_absolute_winding_checkbox, &QCheckBox::stateChanged, this, &CPointCollectionWidget::onAbsoluteWindingChanged);
     connect(_color_button, &QPushButton::clicked, this, &CPointCollectionWidget::onColorButtonClicked);
     connect(_auto_fill_winding_button, &QPushButton::clicked, this, &CPointCollectionWidget::onAutoFillWindingClicked);
@@ -98,10 +101,10 @@ void CPointCollectionWidget::setupUi()
     point_layout->addLayout(winding_layout);
 
     layout->addWidget(_point_metadata_group);
-
+ 
     connect(_winding_enabled_checkbox, &QCheckBox::stateChanged, this, &CPointCollectionWidget::onWindingEnabledChanged);
     connect(_winding_spinbox, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, &CPointCollectionWidget::onWindingEdited);
-
+ 
     layout->addStretch();
  
     QHBoxLayout *file_layout = new QHBoxLayout();
@@ -132,9 +135,55 @@ void CPointCollectionWidget::refreshTree()
         return;
     }
 
-    for (const auto &col_pair : _point_collection->getAllCollections()) {
-        onCollectionAdded(col_pair.first);
+    // Get collections and sort them by name
+    const auto& all_collections_map = _point_collection->getAllCollections();
+    std::vector<VCCollection::Collection> sorted_collections;
+    sorted_collections.reserve(all_collections_map.size());
+    for (const auto& pair : all_collections_map) {
+        sorted_collections.push_back(pair.second);
     }
+    std::sort(sorted_collections.begin(), sorted_collections.end(),
+              [](const VCCollection::Collection& a, const VCCollection::Collection& b) {
+        return a.name < b.name;
+    });
+
+    // Iterate through sorted collections and add to tree
+    for (const auto& collection : sorted_collections) {
+        QStandardItem *name_item = new QStandardItem(QString::fromStdString(collection.name));
+        QColor color(collection.color[0] * 255, collection.color[1] * 255, collection.color[2] * 255);
+        name_item->setData(QBrush(color), Qt::DecorationRole);
+        name_item->setData(QVariant::fromValue(collection.id));
+        name_item->setFlags(name_item->flags() & ~Qt::ItemIsEditable);
+        
+        QStandardItem *count_item = new QStandardItem(QString::number(collection.points.size()));
+        count_item->setFlags(count_item->flags() & ~Qt::ItemIsEditable);
+        
+        _model->appendRow({name_item, count_item});
+
+        // Get points and sort them by ID
+        std::vector<ColPoint> sorted_points;
+        sorted_points.reserve(collection.points.size());
+        for (const auto& pair : collection.points) {
+            sorted_points.push_back(pair.second);
+        }
+        std::sort(sorted_points.begin(), sorted_points.end(),
+                  [](const ColPoint& a, const ColPoint& b) {
+            return a.id < b.id;
+        });
+
+        // Add sorted points to the collection item
+        for (const auto& point : sorted_points) {
+            QStandardItem *id_item = new QStandardItem(QString::number(point.id));
+            id_item->setData(QVariant::fromValue(point.id));
+            id_item->setFlags(id_item->flags() & ~Qt::ItemIsEditable);
+            
+            QStandardItem *pos_item = new QStandardItem(QString("{%1, %2, %3}").arg(point.p[0]).arg(point.p[1]).arg(point.p[2]));
+            pos_item->setFlags(pos_item->flags() & ~Qt::ItemIsEditable);
+            
+            name_item->appendRow({id_item, pos_item});
+        }
+    }
+
     _tree_view->expandAll();
 }
 
@@ -225,9 +274,24 @@ void CPointCollectionWidget::onPointChanged(const ColPoint& point)
 
 void CPointCollectionWidget::onPointRemoved(uint64_t pointId)
 {
-    // This is complex to do efficiently without a map.
-    // For now, just rebuild the whole tree.
-    refreshTree();
+    // Find the item corresponding to the pointId and remove it
+    for (int i = 0; i < _model->rowCount(); ++i) {
+        QStandardItem *collection_item = _model->item(i);
+        if (collection_item) {
+            for (int j = 0; j < collection_item->rowCount(); ++j) {
+                QStandardItem *point_item = collection_item->child(j);
+                if (point_item && point_item->data().toULongLong() == pointId) {
+                    collection_item->removeRow(j);
+                    // Update count
+                    QStandardItem* count_item = _model->item(collection_item->row(), 1);
+                    if(count_item) {
+                        count_item->setText(QString::number(collection_item->rowCount()));
+                    }
+                    return;
+                }
+            }
+        }
+    }
 }
 
 void CPointCollectionWidget::onSelectionChanged(const QItemSelection &selected, const QItemSelection &deselected)
@@ -469,10 +533,21 @@ void CPointCollectionWidget::selectPoint(uint64_t pointId)
                     _tree_view->selectionModel()->clearSelection();
                     _tree_view->selectionModel()->select(point_item->index(), QItemSelectionModel::Select | QItemSelectionModel::Rows);
                     _tree_view->scrollTo(point_item->index());
+                    _tree_view->setFocus();
                     return;
                 }
             }
         }
+    }
+}
+
+void CPointCollectionWidget::keyPressEvent(QKeyEvent *event)
+{
+    if (event->key() == Qt::Key_Delete && _selected_point_id != 0) {
+        _point_collection->removePoint(_selected_point_id);
+        event->accept();
+    } else {
+        QDockWidget::keyPressEvent(event);
     }
 }
 

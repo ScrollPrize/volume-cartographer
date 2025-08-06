@@ -55,8 +55,9 @@ private slots:
     void onAutoFillWindingClicked();
     void onSaveClicked();
     void onLoadClicked();
- 
-private:
+  
+ private:
+    void keyPressEvent(QKeyEvent *event) override;
     void setupUi();
     void updateMetadataWidgets();
     QStandardItem* findCollectionItem(uint64_t collectionId);

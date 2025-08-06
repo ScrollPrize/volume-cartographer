@@ -392,6 +392,8 @@ void CVolumeViewer::onVolumeClicked(QPointF scene_loc, Qt::MouseButton buttons, 
                 _selected_collection_id = new_point.collectionId;
                 emit sendCollectionSelected(_selected_collection_id);
             }
+        } else if (_highlighted_point_id != 0) {
+            emit pointClicked(_highlighted_point_id);
         }
     }
 
@@ -1416,18 +1418,7 @@ void CVolumeViewer::onMousePress(QPointF scene_loc, Qt::MouseButton button, Qt::
 
     if (button == Qt::LeftButton) {
         if (_highlighted_point_id != 0) {
-           if (_selected_point_id != _highlighted_point_id) {
-               uint64_t old_selected_id = _selected_point_id;
-               _selected_point_id = _highlighted_point_id;
-               emit pointSelected(_selected_point_id);
-
-               if (auto old_point = _point_collection->getPoint(old_selected_id)) {
-                   renderOrUpdatePoint(*old_point);
-               }
-               if (auto new_point = _point_collection->getPoint(_selected_point_id)) {
-                   renderOrUpdatePoint(*new_point);
-               }
-           }
+            emit pointClicked(_highlighted_point_id);
             _dragged_point_id = _highlighted_point_id;
             // Do not return, allow forwarding for other widgets
         }

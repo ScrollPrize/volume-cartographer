@@ -386,6 +386,7 @@ void CWindow::CreateWidgets(void)
         connect(viewer, &CVolumeViewer::sendCollectionSelected, _point_collection_widget, &CPointCollectionWidget::selectCollection);
         connect(_point_collection_widget, &CPointCollectionWidget::pointSelected, viewer, &CVolumeViewer::onPointSelected);
         connect(viewer, &CVolumeViewer::pointSelected, _point_collection_widget, &CPointCollectionWidget::selectPoint);
+        connect(viewer, &CVolumeViewer::pointClicked, _point_collection_widget, &CPointCollectionWidget::selectPoint);
     }
     connect(_point_collection_widget, &CPointCollectionWidget::pointDoubleClicked, this, &CWindow::onPointDoubleClicked);
 
