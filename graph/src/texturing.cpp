@@ -17,7 +17,7 @@
 
 using namespace volcart;
 using namespace volcart::texturing;
-namespace fs = volcart::filesystem;
+namespace fs = std::filesystem;
 
 // Enum conversions
 namespace volcart

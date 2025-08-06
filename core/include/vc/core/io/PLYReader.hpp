@@ -5,7 +5,7 @@
 #include <fstream>
 #include <map>
 
-#include "vc/core/filesystem.hpp"
+#include <filesystem>
 #include "vc/core/types/ITKMesh.hpp"
 #include "vc/core/types/SimpleMesh.hpp"
 

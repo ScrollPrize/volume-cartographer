@@ -3,14 +3,14 @@
 #include <boost/program_options.hpp>
 #include <opencv2/core.hpp>
 
-#include "vc/core/filesystem.hpp"
+#include <filesystem>
 #include "vc/core/io/MeshIO.hpp"
 #include "vc/core/io/PointSetIO.hpp"
 #include "vc/core/util/Logging.hpp"
 #include "vc/meshing/OrderedPointSetMesher.hpp"
 #include "vc/meshing/OrientNormals.hpp"
 
-namespace fs = volcart::filesystem;
+namespace fs = std::filesystem;
 namespace po = boost::program_options;
 namespace vc = volcart;
 namespace vcm = volcart::meshing;

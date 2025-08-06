@@ -5,7 +5,7 @@
 #include <itkTransformFactory.h>
 #include <itkTransformFileReader.h>
 
-#include "vc/core/filesystem.hpp"
+#include <filesystem>
 #include "vc/core/io/ImageIO.hpp"
 #include "vc/core/io/MeshIO.hpp"
 #include "vc/core/util/Logging.hpp"

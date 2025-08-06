@@ -20,7 +20,7 @@
 
 #include "ProjectionViewerWindow.hpp"
 #include "vc/app_support/ProgressIndicator.hpp"
-#include "vc/core/filesystem.hpp"
+#include <filesystem>
 #include "vc/core/io/ImageIO.hpp"
 #include "vc/core/io/MeshIO.hpp"
 #include "vc/core/types/VolumePkg.hpp"
@@ -29,7 +29,7 @@
 #include "vc/meshing/ITK2VTK.hpp"
 
 namespace po = boost::program_options;
-namespace fs = volcart::filesystem;
+namespace fs = std::filesystem;
 namespace vc = volcart;
 namespace vcm = volcart::meshing;
 

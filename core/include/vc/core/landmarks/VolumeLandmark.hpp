@@ -4,7 +4,7 @@
 
 #include <opencv2/core.hpp>
 
-#include "vc/core/filesystem.hpp"
+#include <filesystem>
 #include "vc/core/types/Metadata.hpp"
 
 namespace volcart::landmarks
@@ -44,10 +44,10 @@ public:
 
     /** @brief Write a landmark metadata file to the path provided */
     static void Write(
-        const volcart::filesystem::path& path, const Pointer& ldm);
+        const std::filesystem::path& path, const Pointer& ldm);
 
     /** @brief Read a landmark metadata file from the path provided */
-    static VolumeLandmark::Pointer Read(const volcart::filesystem::path& path);
+    static VolumeLandmark::Pointer Read(const std::filesystem::path& path);
 
 protected:
     /** Constructor with uuid, name, and type */

@@ -11,7 +11,7 @@
 
 using namespace volcart;
 using namespace volcart::tiffio;
-namespace fs = volcart::filesystem;
+namespace fs = std::filesystem;
 
 namespace
 {

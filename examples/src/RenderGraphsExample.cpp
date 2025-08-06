@@ -1,13 +1,13 @@
 #include <smgl/Graphviz.hpp>
 
-#include "vc/core/filesystem.hpp"
+#include <filesystem>
 #include "vc/core/util/Logging.hpp"
 #include "vc/graph.hpp"
 
 using namespace smgl;
 using namespace volcart;
 
-namespace fs = volcart::filesystem;
+namespace fs = std::filesystem;
 
 auto main() -> int
 {

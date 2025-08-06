@@ -4,7 +4,7 @@
 
 using namespace volcart;
 
-namespace fs = volcart::filesystem;
+namespace fs = std::filesystem;
 
 // Load a Segmentation directory from disk
 // Reads and verifies metadata

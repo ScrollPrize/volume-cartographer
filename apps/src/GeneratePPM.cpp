@@ -3,7 +3,7 @@
 #include <boost/program_options.hpp>
 
 #include "vc/app_support/ProgressIndicator.hpp"
-#include "vc/core/filesystem.hpp"
+#include <filesystem>
 #include "vc/core/io/MeshIO.hpp"
 #include "vc/core/types/PerPixelMap.hpp"
 #include "vc/core/util/Logging.hpp"
@@ -14,7 +14,7 @@
 namespace vc = volcart;
 namespace vcm = volcart::meshing;
 namespace vct = volcart::texturing;
-namespace fs = volcart::filesystem;
+namespace fs = std::filesystem;
 namespace po = boost::program_options;
 
 auto main(int argc, char* argv[]) -> int

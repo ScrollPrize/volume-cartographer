@@ -2,7 +2,7 @@
 
 #include "vc/core/types/Exceptions.hpp"
 
-namespace fs = volcart::filesystem;
+namespace fs = std::filesystem;
 
 using namespace volcart;
 

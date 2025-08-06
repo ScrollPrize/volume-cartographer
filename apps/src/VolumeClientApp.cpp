@@ -6,10 +6,10 @@
 #include <QCoreApplication>
 
 #include "vc/apps/server/VolumeClient.hpp"
-#include "vc/core/filesystem.hpp"
+#include <filesystem>
 #include "vc/core/util/Logging.hpp"
 
-namespace fs = volcart::filesystem;
+namespace fs = std::filesystem;
 namespace po = boost::program_options;
 namespace vc = volcart;
 

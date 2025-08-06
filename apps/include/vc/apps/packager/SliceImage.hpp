@@ -4,7 +4,7 @@
 
 #include <opencv2/core.hpp>
 
-#include "vc/core/filesystem.hpp"
+#include <filesystem>
 
 namespace volcart
 {
@@ -12,7 +12,7 @@ namespace volcart
 class SliceImage
 {
 public:
-    explicit SliceImage(volcart::filesystem::path p) : path{std::move(p)} {}
+    explicit SliceImage(std::filesystem::path p) : path{std::move(p)} {}
 
     bool operator==(const SliceImage& b) const;
     bool operator!=(const SliceImage& b) const { return !operator==(b); }
@@ -32,7 +32,7 @@ public:
         min_ = min;
     }
 
-    volcart::filesystem::path path;
+    std::filesystem::path path;
 
 private:
     int w_{0};
