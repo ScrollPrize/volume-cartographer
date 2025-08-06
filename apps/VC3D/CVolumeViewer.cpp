@@ -1327,6 +1327,25 @@ void CVolumeViewer::renderOrUpdatePoint(const ColPoint& point)
 {
     if (!_surf) return;
 
+    float opacity = 1.0f;
+    float z_dist = -1.0f;
+
+    if (auto* plane = dynamic_cast<PlaneSurface*>(_surf)) {
+        z_dist = std::abs(plane->pointDist(point.p));
+    } else if (auto* quad = dynamic_cast<QuadSurface*>(_surf)) {
+        SurfacePointer* ptr = quad->pointer();
+        z_dist = quad->pointTo(ptr, point.p, 10.0, 100);
+    }
+
+    if (z_dist >= 0) {
+        const float fade_threshold = 10.0f; // Fade over N units
+        if (z_dist < fade_threshold) {
+            opacity = 1.0f - (z_dist / fade_threshold);
+        } else {
+            opacity = 0.0f;
+        }
+    }
+
     QPointF scene_pos = volumeToScene(point.p);
     float radius = 5.0f; // pixels
     
@@ -1368,6 +1387,7 @@ void CVolumeViewer::renderOrUpdatePoint(const ColPoint& point)
         );
         pg.circle->setZValue(10);
     }
+    pg.circle->setOpacity(opacity);
 
     // Update or create text
     bool has_winding = !std::isnan(point.winding_annotation);
@@ -1382,6 +1402,7 @@ void CVolumeViewer::renderOrUpdatePoint(const ColPoint& point)
         pg.text->setPos(scene_pos.x() + radius, scene_pos.y() - radius);
         pg.text->setVisible(has_winding);
     }
+    pg.text->setOpacity(opacity);
     
     if (has_winding) {
         bool absolute = col_it != collections.end() ? col_it->second.metadata.absolute_winding_number : false;
