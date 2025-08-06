@@ -20,6 +20,8 @@ struct adl_serializer<cv::Vec3f> {
 };
 NLOHMANN_JSON_NAMESPACE_END
  
+#define VC_POINTCOLLECTIONS_JSON_VERSION "1"
+
 namespace ChaoVis
 {
 
@@ -258,7 +260,7 @@ std::string VCCollection::generateNewCollectionName(const std::string& prefix) c
     return new_name;
 }
 
-void VCCollection::autoFillWindingNumbers(uint64_t collectionId)
+void VCCollection::autoFillWindingNumbers(uint64_t collectionId, WindingFillMode mode)
 {
     if (_collections.count(collectionId)) {
         auto& collection = _collections.at(collectionId);
@@ -273,11 +275,28 @@ void VCCollection::autoFillWindingNumbers(uint64_t collectionId)
                 return a->id < b->id;
             });
 
-        float winding_counter = 1.0f;
+        float winding_counter;
+        if (mode == WindingFillMode::Decremental) {
+            winding_counter = static_cast<float>(points_to_sort.size());
+        } else {
+            winding_counter = 1.0f;
+        }
+
         for(ColPoint* point : points_to_sort) {
-            point->winding_annotation = winding_counter;
+            switch (mode) {
+                case WindingFillMode::Incremental:
+                    point->winding_annotation = winding_counter;
+                    winding_counter += 1.0f;
+                    break;
+                case WindingFillMode::Decremental:
+                    point->winding_annotation = winding_counter;
+                    winding_counter -= 1.0f;
+                    break;
+                case WindingFillMode::Constant:
+                    point->winding_annotation = 0.0f;
+                    break;
+            }
             updatePoint(*point);
-            winding_counter += 1.0f;
         }
     }
 }
@@ -285,7 +304,7 @@ void VCCollection::autoFillWindingNumbers(uint64_t collectionId)
 bool VCCollection::saveToJSON(const std::string& filename) const
 {
     json j;
-   j["vc_pointcollections_json_version"] = "0";
+   j["vc_pointcollections_json_version"] = VC_POINTCOLLECTIONS_JSON_VERSION;
     json collections_obj = json::object();
     for(const auto& pair : _collections) {
         collections_obj[std::to_string(pair.first)] = pair.second;
@@ -321,7 +340,7 @@ bool VCCollection::loadFromJSON(const std::string& filename)
     clearAll();
  
     try {
-       if (!j.contains("vc_pointcollections_json_version") || j.at("vc_pointcollections_json_version").get<std::string>() != "0") {
+       if (!j.contains("vc_pointcollections_json_version") || j.at("vc_pointcollections_json_version").get<std::string>() != VC_POINTCOLLECTIONS_JSON_VERSION) {
            throw std::runtime_error("JSON file has incorrect version or is missing version info.");
        }
 

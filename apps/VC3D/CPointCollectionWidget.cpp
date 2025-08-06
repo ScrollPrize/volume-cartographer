@@ -76,14 +76,22 @@ void CPointCollectionWidget::setupUi()
     _color_button = new QPushButton("Change Color");
     collection_layout->addWidget(_color_button);
 
-    _auto_fill_winding_button = new QPushButton("Auto-fill Winding");
-    collection_layout->addWidget(_auto_fill_winding_button);
+    QHBoxLayout *fill_layout = new QHBoxLayout();
+    _fill_winding_plus_button = new QPushButton("Fill +");
+    _fill_winding_minus_button = new QPushButton("Fill -");
+    _fill_winding_equals_button = new QPushButton("Fill =");
+    fill_layout->addWidget(_fill_winding_plus_button);
+    fill_layout->addWidget(_fill_winding_minus_button);
+    fill_layout->addWidget(_fill_winding_equals_button);
+    collection_layout->addLayout(fill_layout);
 
     layout->addWidget(_collection_metadata_group);
  
     connect(_absolute_winding_checkbox, &QCheckBox::stateChanged, this, &CPointCollectionWidget::onAbsoluteWindingChanged);
     connect(_color_button, &QPushButton::clicked, this, &CPointCollectionWidget::onColorButtonClicked);
-    connect(_auto_fill_winding_button, &QPushButton::clicked, this, &CPointCollectionWidget::onAutoFillWindingClicked);
+    connect(_fill_winding_plus_button, &QPushButton::clicked, this, &CPointCollectionWidget::onFillWindingPlusClicked);
+    connect(_fill_winding_minus_button, &QPushButton::clicked, this, &CPointCollectionWidget::onFillWindingMinusClicked);
+    connect(_fill_winding_equals_button, &QPushButton::clicked, this, &CPointCollectionWidget::onFillWindingEqualsClicked);
 
     // Point Metadata
     _point_metadata_group = new QGroupBox("Point Metadata");
@@ -459,10 +467,24 @@ void CPointCollectionWidget::onWindingEnabledChanged(int state)
     }
 }
 
-void CPointCollectionWidget::onAutoFillWindingClicked()
+void CPointCollectionWidget::onFillWindingPlusClicked()
 {
     if (_selected_collection_id != 0) {
-        _point_collection->autoFillWindingNumbers(_selected_collection_id);
+        _point_collection->autoFillWindingNumbers(_selected_collection_id, VCCollection::WindingFillMode::Incremental);
+    }
+}
+
+void CPointCollectionWidget::onFillWindingMinusClicked()
+{
+    if (_selected_collection_id != 0) {
+        _point_collection->autoFillWindingNumbers(_selected_collection_id, VCCollection::WindingFillMode::Decremental);
+    }
+}
+
+void CPointCollectionWidget::onFillWindingEqualsClicked()
+{
+    if (_selected_collection_id != 0) {
+        _point_collection->autoFillWindingNumbers(_selected_collection_id, VCCollection::WindingFillMode::Constant);
     }
 }
  

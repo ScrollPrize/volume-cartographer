@@ -33,6 +33,12 @@ class VCCollection : public QObject
     Q_OBJECT
 
 public:
+    enum class WindingFillMode {
+        Incremental,
+        Decremental,
+        Constant
+    };
+
     struct Collection
     {
         uint64_t id;
@@ -62,7 +68,7 @@ public:
     std::optional<ColPoint> getPoint(uint64_t pointId) const;
     std::vector<ColPoint> getPoints(const std::string& collectionName) const;
     std::string generateNewCollectionName(const std::string& prefix = "col") const;
-    void autoFillWindingNumbers(uint64_t collectionId);
+    void autoFillWindingNumbers(uint64_t collectionId, WindingFillMode mode);
 
    bool saveToJSON(const std::string& filename) const;
    bool loadFromJSON(const std::string& filename);

@@ -52,7 +52,9 @@ private slots:
     void onColorButtonClicked();
     void onWindingEdited(double value);
     void onWindingEnabledChanged(int state);
-    void onAutoFillWindingClicked();
+    void onFillWindingPlusClicked();
+    void onFillWindingMinusClicked();
+    void onFillWindingEqualsClicked();
     void onSaveClicked();
     void onLoadClicked();
   
@@ -78,7 +80,9 @@ private slots:
     QPushButton *_new_name_button;
     QCheckBox *_absolute_winding_checkbox;
     QPushButton *_color_button;
-    QPushButton *_auto_fill_winding_button;
+    QPushButton *_fill_winding_plus_button;
+    QPushButton *_fill_winding_minus_button;
+    QPushButton *_fill_winding_equals_button;
 
     QGroupBox *_point_metadata_group;
     QCheckBox *_winding_enabled_checkbox;
