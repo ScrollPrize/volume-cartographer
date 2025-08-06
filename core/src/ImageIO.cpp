@@ -11,7 +11,7 @@
 using namespace volcart;
 
 namespace vc = volcart;
-namespace fs = volcart::filesystem;
+namespace fs = std::filesystem;
 namespace tio = volcart::tiffio;
 
 auto vc::ReadImage(const fs::path& path) -> cv::Mat

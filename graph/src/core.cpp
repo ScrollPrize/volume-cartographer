@@ -8,7 +8,7 @@
 #include "vc/core/util/Logging.hpp"
 
 using namespace volcart;
-namespace fs = volcart::filesystem;
+namespace fs = std::filesystem;
 
 // Enum conversions
 namespace volcart

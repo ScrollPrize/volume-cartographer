@@ -8,7 +8,7 @@
 #include "vc/app_support/GeneralOptions.hpp"
 #include "vc/app_support/GetMemorySize.hpp"
 #include "vc/app_support/ProgressIndicator.hpp"
-#include "vc/core/filesystem.hpp"
+#include <filesystem>
 #include "vc/core/io/PointSetIO.hpp"
 #include "vc/core/types/VolumePkg.hpp"
 #include "vc/core/util/DateTime.hpp"
@@ -18,7 +18,7 @@
 #include "vc/segmentation/LocalResliceParticleSim.hpp"
 #include "vc/segmentation/ThinnedFloodFillSegmentation.hpp"
 
-namespace fs = volcart::filesystem;
+namespace fs = std::filesystem;
 namespace po = boost::program_options;
 namespace vc = volcart;
 namespace vs = vc::segmentation;

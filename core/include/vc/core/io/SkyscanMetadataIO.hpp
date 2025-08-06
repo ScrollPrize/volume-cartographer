@@ -4,7 +4,7 @@
 
 #include <regex>
 
-#include "vc/core/filesystem.hpp"
+#include <filesystem>
 #include "vc/core/types/Metadata.hpp"
 
 namespace volcart
@@ -25,7 +25,7 @@ class SkyscanMetadataIO
 {
 public:
     /** @brief Set the log file path */
-    void setPath(const volcart::filesystem::path& p) { path_ = p; }
+    void setPath(const std::filesystem::path& p) { path_ = p; }
 
     /** @brief Read log file and return metadata object */
     Metadata read();
@@ -37,7 +37,7 @@ private:
     void parse_();
 
     /** Path to the log file */
-    volcart::filesystem::path path_;
+    std::filesystem::path path_;
 
     /** Metadata object storing log file values */
     Metadata metadata_;

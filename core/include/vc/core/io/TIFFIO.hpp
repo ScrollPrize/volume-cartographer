@@ -12,7 +12,7 @@
 
 #include <opencv2/core.hpp>
 
-#include "vc/core/filesystem.hpp"
+#include <filesystem>
 
 namespace volcart::tiffio
 {
@@ -67,7 +67,7 @@ enum class Compression {
  * @param path Path to TIFF file
  * @throws volcart::IOException Unrecoverable read errors
  */
-auto ReadTIFF(const volcart::filesystem::path& path) -> cv::Mat;
+auto ReadTIFF(const std::filesystem::path& path) -> cv::Mat;
 
 /**
  * @brief Write a TIFF image to file
@@ -80,7 +80,7 @@ auto ReadTIFF(const volcart::filesystem::path& path) -> cv::Mat;
  * @throws volcart::IOException All writing errors
  */
 void WriteTIFF(
-    const volcart::filesystem::path& path,
+    const std::filesystem::path& path,
     const cv::Mat& img,
     Compression compression = Compression::LZW);
 }  // namespace volcart::tiffio

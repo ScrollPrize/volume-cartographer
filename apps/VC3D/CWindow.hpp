@@ -158,6 +158,7 @@ private slots:
     void onManualLocationChanged();
     void onZoomIn();
     void onZoomOut();
+    void onCopyCoordinates();
 
 private:
     bool appInitComplete{false};

@@ -515,7 +515,10 @@ void CWindow::CreateWidgets(void)
         QRegularExpression("^\\s*\\d+\\s*,\\s*\\d+\\s*,\\s*\\d+\\s*$"), this);
     lblLocFocus->setValidator(validator);
     connect(lblLocFocus, &QLineEdit::editingFinished, this, &CWindow::onManualLocationChanged);
-    
+
+    QPushButton* btnCopyCoords = ui.btnCopyCoords;
+    connect(btnCopyCoords, &QPushButton::clicked, this, &CWindow::onCopyCoordinates);
+
     // Zoom buttons
     btnZoomIn = ui.btnZoomIn;
     btnZoomOut = ui.btnZoomOut;
@@ -2555,3 +2558,11 @@ void CWindow::onZoomOut()
     viewer->onZoom(-3, center, Qt::NoModifier);
 }
 
+void CWindow::onCopyCoordinates()
+{
+    QString coords = lblLocFocus->text().trimmed();
+    if (!coords.isEmpty()) {
+        QApplication::clipboard()->setText(coords);
+        statusBar()->showMessage(tr("Coordinates copied to clipboard: %1").arg(coords), 2000);
+    }
+}

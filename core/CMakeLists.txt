@@ -102,7 +102,6 @@ target_include_directories(vc_core
 )
 target_link_libraries(vc_core
     PUBLIC
-        ${VC_FS_LIB}
         opencv_core
         opencv_imgproc
         opencv_imgcodecs

@@ -7,7 +7,7 @@
 
 #include "vc/app_support/GetMemorySize.hpp"
 #include "vc/core/Version.hpp"
-#include "vc/core/filesystem.hpp"
+#include <filesystem>
 #include "vc/core/io/FileFilters.hpp"
 #include "vc/core/io/PointSetIO.hpp"
 #include "vc/core/types/VolumePkg.hpp"
@@ -18,7 +18,7 @@
 #include "vc/graph.hpp"
 
 namespace vc = volcart;
-namespace fs = volcart::filesystem;
+namespace fs = std::filesystem;
 namespace po = boost::program_options;
 
 using namespace volcart;

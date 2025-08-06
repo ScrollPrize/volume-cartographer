@@ -4,11 +4,11 @@
 #include <iostream>
 #include <vector>
 
-#include "vc/core/filesystem.hpp"
+#include <filesystem>
 #include "vc/core/util/String.hpp"
 #include "vc/testing/ParsingHelpers.hpp"
 
-namespace fs = volcart::filesystem;
+namespace fs = std::filesystem;
 
 namespace volcart::testing
 {

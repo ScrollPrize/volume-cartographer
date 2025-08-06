@@ -6,7 +6,7 @@
 
 #include <smgl/Graph.hpp>
 
-#include "vc/core/filesystem.hpp"
+#include <filesystem>
 #include "vc/core/types/DiskBasedObjectBaseClass.hpp"
 
 namespace volcart
@@ -35,10 +35,10 @@ public:
     /** @brief Make a new Render in a directory */
     Render(filesystem::path path, Identifier uuid, std::string name);
 
-    /** @copydoc Render(volcart::filesystem::path path) */
+    /** @copydoc Render(std::filesystem::path path) */
     static auto New(filesystem::path path) -> Pointer;
 
-    /** @copydoc Render(volcart::filesystem::path path, Identifier uuid,
+    /** @copydoc Render(std::filesystem::path path, Identifier uuid,
      * std::string name) */
     static auto New(filesystem::path path, Identifier uuid, std::string name)
         -> Pointer;

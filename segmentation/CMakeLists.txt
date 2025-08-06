@@ -37,7 +37,6 @@ target_link_libraries(vc_segmentation
     PRIVATE
         opencv_highgui
         opencv_video
-        ${VC_FS_LIB}
         ${GSL_LIBRARIES}
 )
 target_compile_features(vc_segmentation PUBLIC cxx_std_17)

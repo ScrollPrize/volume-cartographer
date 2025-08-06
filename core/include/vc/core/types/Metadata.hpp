@@ -8,7 +8,7 @@
 #include <nlohmann/json.hpp>
 #include <opencv2/core.hpp>
 
-#include "vc/core/filesystem.hpp"
+#include <filesystem>
 #include "vc/core/util/Json.hpp"
 
 namespace volcart
@@ -38,15 +38,15 @@ public:
      *
      * @throws volcart::IOException
      */
-    explicit Metadata(volcart::filesystem::path fileLocation);
+    explicit Metadata(std::filesystem::path fileLocation);
     /**@}*/
 
     /**@{*/
     /** @brief Get the path where the metadata file will be written */
-    volcart::filesystem::path path() const { return path_; }
+    std::filesystem::path path() const { return path_; }
 
     /** @brief Set the path where the metadata file will be written */
-    void setPath(const volcart::filesystem::path& path) { path_ = path; }
+    void setPath(const std::filesystem::path& path) { path_ = path; }
 
     /**
      * @brief Save the metadata file to the stored path
@@ -56,7 +56,7 @@ public:
     void save() { save(path_); }
 
     /** @brief Save the metadata file to a specified path */
-    void save(const volcart::filesystem::path& path);
+    void save(const std::filesystem::path& path);
     /**@}*/
 
     /**@{*/
@@ -110,6 +110,6 @@ protected:
     /** JSON data storage */
     nlohmann::json json_;
     /** Location where the JSON file will be stored*/
-    volcart::filesystem::path path_;
+    std::filesystem::path path_;
 };
 }  // namespace volcart

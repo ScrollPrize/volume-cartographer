@@ -4,7 +4,7 @@
 
 #include <opencv2/core.hpp>
 
-#include "vc/core/filesystem.hpp"
+#include <filesystem>
 #include "vc/core/util/Iteration.hpp"
 #include "vc/core/util/Logging.hpp"
 #include "vc/core/util/String.hpp"
@@ -51,7 +51,7 @@ void WriteImageSequence(
     const Iterable& iterable,
     const WriteImageOpts& opts = {})
 {
-    namespace fs = volcart::filesystem;
+    namespace fs = std::filesystem;
 
     // components
     fs::path parent;

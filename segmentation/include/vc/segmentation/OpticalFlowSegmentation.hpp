@@ -15,7 +15,7 @@
 #include "vc/segmentation/lrps/Common.hpp"
 #include "vc/segmentation/lrps/FittedCurve.hpp"
 
-namespace fs = volcart::filesystem;
+namespace fs = std::filesystem;
 
 namespace volcart::segmentation
 {

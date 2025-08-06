@@ -7,7 +7,7 @@
 #include <opencv2/core.hpp>
 #include <smgl/Node.hpp>
 
-#include "vc/core/filesystem.hpp"
+#include <filesystem>
 #include "vc/core/io/ImageIO.hpp"
 #include "vc/core/io/MeshIO.hpp"
 #include "vc/core/types/ITKMesh.hpp"
