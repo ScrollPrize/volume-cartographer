@@ -665,20 +665,33 @@ void CVolumeViewer::onPOIChanged(std::string name, POI *poi)
             return;
         }
         
-        PlaneSurface *plane = dynamic_cast<PlaneSurface*>(_surf);
-        
-        if (!plane)
-            return;
-        
-        fGraphicsView->centerOn(0,0);
-        
-        if (poi->p == plane->origin())
-            return;
-        
-        plane->setOrigin(poi->p);
-        refreshPointPositions();
-        
-        _surf_col->setSurface(_surf_name, plane);
+        if (auto* plane = dynamic_cast<PlaneSurface*>(_surf)) {
+            fGraphicsView->centerOn(0,0);
+            if (poi->p == plane->origin())
+                return;
+            
+            plane->setOrigin(poi->p);
+            refreshPointPositions();
+            
+            _surf_col->setSurface(_surf_name, plane);
+        } else if (auto* quad = dynamic_cast<QuadSurface*>(_surf)) {
+            SurfacePointer* ptr = quad->pointer();
+            float dist = quad->pointTo(ptr, poi->p, 4.0, 100);
+            
+            if (dist < 4.0) {
+                cv::Vec3f sp = quad->loc(ptr) * _scale;
+                if (_center_marker) {
+                    _center_marker->setPos(sp[0], sp[1]);
+                    _center_marker->show();
+                }
+                fGraphicsView->centerOn(sp[0], sp[1]);
+            } else {
+                if (_center_marker) {
+                    _center_marker->hide();
+                }
+            }
+            delete ptr;
+        }
     }
     else if (name == "cursor") {
         // Add safety check before dynamic_cast
