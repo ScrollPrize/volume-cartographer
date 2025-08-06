@@ -8,10 +8,10 @@ Automatically ignores:
 - The .s3sync.json configuration file and .s3sync.db database
 
 Usage:
-    python vc_sync.py init <directory> <s3_bucket> <s3_prefix> [--profile=<aws_profile>]
-    python vc_sync.py status <directory> [--verbose]
-    python vc_sync.py sync <directory> [--dry-run]
-    python vc_sync.py update <directory>
+    python s3_sync.py init <directory> <s3_bucket> <s3_prefix> [--profile=<aws_profile>]
+    python s3_sync.py status <directory> [--verbose]
+    python s3_sync.py sync <directory> [--dry-run]
+    python s3_sync.py update <directory>
 """
 
 import os
@@ -22,7 +22,6 @@ import argparse
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, Set, Tuple, Optional, List
 from enum import Enum
 from contextlib import contextmanager
 
@@ -37,8 +36,8 @@ class SyncAction(Enum):
 
 
 class S3SyncManager:
-    def __init__(self, local_dir: str, s3_bucket: str = None, s3_prefix: str = None,
-                 aws_profile: Optional[str] = None):
+    def __init__(self, local_dir, s3_bucket=None, s3_prefix=None,
+                 aws_profile=None):
         self.local_dir = os.path.abspath(local_dir)
         self.config_file = os.path.join(self.local_dir, '.s3sync.json')
         self.db_file = os.path.join(self.local_dir, '.s3sync.db')
@@ -111,24 +110,24 @@ class S3SyncManager:
         finally:
             conn.close()
 
-    def _run_aws_command(self, cmd: List[str]) -> subprocess.CompletedResult:
+    def _run_aws_command(self, cmd):
         """Run AWS CLI command with optional profile"""
         if self.aws_profile:
             cmd.extend(['--profile', self.aws_profile])
         return subprocess.run(cmd, capture_output=True, text=True)
 
-    def _get_s3_url(self, relative_path: Optional[str] = None) -> str:
+    def _get_s3_url(self, relative_path=None):
         """Get S3 URL for a file or directory"""
         if relative_path:
             return f"s3://{self.s3_bucket}/{self.s3_prefix}/{relative_path}"
         return f"s3://{self.s3_bucket}/{self.s3_prefix}/"
 
-    def _parse_timestamp(self, timestamp_str: str) -> float:
+    def _parse_timestamp(self, timestamp_str):
         """Parse AWS timestamp to Unix timestamp"""
         dt = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
         return dt.timestamp()
 
-    def scan_local_files(self) -> Dict[str, Dict]:
+    def scan_local_files(self):
         """Scan local directory for files"""
         print(f"Scanning local directory: {self.local_dir}")
         files = {}
@@ -163,7 +162,7 @@ class S3SyncManager:
         print(f"Found {len(files)} local files")
         return files
 
-    def scan_s3_files(self) -> Dict[str, Dict]:
+    def scan_s3_files(self):
         """Scan S3 bucket for files with pagination support"""
         print(f"Scanning S3: s3://{self.s3_bucket}/{self.s3_prefix}/")
         files = {}
@@ -283,7 +282,7 @@ class S3SyncManager:
 
         print("File tracking updated successfully")
 
-    def analyze_changes(self, local_files: Dict, s3_files: Dict) -> Dict[str, Tuple[SyncAction, str]]:
+    def analyze_changes(self, local_files, s3_files):
         """Analyze what needs to be synced and detect conflicts"""
         actions = {}
 
@@ -346,8 +345,8 @@ class S3SyncManager:
 
         return actions
 
-    def resolve_conflict(self, path: str, reason: str, local_info: Optional[Dict],
-                         s3_info: Optional[Dict]) -> SyncAction:
+    def resolve_conflict(self, path, reason, local_info,
+                         s3_info):
         """Interactively resolve a conflict"""
         print(f"\n⚠️  CONFLICT: {path}")
         print(f"Reason: {reason}")
@@ -374,7 +373,7 @@ class S3SyncManager:
 
         return SyncAction.SKIP
 
-    def perform_upload(self, path: str, local_files: Dict) -> bool:
+    def perform_upload(self, path, local_files):
         """Upload a single file to S3 and update tracking"""
         local_path = os.path.join(self.local_dir, path)
         s3_path = self._get_s3_url(path)
@@ -424,7 +423,7 @@ class S3SyncManager:
             print(f"  ✗ Error uploading {path}: {result.stderr}")
             return False
 
-    def perform_download(self, path: str, s3_files: Dict) -> bool:
+    def perform_download(self, path, s3_files):
         """Download a single file from S3 and update tracking"""
         local_path = os.path.join(self.local_dir, path)
         s3_path = self._get_s3_url(path)
@@ -460,7 +459,7 @@ class S3SyncManager:
             print(f"  ✗ Error downloading {path}: {result.stderr}")
             return False
 
-    def perform_delete_local(self, path: str) -> bool:
+    def perform_delete_local(self, path):
         """Delete a local file and update tracking"""
         local_path = os.path.join(self.local_dir, path)
 
@@ -479,7 +478,7 @@ class S3SyncManager:
             print(f"  ✗ Error deleting {path}: {e}")
             return False
 
-    def perform_delete_remote(self, path: str) -> bool:
+    def perform_delete_remote(self, path):
         """Delete a file from S3 and update tracking"""
         s3_path = self._get_s3_url(path)
 
@@ -500,7 +499,7 @@ class S3SyncManager:
             print(f"  ✗ Error deleting {path}: {result.stderr}")
             return False
 
-    def sync(self, dry_run: bool = False):
+    def sync(self, dry_run=False):
         """Perform interactive sync operation"""
         print("\nAnalyzing changes...")
 
@@ -619,7 +618,7 @@ class S3SyncManager:
         if failed_count > 0:
             print(f"  {failed_count} operations failed - run sync again to retry")
 
-    def show_status(self, verbose: bool = False):
+    def show_status(self, verbose=False):
         """Show sync status"""
         print(f"S3 Sync Status")
         print(f"Local directory: {self.local_dir}")
