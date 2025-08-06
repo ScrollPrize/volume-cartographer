@@ -1438,7 +1438,7 @@ void CVolumeViewer::onMousePress(QPointF scene_loc, Qt::MouseButton button, Qt::
     if (!_point_collection || !_surf) return;
 
     if (button == Qt::LeftButton) {
-        if (_highlighted_point_id != 0) {
+        if (_highlighted_point_id != 0 && !modifiers.testFlag(Qt::ControlModifier)) {
             emit pointClicked(_highlighted_point_id);
             _dragged_point_id = _highlighted_point_id;
             // Do not return, allow forwarding for other widgets
