@@ -95,6 +95,7 @@ public slots:
     void onPointRemoved(uint64_t pointId);
     void onPathsChanged(const QList<PathData>& paths);
     void onPointSelected(uint64_t pointId);
+    void deferredRender();
     
     // Mouse event handlers for drawing (transform coordinates)
     void onMousePress(QPointF scene_loc, Qt::MouseButton button, Qt::KeyboardModifiers modifiers);
@@ -211,6 +212,7 @@ protected:
     bool _deferredInvalidateVis = false;
     bool _deferredInvalidateIntersect = false;
     bool _deferredRenderIntersections = false;
+    QTimer* _renderTimer;
 
 };  // class CVolumeViewer
 
