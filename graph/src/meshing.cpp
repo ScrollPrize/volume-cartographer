@@ -9,7 +9,7 @@
 
 using namespace volcart;
 using namespace volcart::meshing;
-namespace fs = volcart::filesystem;
+namespace fs = std::filesystem;
 
 // Enum conversions
 namespace volcart::meshing

@@ -6,7 +6,7 @@
 
 #include <smgl/Node.hpp>
 
-#include "vc/core/filesystem.hpp"
+#include <filesystem>
 #include "vc/core/types/ITKMesh.hpp"
 #include "vc/core/types/Volume.hpp"
 #include "vc/core/util/MeshMath.hpp"

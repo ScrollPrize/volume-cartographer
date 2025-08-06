@@ -18,11 +18,13 @@ public:
     void scrollContentsBy(int dx, int dy);
     void keyPressEvent(QKeyEvent *event);
     void keyReleaseEvent(QKeyEvent *event);
+    void resizeEvent(QResizeEvent *event) override;
     /// Set physical voxel size (units per scene-unit, e.g. µm/pixel).
     /// Call this after you load your Zarr spacing metadata.
     void setVoxelSize(double sx, double sy) { m_vx = sx; m_vy = sy; update(); }
 
 signals:
+    void sendResized();
     void sendScrolled();
     void sendZoom(int steps, QPointF scene_point, Qt::KeyboardModifiers);
     void sendVolumeClicked(QPointF, Qt::MouseButton, Qt::KeyboardModifiers);

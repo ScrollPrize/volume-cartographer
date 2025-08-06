@@ -235,6 +235,10 @@ CVolumeViewer *CWindow::newConnectedCVolumeViewer(std::string surfaceName, QStri
 
 void CWindow::setVolume(std::shared_ptr<volcart::Volume> newvol)
 {
+    bool keep_poi = false;
+    if (currentVolume && currentVolume->sliceWidth() == newvol->sliceWidth() && currentVolume->sliceHeight() == newvol->sliceHeight() && currentVolume->numSlices() == newvol->numSlices()) {
+        keep_poi = true;
+    }
     currentVolume = newvol;
     
     // Find the volume ID for the current volume
@@ -260,14 +264,16 @@ void CWindow::setVolume(std::shared_ptr<volcart::Volume> newvol)
     int d = currentVolume->numSlices();
     
 
-    // Set default focus at middle of volume
-    POI *poi = _surf_col->poi("focus");
-    if (!poi) {
-        poi = new POI;
+    if (!keep_poi) {
+        // Set default focus at middle of volume
+        POI *poi = _surf_col->poi("focus");
+        if (!poi) {
+            poi = new POI;
+        }
+        poi->p = cv::Vec3f(w/2, h/2, d/2);
+        poi->n = cv::Vec3f(0, 0, 1); // Default normal for XY plane
+        _surf_col->setPOI("focus", poi);
     }
-    poi->p = cv::Vec3f(w/2, h/2, d/2);
-    poi->n = cv::Vec3f(0, 0, 1); // Default normal for XY plane
-    _surf_col->setPOI("focus", poi);
 
     onManualPlaneChanged();
 }
@@ -509,7 +515,10 @@ void CWindow::CreateWidgets(void)
         QRegularExpression("^\\s*\\d+\\s*,\\s*\\d+\\s*,\\s*\\d+\\s*$"), this);
     lblLocFocus->setValidator(validator);
     connect(lblLocFocus, &QLineEdit::editingFinished, this, &CWindow::onManualLocationChanged);
-    
+
+    QPushButton* btnCopyCoords = ui.btnCopyCoords;
+    connect(btnCopyCoords, &QPushButton::clicked, this, &CWindow::onCopyCoordinates);
+
     // Zoom buttons
     btnZoomIn = ui.btnZoomIn;
     btnZoomOut = ui.btnZoomOut;
@@ -2549,3 +2558,11 @@ void CWindow::onZoomOut()
     viewer->onZoom(-3, center, Qt::NoModifier);
 }
 
+void CWindow::onCopyCoordinates()
+{
+    QString coords = lblLocFocus->text().trimmed();
+    if (!coords.isEmpty()) {
+        QApplication::clipboard()->setText(coords);
+        statusBar()->showMessage(tr("Coordinates copied to clipboard: %1").arg(coords), 2000);
+    }
+}

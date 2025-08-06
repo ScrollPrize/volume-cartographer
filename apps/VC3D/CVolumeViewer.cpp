@@ -56,6 +56,7 @@ CVolumeViewer::CVolumeViewer(CSurfaceCollection *col, QWidget* parent)
     connect(fGraphicsView, &CVolumeViewerView::sendScrolled, this, &CVolumeViewer::onScrolled);
     connect(fGraphicsView, &CVolumeViewerView::sendVolumeClicked, this, &CVolumeViewer::onVolumeClicked);
     connect(fGraphicsView, &CVolumeViewerView::sendZoom, this, &CVolumeViewer::onZoom);
+    connect(fGraphicsView, &CVolumeViewerView::sendResized, this, &CVolumeViewer::onResized);
     connect(fGraphicsView, &CVolumeViewerView::sendCursorMove, this, &CVolumeViewer::onCursorMove);
     connect(fGraphicsView, &CVolumeViewerView::sendPanRelease, this, &CVolumeViewer::onPanRelease);
     connect(fGraphicsView, &CVolumeViewerView::sendPanStart, this, &CVolumeViewer::onPanStart);
@@ -86,6 +87,10 @@ CVolumeViewer::CVolumeViewer(CSurfaceCollection *col, QWidget* parent)
     _deferredUpdateTimer->setInterval(50); // 150ms delay after last interaction
     connect(_deferredUpdateTimer, &QTimer::timeout, this, &CVolumeViewer::performDeferredUpdates);
 
+    _renderTimer = new QTimer(this);
+    _renderTimer->setSingleShot(true);
+    _renderTimer->setInterval(0);
+    connect(_renderTimer, &QTimer::timeout, this, &CVolumeViewer::deferredRender);
 
     _lbl = new QLabel(this);
     _lbl->setStyleSheet("QLabel { color : white; }");
@@ -546,7 +551,7 @@ void CVolumeViewer::onSurfaceChanged(std::string name, Surface *surf)
     //FIXME do not re-render surf if only segmentation changed?
     if (name == _surf_name) {
         curr_img_area = {0,0,0,0};
-        renderVisible();
+        _renderTimer->start();
     }
 
     invalidateIntersect(name);
@@ -1117,9 +1122,14 @@ void CVolumeViewer::onScrolled()
         // renderVisible();
 }
 
+void CVolumeViewer::onResized()
+{
+   renderVisible(true);
+}
+
 void CVolumeViewer::renderPaths()
 {
-    // Clear existing path items
+   // Clear existing path items
     for(auto &item : _path_items) {
         if (item && item->scene() == fScene) {
             fScene->removeItem(item);
@@ -1730,4 +1740,11 @@ void CVolumeViewer::showAllOverlays()
         if (pg.second.circle) pg.second.circle->setVisible(true);
         if (pg.second.text) pg.second.text->setVisible(pg.second.text->toPlainText().length() > 0);
     }
+    // Force a final high-quality render
+    renderVisible(true);
+}
+
+void CVolumeViewer::deferredRender()
+{
+    renderVisible(true);
 }

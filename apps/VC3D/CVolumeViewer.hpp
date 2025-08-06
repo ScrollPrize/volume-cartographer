@@ -92,6 +92,7 @@ public slots:
     void onPOIChanged(std::string name, POI *poi);
     void onIntersectionChanged(std::string a, std::string b, Intersection *intersection);
     void onScrolled();
+    void onResized();
     void onZoom(int steps, QPointF scene_point, Qt::KeyboardModifiers modifiers);
     void onCursorMove(QPointF);
     void onPointAdded(const ColPoint& point);
@@ -99,6 +100,7 @@ public slots:
     void onPointRemoved(uint64_t pointId);
     void onPathsChanged(const QList<PathData>& paths);
     void onPointSelected(uint64_t pointId);
+    void deferredRender();
     
     // Mouse event handlers for drawing (transform coordinates)
     void onMousePress(QPointF scene_loc, Qt::MouseButton button, Qt::KeyboardModifiers modifiers);
@@ -212,6 +214,7 @@ protected:
 
     int _downscale_override = 0;  // 0=auto, 1=2x, 2=4x, 3=8x, 4=16x, 5=32x
     QTimer* _deferredUpdateTimer;
+    QTimer* _renderTimer;
 
 };  // class CVolumeViewer
 

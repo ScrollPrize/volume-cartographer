@@ -5,12 +5,12 @@
 
 #include <boost/program_options.hpp>
 
-#include "vc/core/filesystem.hpp"
+#include <filesystem>
 #include "vc/core/types/VolumePkg.hpp"
 #include "vc/core/types/VolumePkgVersion.hpp"
 
 namespace po = boost::program_options;
-namespace fs = volcart::filesystem;
+namespace fs = std::filesystem;
 namespace vc = volcart;
 
 auto main(int argc, char* argv[]) -> int

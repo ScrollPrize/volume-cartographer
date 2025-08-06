@@ -8,7 +8,7 @@
 
 #include "vc/core/util/String.hpp"
 
-namespace fs = volcart::filesystem;
+namespace fs = std::filesystem;
 namespace vcl = volcart::logging;
 
 auto DistSink() -> std::shared_ptr<spdlog::sinks::dist_sink_mt>;

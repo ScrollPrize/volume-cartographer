@@ -12,7 +12,7 @@
 using namespace volcart;
 using namespace volcart::io;
 
-namespace fs = volcart::filesystem;
+namespace fs = std::filesystem;
 
 // Constant for validating face values
 constexpr static int NOT_PRESENT = -1;

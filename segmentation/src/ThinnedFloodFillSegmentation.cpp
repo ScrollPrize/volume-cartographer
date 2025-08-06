@@ -8,7 +8,7 @@
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
 
-#include "vc/core/filesystem.hpp"
+#include <filesystem>
 #include "vc/core/types/Color.hpp"
 #include "vc/core/util/HashFunctions.hpp"
 #include "vc/core/util/ImageConversion.hpp"
@@ -16,7 +16,7 @@
 #include "vc/core/util/Logging.hpp"
 #include "vc/segmentation/tff/FloodFill.hpp"
 
-namespace fs = volcart::filesystem;
+namespace fs = std::filesystem;
 
 using namespace volcart;
 using namespace volcart::segmentation;

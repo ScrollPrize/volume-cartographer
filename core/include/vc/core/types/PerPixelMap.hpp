@@ -7,7 +7,7 @@
 
 #include <opencv2/core.hpp>
 
-#include "vc/core/filesystem.hpp"
+#include <filesystem>
 #include "vc/core/types/OrderedPointSet.hpp"
 #include "vc/core/types/UVMap.hpp"
 

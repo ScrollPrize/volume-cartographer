@@ -12,7 +12,7 @@ static constexpr int UNSET_VALUE = -1;
 using namespace volcart;
 using namespace volcart::io;
 
-namespace fs = volcart::filesystem;
+namespace fs = std::filesystem;
 
 OBJWriter::OBJWriter(fs::path outputPath, ITKMesh::Pointer mesh)
     : outputPath_{std::move(outputPath)}, mesh_{std::move(mesh)}

@@ -19,7 +19,7 @@
 
 #include "CannyViewerWindow.hpp"
 #include "vc/app_support/ProgressIndicator.hpp"
-#include "vc/core/filesystem.hpp"
+#include <filesystem>
 #include "vc/core/io/MeshIO.hpp"
 #include "vc/core/io/PLYWriter.hpp"
 #include "vc/core/types/ITKMesh.hpp"
@@ -30,7 +30,7 @@
 #include "vc/core/util/String.hpp"
 #include "vc/meshing/ITK2VTK.hpp"
 
-namespace fs = volcart::filesystem;
+namespace fs = std::filesystem;
 namespace po = boost::program_options;
 namespace vc = volcart;
 namespace vcm = volcart::meshing;

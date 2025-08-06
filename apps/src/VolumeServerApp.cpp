@@ -8,12 +8,12 @@
 #include "vc/app_support/GetMemorySize.hpp"
 #include "vc/apps/server/VolumeProtocol.hpp"
 #include "vc/apps/server/VolumeServer.hpp"
-#include "vc/core/filesystem.hpp"
+#include <filesystem>
 #include "vc/core/neighborhood/CuboidGenerator.hpp"
 #include "vc/core/util/Logging.hpp"
 #include "vc/core/util/MemorySizeStringParser.hpp"
 
-namespace fs = volcart::filesystem;
+namespace fs = std::filesystem;
 namespace po = boost::program_options;
 namespace vc = volcart;
 

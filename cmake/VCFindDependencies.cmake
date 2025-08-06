@@ -2,23 +2,6 @@
 # Core #
 ########
 
-### Filesystem ###
-find_package(Filesystem)
-if(Filesystem_FOUND)
-    option(VC_USE_BOOSTFS "Use Boost as the filesystem library" OFF)
-else()
-    option(VC_USE_BOOSTFS "Use Boost as the filesystem library" ON)
-endif()
-
-if(VC_USE_BOOSTFS)
-    add_compile_definitions(VC_USE_BOOSTFS)
-    find_package(Boost 1.58 REQUIRED COMPONENTS system filesystem)
-    set(VC_FS_LIB Boost::filesystem)
-else()
-    set(VC_FS_LIB std::filesystem)
-endif()
-message(STATUS "Using filesystem library: ${VC_FS_LIB}")
-list(APPEND VC_CUSTOM_MODULES "${CMAKE_MODULE_PATH}/FindFilesystem.cmake")
 
 ### Qt6 ###
 if((VC_BUILD_APPS OR VC_BUILD_UTILS) AND VC_BUILD_GUI)

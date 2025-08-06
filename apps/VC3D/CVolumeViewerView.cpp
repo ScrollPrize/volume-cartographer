@@ -175,6 +175,12 @@ void CVolumeViewerView::mousePressEvent(QMouseEvent *event)
     event->ignore();
 }
 
+void CVolumeViewerView::resizeEvent(QResizeEvent *event)
+{
+    emit sendResized();
+    QGraphicsView::resizeEvent(event);
+}
+
 void CVolumeViewerView::mouseMoveEvent(QMouseEvent *event)
 {
     if (_regular_pan)

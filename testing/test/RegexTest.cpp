@@ -2,9 +2,9 @@
 
 #include <gtest/gtest.h>
 
-#include "vc/core/filesystem.hpp"
+#include <filesystem>
 
-namespace fs = volcart::filesystem;
+namespace fs = std::filesystem;
 
 /*
  * Tests for std::regex
