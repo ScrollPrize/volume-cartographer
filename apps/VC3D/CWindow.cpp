@@ -2536,7 +2536,17 @@ void CWindow::onPointDoubleClicked(uint64_t pointId)
             poi = new POI;
         }
         poi->p = point_opt->p;
-        poi->n = cv::Vec3f(0, 0, 1); // Default normal
+
+        // Find the closest normal on the segmentation surface
+        Surface* seg_surface = _surf_col->surface("segmentation");
+        if (auto* quad_surface = dynamic_cast<QuadSurface*>(seg_surface)) {
+            SurfacePointer* ptr = quad_surface->pointer();
+            quad_surface->pointTo(ptr, point_opt->p, 4.0, 100);
+            poi->n = quad_surface->normal(ptr, quad_surface->loc(ptr));
+        } else {
+            poi->n = cv::Vec3f(0, 0, 1); // Default normal if no surface
+        }
+        
         _surf_col->setPOI("focus", poi);
     }
 }
