@@ -265,7 +265,7 @@ void CVolumeViewer::onZoom(int steps, QPointF scene_loc, Qt::KeyboardModifiers m
             emit sendZSliceChanged(newZ);
         }
 
-        renderVisible(true); // Immediate render for smooth interaction
+        renderVisible(true);
     }
     else {
         float zoom = pow(ZOOM_FACTOR, steps);
@@ -273,9 +273,18 @@ void CVolumeViewer::onZoom(int steps, QPointF scene_loc, Qt::KeyboardModifiers m
         round_scale(_scale);
         recalcScales();
 
+        // Cache the view-space mouse position; used later for cursor update
         QPoint pointViewportBefore = fGraphicsView->mapFromScene(scene_loc);
+
+        // The above scale is *not* part of Qt's scene-to-view transform, but part of the voxel-to-scene transform
+        // implemented in PlaneSurface::project; it causes a zoom around the surface origin
+        // Translations are represented in the Qt scene-to-view transform; these move the surface origin within the viewpoint
+        // To zoom centered on the mouse, we adjust the scene-to-view translation appropriately
+        // If the mouse were at the plane/surface origin, this adjustment should be zero
+        // If the mouse were right of the plane origin, should translate to the left so that point ends up where it was
         fGraphicsView->translate(scene_loc.x() * (1 - zoom), scene_loc.y() * (1 - zoom));
 
+        // Update the cursor (which lives in scene space) to still lie under the mouse even after the above translation
         QPointF pointSceneAfter = fGraphicsView->mapToScene(pointViewportBefore);
         onCursorMove(pointSceneAfter);
 
