@@ -82,15 +82,10 @@ CVolumeViewer::CVolumeViewer(CSurfaceCollection *col, QWidget* parent)
 
     setLayout(aWidgetLayout);
 
-    _deferredUpdateTimer = new QTimer(this);
-    _deferredUpdateTimer->setSingleShot(true);
-    _deferredUpdateTimer->setInterval(50); // 150ms delay after last interaction
-    connect(_deferredUpdateTimer, &QTimer::timeout, this, &CVolumeViewer::performDeferredUpdates);
-
-    _renderTimer = new QTimer(this);
-    _renderTimer->setSingleShot(true);
-    _renderTimer->setInterval(0);
-    connect(_renderTimer, &QTimer::timeout, this, &CVolumeViewer::deferredRender);
+    _overlayUpdateTimer = new QTimer(this);
+    _overlayUpdateTimer->setSingleShot(true);
+    _overlayUpdateTimer->setInterval(50); // Delay after last interaction
+    connect(_overlayUpdateTimer, &QTimer::timeout, this, &CVolumeViewer::updateAllOverlays);
 
     _lbl = new QLabel(this);
     _lbl->setStyleSheet("QLabel { color : white; }");
@@ -241,14 +236,10 @@ void CVolumeViewer::recalcScales()
     }
 }
 
+
 void CVolumeViewer::onZoom(int steps, QPointF scene_loc, Qt::KeyboardModifiers modifiers)
 {
-    // Defer expensive invalidations
-    _deferredInvalidateVis = true;
-    _deferredInvalidateIntersect = true;
-    _deferredUpdateTimer->stop();
-    _deferredUpdateTimer->start();
-
+    // Hide overlays immediately for smooth interaction
     for(auto &col : _intersect_items)
         for(auto &item : col.second)
             item->setVisible(false);
@@ -257,72 +248,49 @@ void CVolumeViewer::onZoom(int steps, QPointF scene_loc, Qt::KeyboardModifiers m
         return;
 
     if (modifiers & Qt::ShiftModifier) {
-        // Z slice navigation with shift+scroll
+        // Z slice navigation
         int adjustedSteps = steps;
-
-        // Use single z step for segmentation surface
         if (_surf_name == "segmentation") {
-            adjustedSteps = (steps > 0) ? 1 : -1;  // Always step by 1 slice regardless of wheel delta
+            adjustedSteps = (steps > 0) ? 1 : -1;
         }
 
         _z_off += adjustedSteps;
 
-        // Update the focus POI Z position
         POI *poi = _surf_col->poi("focus");
         if (poi && volume) {
-            // Calculate the new Z value
             int newZ = static_cast<int>(poi->p[2] + adjustedSteps);
-            // Make sure it's within bounds
             newZ = std::max(0, std::min(newZ, static_cast<int>(volume->numSlices() - 1)));
-
-            // Update POI z position
             poi->p[2] = newZ;
             _surf_col->setPOI("focus", poi);
-
-            // Emit signal for Z slice change
             emit sendZSliceChanged(newZ);
         }
 
-        renderVisible(true);
+        renderVisible(true); // Immediate render for smooth interaction
     }
     else {
         float zoom = pow(ZOOM_FACTOR, steps);
-
-        // update the scale used when projecting voxels to scene space
         _scale *= zoom;
         round_scale(_scale);
         recalcScales();
 
-        // Cache the view-space mouse position; used later for cursor update
         QPoint pointViewportBefore = fGraphicsView->mapFromScene(scene_loc);
-
-        // The above scale is *not* part of Qt's scene-to-view transform, but part of the voxel-to-scene transform
-        // implemented in PlaneSurface::project; it causes a zoom around the surface origin
-        // Translations are represented in the Qt scene-to-view transform; these move the surface origin within the viewpoint
-        // To zoom centered on the mouse, we adjust the scene-to-view translation appropriately
-        // If the mouse were at the plane/surface origin, this adjustment should be zero
-        // If the mouse were right of the plane origin, should translate to the left so that point ends up where it was
         fGraphicsView->translate(scene_loc.x() * (1 - zoom), scene_loc.y() * (1 - zoom));
 
-        // Update the cursor (which lives in scene space) to still lie under the mouse even after the above translation
         QPointF pointSceneAfter = fGraphicsView->mapToScene(pointViewportBefore);
         onCursorMove(pointSceneAfter);
 
         curr_img_area = {0,0,0,0};
-        // Update scene rect
-        //FIXME get correct size for slice!
-        int max_size = 100000; //std::max(volume->sliceWidth(), std::max(volume->numSlices(), volume->sliceHeight()))*_ds_scale + 512;
+        int max_size = 100000;
         fGraphicsView->setSceneRect(-max_size/2, -max_size/2, max_size, max_size);
-        renderVisible(); // Keep immediate render for smooth interaction
 
-        // Re-render all points to update their positions according to the new scale
-        refreshPointPositions();
+        renderVisible(); // Immediate render for smooth zooming
     }
 
     _lbl->setText(QString("%1x %2").arg(_scale).arg(_z_off));
 
-    // Defer rendering intersections
-    _deferredRenderIntersections = true;
+    // Defer all overlay updates
+    _overlayUpdateTimer->stop();
+    _overlayUpdateTimer->start();
 }
 
 void CVolumeViewer::OnVolumeChanged(volcart::Volume::Pointer volume_)
@@ -564,7 +532,6 @@ void CVolumeViewer::onSurfaceChanged(std::string name, Surface *surf)
         _surf = surf;
         if (!_surf) {
             fScene->clear();
-            // Clear all item collections when scene is cleared
             _intersect_items.clear();
             slice_vis_items.clear();
             _points_items.clear();
@@ -576,18 +543,20 @@ void CVolumeViewer::onSurfaceChanged(std::string name, Surface *surf)
         }
         else {
             invalidateVis();
-            if (name == "segmentation" && _resetViewOnSurfaceChange) {fitSurfaceInView();}
+            if (name == "segmentation" && _resetViewOnSurfaceChange) {
+                fitSurfaceInView();
+            }
         }
     }
 
-    //FIXME do not re-render surf if only segmentation changed?
     if (name == _surf_name) {
         curr_img_area = {0,0,0,0};
-        _renderTimer->start();
+        renderVisible(true); // Immediate render of slice
     }
 
-    invalidateIntersect(name);
-    renderIntersections();
+    // Defer overlay updates
+    _overlayUpdateTimer->stop();
+    _overlayUpdateTimer->start();
 }
 
 QGraphicsItem *cursorItem(bool drawingMode = false, float brushSize = 3.0f, bool isSquare = false)
@@ -1156,31 +1125,25 @@ void CVolumeViewer::renderIntersections()
 
 void CVolumeViewer::onPanRelease(Qt::MouseButton buttons, Qt::KeyboardModifiers modifiers)
 {
-    renderVisible();
+    renderVisible(); // Immediate render
 
-    // Defer intersection rendering
-    if (dynamic_cast<PlaneSurface*>(_surf)) {
-        _deferredRenderIntersections = true;
-        _deferredUpdateTimer->stop();
-        _deferredUpdateTimer->start();
-    }
+    // Defer overlay updates
+    _overlayUpdateTimer->stop();
+    _overlayUpdateTimer->start();
 }
 
 void CVolumeViewer::onPanStart(Qt::MouseButton buttons, Qt::KeyboardModifiers modifiers)
 {
-    renderVisible();
-    
-    // Hide intersections immediately for smooth panning
+    renderVisible(); // Immediate render
+
+    // Hide overlays for smooth panning
     for(auto &col : _intersect_items)
         for(auto &item : col.second)
             item->setVisible(false);
 
-    // Defer the expensive invalidation
-    if (dynamic_cast<PlaneSurface*>(_surf)) {
-        _deferredInvalidateIntersect = true;
-        _deferredUpdateTimer->stop();
-        _deferredUpdateTimer->start();
-    }
+    // Defer overlay updates
+    _overlayUpdateTimer->stop();
+    _overlayUpdateTimer->start();
 }
 
 void CVolumeViewer::onScrolled()
@@ -1771,28 +1734,11 @@ void CVolumeViewer::setResetViewOnSurfaceChange(bool reset)
     _resetViewOnSurfaceChange = reset;
 }
 
-void CVolumeViewer::performDeferredUpdates()
+void CVolumeViewer::updateAllOverlays()
 {
-    if (_deferredInvalidateVis) {
-        invalidateVis();
-        _deferredInvalidateVis = false;
-    }
-
-    if (_deferredInvalidateIntersect) {
-        invalidateIntersect();
-        _deferredInvalidateIntersect = false;
-    }
-
-    if (_deferredRenderIntersections) {
-        renderIntersections();
-        _deferredRenderIntersections = false;
-    }
-
-    // Force a final high-quality render
-    renderVisible(true);
-}
-
-void CVolumeViewer::deferredRender()
-{
-    renderVisible(true);
+    invalidateVis();
+    invalidateIntersect();
+    renderIntersections();
+    renderPaths();
+    refreshPointPositions();
 }
