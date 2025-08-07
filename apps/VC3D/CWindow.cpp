@@ -658,6 +658,10 @@ void CWindow::CreateWidgets(void)
     for (auto& viewer : _viewers) {
         viewer->setResetViewOnSurfaceChange(resetViewOnSurfaceChange);
     }
+
+    chkFilterCurrentOnly = ui.chkFilterCurrentOnly;
+    connect(chkFilterCurrentOnly, &QCheckBox::toggled, [this]() { onSegFilterChanged(0); });
+
 }
 
 // Create menus
@@ -1166,6 +1170,10 @@ void CWindow::LoadSurfaces(bool reload)
     emit sendSurfacesLoaded();
 
     std::cout << "Loading of surfaces completed." << std::endl;
+
+    if (_vol_qsurfs.size() > 100) {  // Threshold of 100 segments
+        chkFilterCurrentOnly->setChecked(true);
+    }
 }
 
 // Pop up about dialog
@@ -1567,6 +1575,11 @@ void CWindow::onSurfaceSelected()
     }
     else
         std::cout << "ERROR loading " << _surfID << std::endl;
+
+    // If "Current Segment Only" is checked, refresh the filter to update intersections
+    if (chkFilterCurrentOnly && chkFilterCurrentOnly->isChecked()) {
+        onSegFilterChanged(0);
+    }
 }
 
 void CWindow::FillSurfaceTree()
@@ -1619,156 +1632,312 @@ void CWindow::onSegFilterChanged(int index)
     }
     std::set<std::string> dbg_intersects = {"segmentation"};
     
-    POI *poi = _surf_col->poi("focus");
-    int filterCounter = 0;
+    // Check if "Current Segment Only" is checked
+    bool currentOnly = chkFilterCurrentOnly->isChecked();
 
-    // Check if any filters are active
-    bool hasActiveFilters = chkFilterFocusPoints->isChecked() ||
-                          (cmbPointSetFilter->currentIndex() != -1) ||
-                           chkFilterUnreviewed->isChecked() ||
-                           chkFilterRevisit->isChecked() ||
-                           chkFilterNoExpansion->isChecked() ||
-                           chkFilterNoDefective->isChecked() ||
-                           chkFilterPartialReview->isChecked();
-
-    QTreeWidgetItemIterator it(treeWidgetSurfaces);
-    while (*it) {
-        std::string id = (*it)->data(SURFACE_ID_COLUMN, Qt::UserRole).toString().toStdString();
-
-        bool show = true;
-        if (!_vol_qsurfs.count(id)) {
-            show = true;
-        } else if (!hasActiveFilters) {
-            // If no filters are active, show all
-            show = true;
-        } else {
-            // Start with show = true and apply filters as AND conditions
-            show = true;
-            
-            // Filter by focus points
-            if (chkFilterFocusPoints->isChecked() && poi) {
-                show = show && contains(*_vol_qsurfs[id], poi->p);
-            }
-            
-            // Filter by point sets
-           if (cmbPointSetFilter->currentIndex() != -1) {
-               bool any_checked = false;
-               for (int i = 0; i < cmbPointSetFilter->count(); ++i) {
-                   if (cmbPointSetFilter->itemData(i, Qt::CheckStateRole) == Qt::Checked) {
-                       any_checked = true;
-                       break;
-                   }
-               }
-
-               if (any_checked) {
-                   bool match = false;
-                   bool all_match = true;
-                   for (int i = 0; i < cmbPointSetFilter->count(); ++i) {
-                       if (cmbPointSetFilter->itemData(i, Qt::CheckStateRole) == Qt::Checked) {
-                           std::vector<cv::Vec3f> points;
-                           auto collection = _point_collection->getPoints(cmbPointSetFilter->itemText(i).toStdString());
-                           points.reserve(collection.size());
-                           for (const auto& p : collection) {
-                               points.push_back(p.p);
-                           }
-                           if (all_match && !contains(*_vol_qsurfs[id], points))
-                               all_match = false;
-                           if (!match && contains_any(*_vol_qsurfs[id], points))
-                               match = true;
-
-                       }
-                   }
-                   if (cmbPointSetFilterMode->currentIndex() == 0) { // Any (OR)
-                       show = show && match;
-                   } else { // All (AND)
-                       show = show && all_match;
-                   }
-               }
-           }
-            
-            // Filter by unreviewed
-            if (chkFilterUnreviewed->isChecked()) {
-                auto* surface = _vol_qsurfs[id]->surface();
-                if (surface && surface->meta) {
-                    auto tags = surface->meta->value("tags", nlohmann::json::object_t());
-                    show = show && !tags.count("reviewed");
-                } else {
-                    // If no metadata, consider it unreviewed
-                    show = show && true;
-                }
-            }
-            
-            // Filter by revisit
-            if (chkFilterRevisit->isChecked()) {
-                auto* surface = _vol_qsurfs[id]->surface();
-                if (surface && surface->meta) {
-                    auto tags = surface->meta->value("tags", nlohmann::json::object_t());
-                    show = show && (tags.count("revisit") > 0);
-                } else {
-                    // If no metadata, don't show for revisit filter
-                    show = show && false;
-                }
-            }
-            
-            // Filter out expansion
-            if (chkFilterNoExpansion->isChecked()) {
-                auto* surface = _vol_qsurfs[id]->surface();
-                if (surface && surface->meta) {
-                    if (surface->meta->contains("vc_gsfs_mode")) {
-                        std::string mode = surface->meta->value("vc_gsfs_mode", "");
-                        show = show && (mode != "expansion");
-                    } else {
-                        // If the key doesn't exist, show the surface
-                        show = show && true;
-                    }
-                } else {
-                    // If no metadata, show the surface
-                    show = show && true;
-                }
-            }
-            
-            // Filter out defective
-            if (chkFilterNoDefective->isChecked()) {
-                auto* surface = _vol_qsurfs[id]->surface();
-                if (surface && surface->meta) {
-                    auto tags = surface->meta->value("tags", nlohmann::json::object_t());
-                    show = show && !tags.count("defective");
-                } else {
-                    // If no metadata, consider it not defective (show it)
-                    show = show && true;
-                }
-            }
-            
-            // Filter out partial review
-            if (chkFilterPartialReview->isChecked()) {
-                auto* surface = _vol_qsurfs[id]->surface();
-                if (surface && surface->meta) {
-                    auto tags = surface->meta->value("tags", nlohmann::json::object_t());
-                    show = show && !tags.count("partial_review");
-                } else {
-                    // If no metadata, consider it not partially reviewed (show it)
-                    show = show && true;
-                }
-            }
+    if (currentOnly) {
+        // Only add the currently selected segment if it exists
+        if (!_surfID.empty() && _vol_qsurfs.count(_surfID)) {
+            dbg_intersects.insert(_surfID);
         }
 
-        (*it)->setHidden(!show);
+        // Still need to update the tree visibility based on other filters
+        POI *poi = _surf_col->poi("focus");
+        int filterCounter = 0;
 
-        if(show) {
-            if (_vol_qsurfs.count(id))
+        QTreeWidgetItemIterator it(treeWidgetSurfaces);
+        while (*it) {
+            std::string id = (*it)->data(SURFACE_ID_COLUMN, Qt::UserRole).toString().toStdString();
+
+            bool show = true;
+            if (!_vol_qsurfs.count(id)) {
+                show = true;
+            } else {
+                // Apply all filters except intersection display
+                bool hasActiveFilters = chkFilterFocusPoints->isChecked() ||
+                                      (cmbPointSetFilter->currentIndex() != -1) ||
+                                       chkFilterUnreviewed->isChecked() ||
+                                       chkFilterRevisit->isChecked() ||
+                                       chkFilterNoExpansion->isChecked() ||
+                                       chkFilterNoDefective->isChecked() ||
+                                       chkFilterPartialReview->isChecked();
+
+                if (!hasActiveFilters) {
+                    show = true;
+                } else {
+                    // Start with show = true and apply filters as AND conditions
+                    show = true;
+
+                    // Filter by focus points
+                    if (chkFilterFocusPoints->isChecked() && poi) {
+                        show = show && contains(*_vol_qsurfs[id], poi->p);
+                    }
+
+                    // Filter by point sets
+                    if (cmbPointSetFilter->currentIndex() != -1) {
+                        bool any_checked = false;
+                        for (int i = 0; i < cmbPointSetFilter->count(); ++i) {
+                            if (cmbPointSetFilter->itemData(i, Qt::CheckStateRole) == Qt::Checked) {
+                                any_checked = true;
+                                break;
+                            }
+                        }
+
+                        if (any_checked) {
+                            bool match = false;
+                            bool all_match = true;
+                            for (int i = 0; i < cmbPointSetFilter->count(); ++i) {
+                                if (cmbPointSetFilter->itemData(i, Qt::CheckStateRole) == Qt::Checked) {
+                                    std::vector<cv::Vec3f> points;
+                                    auto collection = _point_collection->getPoints(cmbPointSetFilter->itemText(i).toStdString());
+                                    points.reserve(collection.size());
+                                    for (const auto& p : collection) {
+                                        points.push_back(p.p);
+                                    }
+                                    if (all_match && !contains(*_vol_qsurfs[id], points))
+                                        all_match = false;
+                                    if (!match && contains_any(*_vol_qsurfs[id], points))
+                                        match = true;
+                                }
+                            }
+                            if (cmbPointSetFilterMode->currentIndex() == 0) { // Any (OR)
+                                show = show && match;
+                            } else { // All (AND)
+                                show = show && all_match;
+                            }
+                        }
+                    }
+
+                    // Filter by unreviewed
+                    if (chkFilterUnreviewed->isChecked()) {
+                        auto* surface = _vol_qsurfs[id]->surface();
+                        if (surface && surface->meta) {
+                            auto tags = surface->meta->value("tags", nlohmann::json::object_t());
+                            show = show && !tags.count("reviewed");
+                        } else {
+                            // If no metadata, consider it unreviewed
+                            show = show && true;
+                        }
+                    }
+
+                    // Filter by revisit
+                    if (chkFilterRevisit->isChecked()) {
+                        auto* surface = _vol_qsurfs[id]->surface();
+                        if (surface && surface->meta) {
+                            auto tags = surface->meta->value("tags", nlohmann::json::object_t());
+                            show = show && (tags.count("revisit") > 0);
+                        } else {
+                            // If no metadata, don't show for revisit filter
+                            show = show && false;
+                        }
+                    }
+
+                    // Filter out expansion
+                    if (chkFilterNoExpansion->isChecked()) {
+                        auto* surface = _vol_qsurfs[id]->surface();
+                        if (surface && surface->meta) {
+                            if (surface->meta->contains("vc_gsfs_mode")) {
+                                std::string mode = surface->meta->value("vc_gsfs_mode", "");
+                                show = show && (mode != "expansion");
+                            } else {
+                                // If the key doesn't exist, show the surface
+                                show = show && true;
+                            }
+                        } else {
+                            // If no metadata, show the surface
+                            show = show && true;
+                        }
+                    }
+
+                    // Filter out defective
+                    if (chkFilterNoDefective->isChecked()) {
+                        auto* surface = _vol_qsurfs[id]->surface();
+                        if (surface && surface->meta) {
+                            auto tags = surface->meta->value("tags", nlohmann::json::object_t());
+                            show = show && !tags.count("defective");
+                        } else {
+                            // If no metadata, consider it not defective (show it)
+                            show = show && true;
+                        }
+                    }
+
+                    // Filter out partial review
+                    if (chkFilterPartialReview->isChecked()) {
+                        auto* surface = _vol_qsurfs[id]->surface();
+                        if (surface && surface->meta) {
+                            auto tags = surface->meta->value("tags", nlohmann::json::object_t());
+                            show = show && !tags.count("partial_review");
+                        } else {
+                            // If no metadata, consider it not partially reviewed (show it)
+                            show = show && true;
+                        }
+                    }
+                }
+            }
+
+            (*it)->setHidden(!show);
+
+            if (!show) {
+                filterCounter++;
+            }
+
+            ++it;
+        }
+
+        UpdateVolpkgLabel(filterCounter);
+    } else {
+        // Original logic - process all segments with filters
+        POI *poi = _surf_col->poi("focus");
+        int filterCounter = 0;
+
+        // Check if any filters are active
+        bool hasActiveFilters = chkFilterFocusPoints->isChecked() ||
+                              (cmbPointSetFilter->currentIndex() != -1) ||
+                               chkFilterUnreviewed->isChecked() ||
+                               chkFilterRevisit->isChecked() ||
+                               chkFilterNoExpansion->isChecked() ||
+                               chkFilterNoDefective->isChecked() ||
+                               chkFilterPartialReview->isChecked();
+
+        QTreeWidgetItemIterator it(treeWidgetSurfaces);
+        while (*it) {
+            std::string id = (*it)->data(SURFACE_ID_COLUMN, Qt::UserRole).toString().toStdString();
+
+            bool show = true;
+            if (!_vol_qsurfs.count(id)) {
+                show = true;
+            } else if (!hasActiveFilters) {
+                // If no filters are active, show all
+                show = true;
+            } else {
+                // Start with show = true and apply filters as AND conditions
+                show = true;
+
+                // Filter by focus points
+                if (chkFilterFocusPoints->isChecked() && poi) {
+                    show = show && contains(*_vol_qsurfs[id], poi->p);
+                }
+
+                // Filter by point sets
+                if (cmbPointSetFilter->currentIndex() != -1) {
+                    bool any_checked = false;
+                    for (int i = 0; i < cmbPointSetFilter->count(); ++i) {
+                        if (cmbPointSetFilter->itemData(i, Qt::CheckStateRole) == Qt::Checked) {
+                            any_checked = true;
+                            break;
+                        }
+                    }
+
+                    if (any_checked) {
+                        bool match = false;
+                        bool all_match = true;
+                        for (int i = 0; i < cmbPointSetFilter->count(); ++i) {
+                            if (cmbPointSetFilter->itemData(i, Qt::CheckStateRole) == Qt::Checked) {
+                                std::vector<cv::Vec3f> points;
+                                auto collection = _point_collection->getPoints(cmbPointSetFilter->itemText(i).toStdString());
+                                points.reserve(collection.size());
+                                for (const auto& p : collection) {
+                                    points.push_back(p.p);
+                                }
+                                if (all_match && !contains(*_vol_qsurfs[id], points))
+                                    all_match = false;
+                                if (!match && contains_any(*_vol_qsurfs[id], points))
+                                    match = true;
+                            }
+                        }
+                        if (cmbPointSetFilterMode->currentIndex() == 0) { // Any (OR)
+                            show = show && match;
+                        } else { // All (AND)
+                            show = show && all_match;
+                        }
+                    }
+                }
+
+                // Filter by unreviewed
+                if (chkFilterUnreviewed->isChecked()) {
+                    auto* surface = _vol_qsurfs[id]->surface();
+                    if (surface && surface->meta) {
+                        auto tags = surface->meta->value("tags", nlohmann::json::object_t());
+                        show = show && !tags.count("reviewed");
+                    } else {
+                        // If no metadata, consider it unreviewed
+                        show = show && true;
+                    }
+                }
+
+                // Filter by revisit
+                if (chkFilterRevisit->isChecked()) {
+                    auto* surface = _vol_qsurfs[id]->surface();
+                    if (surface && surface->meta) {
+                        auto tags = surface->meta->value("tags", nlohmann::json::object_t());
+                        show = show && (tags.count("revisit") > 0);
+                    } else {
+                        // If no metadata, don't show for revisit filter
+                        show = show && false;
+                    }
+                }
+
+                // Filter out expansion
+                if (chkFilterNoExpansion->isChecked()) {
+                    auto* surface = _vol_qsurfs[id]->surface();
+                    if (surface && surface->meta) {
+                        if (surface->meta->contains("vc_gsfs_mode")) {
+                            std::string mode = surface->meta->value("vc_gsfs_mode", "");
+                            show = show && (mode != "expansion");
+                        } else {
+                            // If the key doesn't exist, show the surface
+                            show = show && true;
+                        }
+                    } else {
+                        // If no metadata, show the surface
+                        show = show && true;
+                    }
+                }
+
+                // Filter out defective
+                if (chkFilterNoDefective->isChecked()) {
+                    auto* surface = _vol_qsurfs[id]->surface();
+                    if (surface && surface->meta) {
+                        auto tags = surface->meta->value("tags", nlohmann::json::object_t());
+                        show = show && !tags.count("defective");
+                    } else {
+                        // If no metadata, consider it not defective (show it)
+                        show = show && true;
+                    }
+                }
+
+                // Filter out partial review
+                if (chkFilterPartialReview->isChecked()) {
+                    auto* surface = _vol_qsurfs[id]->surface();
+                    if (surface && surface->meta) {
+                        auto tags = surface->meta->value("tags", nlohmann::json::object_t());
+                        show = show && !tags.count("partial_review");
+                    } else {
+                        // If no metadata, consider it not partially reviewed (show it)
+                        show = show && true;
+                    }
+                }
+            }
+
+            (*it)->setHidden(!show);
+
+            if(show) {
+                if (_vol_qsurfs.count(id))
                     dbg_intersects.insert(id);
-        } else
-            filterCounter++;
+            } else {
+                filterCounter++;
+            }
 
-        ++it;
+            ++it;
+        }
+
+        UpdateVolpkgLabel(filterCounter);
     }
 
-    UpdateVolpkgLabel(filterCounter);
-
+    // Apply the intersection set to all non-segmentation viewers
     for (auto &viewer : _viewers)
         if (viewer->surfName() != "segmentation")
             viewer->setIntersects(dbg_intersects);
-
 }
 
 

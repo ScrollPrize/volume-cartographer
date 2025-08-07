@@ -204,6 +204,7 @@ private:
     QCheckBox* chkFilterNoExpansion;
     QCheckBox* chkFilterNoDefective;
     QCheckBox* chkFilterPartialReview;
+    QCheckBox* chkFilterCurrentOnly;
     QComboBox* cmbSegmentationDir;
     
     QCheckBox* _chkApproved;
@@ -253,6 +254,8 @@ private:
     QShortcut* fDefectiveShortcut;
     QShortcut* fDrawingModeShortcut;
     QShortcut* fCompositeViewShortcut;
+
+
 };  // class CWindow
 
 }  // namespace ChaoVis
