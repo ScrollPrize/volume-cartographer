@@ -892,7 +892,7 @@ void CWindow::UpdateVolpkgLabel(int filterCounter)
     if (!fVpkg) {
         return;
     }
-    QString label = tr("%1 (%2 Surfaces | %3 filtered)").arg(QString::fromStdString(fVpkg->name())).arg(fVpkg->segmentationIDs().size()).arg(filterCounter);
+    QString label = tr("%1").arg(QString::fromStdString(fVpkg->name()));
     ui.lblVpkgName->setText(label);
 }
 

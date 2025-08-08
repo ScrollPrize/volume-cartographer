@@ -160,52 +160,32 @@ void CVolumeViewer::onCursorMove(QPointF scene_loc)
     if (!_surf || !_surf_col)
         return;
 
+    // Quick visual feedback only - don't update POI
     cv::Vec3f p, n;
     if (!scene2vol(p, n, _surf, _surf_name, _surf_col, scene_loc, _vis_center, _scale)) {
         if (_cursor) _cursor->hide();
-        return;
-    }
-    if (_cursor) _cursor->show();
+    } else {
+        if (_cursor) {
+            _cursor->show();
+            // Update cursor position visually without POI
+            PlaneSurface *plane = dynamic_cast<PlaneSurface*>(_surf);
+            QuadSurface *quad = dynamic_cast<QuadSurface*>(_surf);
+            cv::Vec3f sp;
 
-    // Standard cursor update
-    POI *cursor = _surf_col->poi("cursor");
-    if (!cursor)
-        cursor = new POI;
-    
-    cursor->p = p;
-    
-    _surf_col->setPOI("cursor", cursor);
-
-    // Point highlighting logic
-    if (!_point_collection) return;
-
-    uint64_t old_highlighted_id = _highlighted_point_id;
-    _highlighted_point_id = 0;
-
-    if (_dragged_point_id == 0) { // Only highlight if not dragging
-        const float highlight_dist_threshold = 10.0f; // pixels
-        float min_dist_sq = highlight_dist_threshold * highlight_dist_threshold;
-
-        for (const auto& item_pair : _points_items) {
-            auto item = item_pair.second.circle;
-            QPointF point_scene_pos = item->rect().center();
-            QPointF diff = scene_loc - point_scene_pos;
-            float dist_sq = QPointF::dotProduct(diff, diff);
-            if (dist_sq < min_dist_sq) {
-                min_dist_sq = dist_sq;
-                _highlighted_point_id = item_pair.first;
+            if (plane) {
+                sp = plane->project(p, 1.0, _scale);
+            } else if (quad) {
+                SurfacePointer *ptr = quad->pointer();
+                _surf->pointTo(ptr, p, 4.0, 100);
+                sp = _surf->loc(ptr) * _scale;
             }
+            _cursor->setPos(sp[0], sp[1]);
         }
     }
 
-    if (old_highlighted_id != _highlighted_point_id) {
-        if (auto old_point = _point_collection->getPoint(old_highlighted_id)) {
-            renderOrUpdatePoint(*old_point);
-        }
-        if (auto new_point = _point_collection->getPoint(_highlighted_point_id)) {
-            renderOrUpdatePoint(*new_point);
-        }
-    }
+    // Defer POI update
+    _overlayUpdateTimer->stop();
+    _overlayUpdateTimer->start();
 }
 
 void CVolumeViewer::recalcScales()
@@ -239,32 +219,28 @@ void CVolumeViewer::recalcScales()
 
 void CVolumeViewer::onZoom(int steps, QPointF scene_loc, Qt::KeyboardModifiers modifiers)
 {
-    // Hide overlays immediately for smooth interaction
-    for(auto &col : _intersect_items)
-        for(auto &item : col.second)
-            item->setVisible(false);
-
     if (!_surf)
         return;
 
+
     if (modifiers & Qt::ShiftModifier) {
-        // Z slice navigation
+        // Z slice navigation - NO POI UPDATES HERE
         int adjustedSteps = steps;
         if (_surf_name == "segmentation") {
             adjustedSteps = (steps > 0) ? 1 : -1;
         }
 
-        _z_off += adjustedSteps;
-
-        POI *poi = _surf_col->poi("focus");
-        if (poi && volume) {
-            int newZ = static_cast<int>(poi->p[2] + adjustedSteps);
-            newZ = std::max(0, std::min(newZ, static_cast<int>(volume->numSlices() - 1)));
-            poi->p[2] = newZ;
-            _surf_col->setPOI("focus", poi);
-            emit sendZSliceChanged(newZ);
+        // ONLY update plane origin directly for immediate visual feedback
+        if (auto* plane = dynamic_cast<PlaneSurface*>(_surf)) {
+            cv::Vec3f origin = plane->origin();
+            origin[2] += adjustedSteps;
+            if (volume) {
+                origin[2] = std::max(0.0f, std::min(origin[2], static_cast<float>(volume->numSlices() - 1)));
+            }
+            plane->setOrigin(origin);
         }
 
+        _z_off = 0;
         renderVisible(true);
     }
     else {
@@ -273,31 +249,24 @@ void CVolumeViewer::onZoom(int steps, QPointF scene_loc, Qt::KeyboardModifiers m
         round_scale(_scale);
         recalcScales();
 
-        // Cache the view-space mouse position; used later for cursor update
-        QPoint pointViewportBefore = fGraphicsView->mapFromScene(scene_loc);
-
         // The above scale is *not* part of Qt's scene-to-view transform, but part of the voxel-to-scene transform
         // implemented in PlaneSurface::project; it causes a zoom around the surface origin
         // Translations are represented in the Qt scene-to-view transform; these move the surface origin within the viewpoint
         // To zoom centered on the mouse, we adjust the scene-to-view translation appropriately
         // If the mouse were at the plane/surface origin, this adjustment should be zero
         // If the mouse were right of the plane origin, should translate to the left so that point ends up where it was
-        fGraphicsView->translate(scene_loc.x() * (1 - zoom), scene_loc.y() * (1 - zoom));
-
-        // Update the cursor (which lives in scene space) to still lie under the mouse even after the above translation
-        QPointF pointSceneAfter = fGraphicsView->mapToScene(pointViewportBefore);
-        onCursorMove(pointSceneAfter);
+        fGraphicsView->translate(scene_loc.x() * (1 - zoom),
+                                scene_loc.y() * (1 - zoom));
 
         curr_img_area = {0,0,0,0};
         int max_size = 100000;
         fGraphicsView->setSceneRect(-max_size/2, -max_size/2, max_size, max_size);
 
-        renderVisible(); // Immediate render for smooth zooming
+        renderVisible();
     }
 
     _lbl->setText(QString("%1x %2").arg(_scale).arg(_z_off));
 
-    // Defer all overlay updates
     _overlayUpdateTimer->stop();
     _overlayUpdateTimer->start();
 }
@@ -934,9 +903,7 @@ void CVolumeViewer::renderIntersections()
         _intersect_items.erase(key);
 
     PlaneSurface *plane = dynamic_cast<PlaneSurface*>(_surf);
-    
-    if (_z_off)
-        return;
+
     
     if (plane) {
         cv::Rect plane_roi = {curr_img_area.x()/_scale, curr_img_area.y()/_scale, curr_img_area.width()/_scale, curr_img_area.height()/_scale};
@@ -1132,27 +1099,23 @@ void CVolumeViewer::renderIntersections()
 }
 
 
-void CVolumeViewer::onPanRelease(Qt::MouseButton buttons, Qt::KeyboardModifiers modifiers)
+void CVolumeViewer::onPanStart(Qt::MouseButton buttons, Qt::KeyboardModifiers modifiers)
 {
-    renderVisible(); // Immediate render
+    renderVisible();  // Immediate render
 
     // Defer overlay updates
     _overlayUpdateTimer->stop();
     _overlayUpdateTimer->start();
 }
 
-void CVolumeViewer::onPanStart(Qt::MouseButton buttons, Qt::KeyboardModifiers modifiers)
+// Modified onPanRelease
+void CVolumeViewer::onPanRelease(Qt::MouseButton buttons, Qt::KeyboardModifiers modifiers)
 {
-    renderVisible(); // Immediate render
+    renderVisible();  // Final render
 
-    // Hide overlays for smooth panning
-    for(auto &col : _intersect_items)
-        for(auto &item : col.second)
-            item->setVisible(false);
-
-    // Defer overlay updates
+    // Stop timer and force immediate overlay update
     _overlayUpdateTimer->stop();
-    _overlayUpdateTimer->start();
+    updateAllOverlays();
 }
 
 void CVolumeViewer::onScrolled()
@@ -1745,6 +1708,59 @@ void CVolumeViewer::setResetViewOnSurfaceChange(bool reset)
 
 void CVolumeViewer::updateAllOverlays()
 {
+    if (auto* plane = dynamic_cast<PlaneSurface*>(_surf)) {
+        POI *poi = _surf_col->poi("focus");
+        if (poi) {
+            cv::Vec3f planeOrigin = plane->origin();
+            // If plane origin differs from POI, update POI
+            if (std::abs(poi->p[2] - planeOrigin[2]) > 0.01) {
+                poi->p = planeOrigin;
+                _surf_col->setPOI("focus", poi);  // NOW we do the expensive update
+                emit sendZSliceChanged(static_cast<int>(poi->p[2]));
+            }
+        }
+    }
+
+    QPoint viewportPos = fGraphicsView->mapFromGlobal(QCursor::pos());
+    QPointF scenePos = fGraphicsView->mapToScene(viewportPos);
+
+    cv::Vec3f p, n;
+    if (scene2vol(p, n, _surf, _surf_name, _surf_col, scenePos, _vis_center, _scale)) {
+        POI *cursor = _surf_col->poi("cursor");
+        if (!cursor)
+            cursor = new POI;
+        cursor->p = p;
+        _surf_col->setPOI("cursor", cursor);
+    }
+
+    if (_point_collection && _dragged_point_id == 0) {
+        uint64_t old_highlighted_id = _highlighted_point_id;
+        _highlighted_point_id = 0;
+
+        const float highlight_dist_threshold = 10.0f;
+        float min_dist_sq = highlight_dist_threshold * highlight_dist_threshold;
+
+        for (const auto& item_pair : _points_items) {
+            auto item = item_pair.second.circle;
+            QPointF point_scene_pos = item->rect().center();
+            QPointF diff = scenePos - point_scene_pos;
+            float dist_sq = QPointF::dotProduct(diff, diff);
+            if (dist_sq < min_dist_sq) {
+                min_dist_sq = dist_sq;
+                _highlighted_point_id = item_pair.first;
+            }
+        }
+
+        if (old_highlighted_id != _highlighted_point_id) {
+            if (auto old_point = _point_collection->getPoint(old_highlighted_id)) {
+                renderOrUpdatePoint(*old_point);
+            }
+            if (auto new_point = _point_collection->getPoint(_highlighted_point_id)) {
+                renderOrUpdatePoint(*new_point);
+            }
+        }
+    }
+
     invalidateVis();
     invalidateIntersect();
     renderIntersections();
