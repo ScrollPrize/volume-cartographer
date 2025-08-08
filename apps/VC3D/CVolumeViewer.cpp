@@ -160,7 +160,6 @@ void CVolumeViewer::onCursorMove(QPointF scene_loc)
     if (!_surf || !_surf_col)
         return;
 
-    // Quick visual feedback only - don't update POI
     cv::Vec3f p, n;
     if (!scene2vol(p, n, _surf, _surf_name, _surf_col, scene_loc, _vis_center, _scale)) {
         if (_cursor) _cursor->hide();
@@ -178,14 +177,45 @@ void CVolumeViewer::onCursorMove(QPointF scene_loc)
                 SurfacePointer *ptr = quad->pointer();
                 _surf->pointTo(ptr, p, 4.0, 100);
                 sp = _surf->loc(ptr) * _scale;
+                delete ptr;
             }
             _cursor->setPos(sp[0], sp[1]);
         }
+
+        POI *cursor = _surf_col->poi("cursor");
+        if (!cursor)
+            cursor = new POI;
+        cursor->p = p;
+        _surf_col->setPOI("cursor", cursor);
     }
 
-    // Defer POI update
-    _overlayUpdateTimer->stop();
-    _overlayUpdateTimer->start();
+    if (_point_collection && _dragged_point_id == 0) {
+        uint64_t old_highlighted_id = _highlighted_point_id;
+        _highlighted_point_id = 0;
+
+        const float highlight_dist_threshold = 10.0f;
+        float min_dist_sq = highlight_dist_threshold * highlight_dist_threshold;
+
+        for (const auto& item_pair : _points_items) {
+            auto item = item_pair.second.circle;
+            QPointF point_scene_pos = item->rect().center();
+            QPointF diff = scene_loc - point_scene_pos;
+            float dist_sq = QPointF::dotProduct(diff, diff);
+            if (dist_sq < min_dist_sq) {
+                min_dist_sq = dist_sq;
+                _highlighted_point_id = item_pair.first;
+            }
+        }
+
+        if (old_highlighted_id != _highlighted_point_id) {
+            if (auto old_point = _point_collection->getPoint(old_highlighted_id)) {
+                renderOrUpdatePoint(*old_point);
+            }
+            if (auto new_point = _point_collection->getPoint(_highlighted_point_id)) {
+                renderOrUpdatePoint(*new_point);
+            }
+        }
+    }
 }
 
 void CVolumeViewer::recalcScales()
@@ -222,15 +252,17 @@ void CVolumeViewer::onZoom(int steps, QPointF scene_loc, Qt::KeyboardModifiers m
     if (!_surf)
         return;
 
+    for(auto &col : _intersect_items)
+        for(auto &item : col.second)
+            item->setVisible(false);
 
     if (modifiers & Qt::ShiftModifier) {
-        // Z slice navigation - NO POI UPDATES HERE
+        // Z slice navigation
         int adjustedSteps = steps;
         if (_surf_name == "segmentation") {
             adjustedSteps = (steps > 0) ? 1 : -1;
         }
 
-        // ONLY update plane origin directly for immediate visual feedback
         if (auto* plane = dynamic_cast<PlaneSurface*>(_surf)) {
             cv::Vec3f origin = plane->origin();
             origin[2] += adjustedSteps;
@@ -238,23 +270,26 @@ void CVolumeViewer::onZoom(int steps, QPointF scene_loc, Qt::KeyboardModifiers m
                 origin[2] = std::max(0.0f, std::min(origin[2], static_cast<float>(volume->numSlices() - 1)));
             }
             plane->setOrigin(origin);
+            _z_off = 0;  // For plane surfaces, we don't use _z_off
+        }
+        else {
+            _z_off += adjustedSteps;
+
+            // Clamp _z_off if needed for segmentation
+            if (_surf_name == "segmentation" && volume) {
+                // You may want to add bounds checking here based on segmentation depth
+            }
         }
 
-        _z_off = 0;
         renderVisible(true);
     }
     else {
+        // Regular zoom logic (unchanged)
         float zoom = pow(ZOOM_FACTOR, steps);
         _scale *= zoom;
         round_scale(_scale);
         recalcScales();
 
-        // The above scale is *not* part of Qt's scene-to-view transform, but part of the voxel-to-scene transform
-        // implemented in PlaneSurface::project; it causes a zoom around the surface origin
-        // Translations are represented in the Qt scene-to-view transform; these move the surface origin within the viewpoint
-        // To zoom centered on the mouse, we adjust the scene-to-view translation appropriately
-        // If the mouse were at the plane/surface origin, this adjustment should be zero
-        // If the mouse were right of the plane origin, should translate to the left so that point ends up where it was
         fGraphicsView->translate(scene_loc.x() * (1 - zoom),
                                 scene_loc.y() * (1 - zoom));
 
