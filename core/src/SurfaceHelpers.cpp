@@ -3144,6 +3144,9 @@ QuadSurface *grow_surf_from_surfs(SurfaceMeta *seed, const std::vector<SurfaceMe
             {
                 cv::Mat_<cv::Vec3d> points_hr = surftrack_genpoints_hr(data, state, points, used_area, step, src_step);
                 QuadSurface *dbg_surf = new QuadSurface(points_hr(used_area_hr), {1/src_step,1/src_step});
+                dbg_surf->meta = new nlohmann::json;
+                (*dbg_surf->meta)["vc_grow_seg_from_segments_params"] = params;
+
                 std::string uuid = Z_DBG_GEN_PREFIX+get_surface_time_str()+"_opt";
                 float const area_est_vx2 = loc_valid_count*src_step*src_step*step*step;
                 float const area_est_cm2 = area_est_vx2 * voxelsize * voxelsize / 1e8;
