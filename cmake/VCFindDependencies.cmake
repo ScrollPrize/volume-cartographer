@@ -19,7 +19,7 @@ if((VC_BUILD_APPS OR VC_BUILD_UTILS) AND VC_BUILD_GUI)
      
 endif()
 
-option(VC_WITH_CUDA_SPARSE "use cudss" ON)
+option(VC_WITH_CUDA_SPARSE "use cudss" OFF)
 if (VC_WITH_CUDA_SPARSE)
     add_definitions(-DVC_USE_CUDA_SPARSE=1)
 endif()

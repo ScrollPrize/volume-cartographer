@@ -26,6 +26,7 @@
 #include <filesystem>
 #include <omp.h>
 
+#include "../../core/src/SurfaceHelpers.hpp"
 #include "vc/core/types/ChunkedTensor.hpp"
 
 using shape = z5::types::ShapeType;
@@ -61,30 +62,7 @@ private:
     std::chrono::time_point<std::chrono::high_resolution_clock> start;
 };
 
-std::string time_str()
-{
-    using namespace std::chrono;
 
-    // get current time
-    auto now = system_clock::now();
-
-    // get number of milliseconds for the current second
-    // (remainder after division into seconds)
-    auto ms = duration_cast<milliseconds>(now.time_since_epoch()) % 1000;
-
-    // convert to std::time_t in order to convert to std::tm (broken time)
-    auto timer = system_clock::to_time_t(now);
-
-    // convert to broken time
-    std::tm bt = *std::localtime(&timer);
-
-    std::ostringstream oss;
-
-    oss << std::put_time(&bt, "%Y%m%d%H%M%S"); // HH:MM:SS
-    oss << std::setfill('0') << std::setw(3) << ms.count();
-
-    return oss.str();
-}
 
 template <typename T, typename I>
 float get_val(I &interp, cv::Vec3d l) {
@@ -130,17 +108,6 @@ int main(int argc, char *argv[])
     SurfaceMeta *src = new SurfaceMeta(src_path, meta);
     src->readOverlapping();
 
-    // Remove debug output folders from previous runs
-    std::string debug_prefix = Z_DBG_GEN_PREFIX;
-    for (const auto& entry : fs::directory_iterator(tgt_dir)) {
-        if (fs::is_directory(entry)) {
-            std::string name = entry.path().filename();
-            if (name.compare(0, debug_prefix.size(), debug_prefix) == 0) {
-                std::filesystem::remove_all(entry.path());
-            }
-        }
-    }
-
     for (const auto& entry : fs::directory_iterator(src_dir))
         if (fs::is_directory(entry)) {
             std::string name = entry.path().filename();
@@ -178,7 +145,7 @@ int main(int argc, char *argv[])
 
     (*surf->meta)["source"] = "vc_grow_seg_from_segments";
     (*surf->meta)["vc_grow_seg_from_segments_params"] = params;
-    std::string uuid = "auto_trace_" + time_str();;
+    std::string uuid = "auto_trace_" + get_surface_time_str();;
     fs::path seg_dir = tgt_dir / uuid;
     surf->save(seg_dir, uuid);
 
