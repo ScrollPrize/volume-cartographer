@@ -2548,7 +2548,7 @@ void CWindow::onManualLocationChanged()
 
 void CWindow::onZoomIn()
 {
-    // Get the active sub-window
+    // Get the active sub-windowonzoomout
     QMdiSubWindow* activeWindow = mdiArea->activeSubWindow();
     if (!activeWindow) return;
     
@@ -2561,7 +2561,7 @@ void CWindow::onZoomIn()
         viewer->fGraphicsView->viewport()->rect().center());
     
     // Trigger zoom in (positive steps)
-    viewer->onZoom(3, center, Qt::NoModifier);
+    viewer->onZoom(1, center, Qt::NoModifier);
 }
 
 void CWindow::onFocusPOIChanged(std::string name, POI* poi)
@@ -2616,7 +2616,7 @@ void CWindow::onZoomOut()
         viewer->fGraphicsView->viewport()->rect().center());
     
     // Trigger zoom out (negative steps)
-    viewer->onZoom(-3, center, Qt::NoModifier);
+    viewer->onZoom(-1, center, Qt::NoModifier);
 }
 
 void CWindow::onCopyCoordinates()
