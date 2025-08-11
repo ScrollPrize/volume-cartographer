@@ -270,7 +270,7 @@ void CVolumeViewer::onZoom(int steps, QPointF scene_loc, Qt::KeyboardModifiers m
                 origin[2] = std::max(0.0f, std::min(origin[2], static_cast<float>(volume->numSlices() - 1)));
             }
             plane->setOrigin(origin);
-            _z_off = 0;
+            _z_off = 0.0f;
         }
         else {
             _z_off += adjustedSteps;
@@ -556,6 +556,7 @@ void CVolumeViewer::onSurfaceChanged(std::string name, Surface *surf)
         }
         else {
             invalidateVis();
+            _z_off = 0.0f;
             if (name == "segmentation" && _resetViewOnSurfaceChange) {
                 fitSurfaceInView();
             }
