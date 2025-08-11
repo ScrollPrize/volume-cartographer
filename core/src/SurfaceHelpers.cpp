@@ -2398,7 +2398,7 @@ void optimize_surface_mapping(SurfTrackerData &data, cv::Mat_<uint8_t> &state, c
         cv::Mat_<cv::Vec3d> points_hr_inp = surftrack_genpoints_hr(data, new_state, points_inpainted, used_area, step, src_step, true);
         try {
             QuadSurface *dbg_surf = new QuadSurface(points_hr_inp(used_area_hr), {1/src_step,1/src_step});
-            std::string uuid = Z_DBG_GEN_PREFIX+strint(dbg_counter, 5)+"_inp_hr";
+            std::string uuid = Z_DBG_GEN_PREFIX+get_surface_time_str()+"_inp_hr";
             dbg_surf->save(tgt_dir / uuid, uuid);
             delete dbg_surf;
         } catch (cv::Exception) {
@@ -2569,7 +2569,7 @@ void optimize_surface_mapping(SurfTrackerData &data, cv::Mat_<uint8_t> &state, c
         cv::Mat_<cv::Vec3d> points_hr_inp = surftrack_genpoints_hr(data, state, points, used_area, step, src_step, true);
         try {
             QuadSurface *dbg_surf = new QuadSurface(points_hr_inp(used_area_hr), {1/src_step,1/src_step});
-            std::string uuid = Z_DBG_GEN_PREFIX+strint(dbg_counter, 5)+"_opt_inp_hr";
+            std::string uuid = Z_DBG_GEN_PREFIX+get_surface_time_str()+"_opt_inp_hr";
             dbg_surf->save(tgt_dir / uuid, uuid);
             delete dbg_surf;
         } catch (cv::Exception) {
@@ -3100,7 +3100,12 @@ QuadSurface *grow_surf_from_surfs(SurfaceMeta *seed, const std::vector<SurfaceMe
                 QuadSurface *dbg_surf = new QuadSurface(points_hr(used_area_hr), {1/src_step,1/src_step});
                 dbg_surf->meta = new nlohmann::json;
                 (*dbg_surf->meta)["vc_grow_seg_from_segments_params"] = params;
-                std::string uuid = Z_DBG_GEN_PREFIX+strint(generation, 5);
+
+                float const area_est_vx2 = loc_valid_count*src_step*src_step*step*step;
+                float const area_est_cm2 = area_est_vx2 * voxelsize * voxelsize / 1e8;
+                (*dbg_surf->meta)["area_vx2"] = area_est_vx2;
+                (*dbg_surf->meta)["area_cm2"] = area_est_cm2;
+                std::string uuid = Z_DBG_GEN_PREFIX+get_surface_time_str();
                 dbg_surf->save(tgt_dir / uuid, uuid);
                 delete dbg_surf;
             }
@@ -3139,7 +3144,14 @@ QuadSurface *grow_surf_from_surfs(SurfaceMeta *seed, const std::vector<SurfaceMe
             {
                 cv::Mat_<cv::Vec3d> points_hr = surftrack_genpoints_hr(data, state, points, used_area, step, src_step);
                 QuadSurface *dbg_surf = new QuadSurface(points_hr(used_area_hr), {1/src_step,1/src_step});
-                std::string uuid = Z_DBG_GEN_PREFIX+strint(generation, 5)+"_opt";
+                dbg_surf->meta = new nlohmann::json;
+                (*dbg_surf->meta)["vc_grow_seg_from_segments_params"] = params;
+
+                std::string uuid = Z_DBG_GEN_PREFIX+get_surface_time_str()+"_opt";
+                float const area_est_vx2 = loc_valid_count*src_step*src_step*step*step;
+                float const area_est_cm2 = area_est_vx2 * voxelsize * voxelsize / 1e8;
+                (*dbg_surf->meta)["area_vx2"] = area_est_vx2;
+                (*dbg_surf->meta)["area_cm2"] = area_est_cm2;
                 dbg_surf->save(tgt_dir / uuid, uuid);
                 delete dbg_surf;
             }
@@ -3211,4 +3223,29 @@ QuadSurface *grow_surf_from_surfs(SurfaceMeta *seed, const std::vector<SurfaceMe
     (*surf->meta)["area_cm2"] = area_est_cm2;
 
     return surf;
+}
+
+std::string get_surface_time_str()
+{
+    using namespace std::chrono;
+
+    // get current time
+    auto now = system_clock::now();
+
+    // get number of milliseconds for the current second
+    // (remainder after division into seconds)
+    auto ms = duration_cast<milliseconds>(now.time_since_epoch()) % 1000;
+
+    // convert to std::time_t in order to convert to std::tm (broken time)
+    auto timer = system_clock::to_time_t(now);
+
+    // convert to broken time
+    std::tm bt = *std::localtime(&timer);
+
+    std::ostringstream oss;
+
+    oss << std::put_time(&bt, "%Y%m%d%H%M%S"); // HH:MM:SS
+    oss << std::setfill('0') << std::setw(3) << ms.count();
+
+    return oss.str();
 }
