@@ -205,6 +205,7 @@ private:
     QCheckBox* chkFilterNoDefective;
     QCheckBox* chkFilterPartialReview;
     QCheckBox* chkFilterCurrentOnly;
+    QCheckBox* chkFilterHideUnapproved;
     QComboBox* cmbSegmentationDir;
     
     QCheckBox* _chkApproved;

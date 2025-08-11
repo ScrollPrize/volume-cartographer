@@ -369,7 +369,7 @@
                  </property>
                 </widget>
                </item>
-               <item row="0" column="1">
+               <item row="0" column="1" colspan="2">
                 <layout class="QHBoxLayout" name="pointSetFilterLayout">
                  <item>
                   <widget class="QComboBox" name="cmbPointSetFilter"/>
@@ -401,6 +401,13 @@
                 <widget class="QCheckBox" name="chkFilterRevisit">
                  <property name="text">
                   <string>Revisit</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="1" column="2">
+                <widget class="QCheckBox" name="chkFilterHideUnapproved">
+                 <property name="text">
+                  <string>Hide Unapproved</string>
                  </property>
                 </widget>
                </item>

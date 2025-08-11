@@ -505,6 +505,9 @@ void CWindow::CreateWidgets(void)
     connect(chkFilterNoDefective, &QCheckBox::toggled, [this]() { onSegFilterChanged(0); });
     connect(chkFilterPartialReview, &QCheckBox::toggled, [this]() { onSegFilterChanged(0); });
 
+    chkFilterHideUnapproved = ui.chkFilterHideUnapproved;
+    connect(chkFilterHideUnapproved, &QCheckBox::toggled, [this]() { onSegFilterChanged(0); });
+
     cmbSegmentationDir = ui.cmbSegmentationDir;
     connect(cmbSegmentationDir, &QComboBox::currentIndexChanged, this, &CWindow::onSegmentationDirChanged);
 
@@ -1639,7 +1642,8 @@ void CWindow::onSegFilterChanged(int index)
                            chkFilterNoExpansion->isChecked() ||
                            chkFilterNoDefective->isChecked() ||
                            chkFilterPartialReview->isChecked() ||
-                           chkFilterCurrentOnly->isChecked();
+                           chkFilterCurrentOnly->isChecked() ||
+                           chkFilterHideUnapproved->isChecked();
 
     // Check if point set filter has any checked items
     if (!hasActiveFilters && cmbPointSetFilter->count() > 0) {
@@ -1796,6 +1800,16 @@ void CWindow::onSegFilterChanged(int index)
                     show = show && !tags.count("partial_review");
                 } else {
                     show = show && true;
+                }
+            }
+
+            if (chkFilterHideUnapproved->isChecked()) {
+                auto* surface = _vol_qsurfs[id]->surface();
+                if (surface && surface->meta) {
+                    auto tags = surface->meta->value("tags", nlohmann::json::object_t());
+                    show = show && (tags.count("approved") > 0);
+                } else {
+                    show = show && false;  // Hide segments without metadata when filter is active
                 }
             }
         }
