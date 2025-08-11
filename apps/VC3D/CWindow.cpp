@@ -2548,7 +2548,7 @@ void CWindow::onManualLocationChanged()
 
 void CWindow::onZoomIn()
 {
-    // Get the active sub-windowonzoomout
+    // Get the active sub-window
     QMdiSubWindow* activeWindow = mdiArea->activeSubWindow();
     if (!activeWindow) return;
     
