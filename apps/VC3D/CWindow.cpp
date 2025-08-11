@@ -76,8 +76,8 @@ CWindow::CWindow() :
     ui.setupUi(this);
     // setAttribute(Qt::WA_DeleteOnClose);
 
-    //TODO make configurable
-    chunk_cache = new ChunkCache(10e9);
+    chunk_cache = new ChunkCache(CHUNK_CACHE_SIZE_GB*1024*1024*1024);
+    std::cout << "chunk cache size is " << CHUNK_CACHE_SIZE_GB << " gigabytes " << std::endl;
     
     _surf_col = new CSurfaceCollection();
     
