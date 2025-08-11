@@ -80,41 +80,39 @@ class S3SyncManager:
 
     def _init_db(self):
         """Initialize SQLite database for file tracking"""
-        with self._get_db() as conn:
-            conn.execute('''
-                CREATE TABLE IF NOT EXISTS files (
-                    path TEXT PRIMARY KEY,
-                    local_size INTEGER,
-                    local_mtime REAL,
-                    s3_size INTEGER,
-                    s3_mtime REAL,
-                    s3_etag TEXT,
-                    last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            ''')
+        conn = sqlite3.connect(self.db_file)
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS files (
+                path TEXT PRIMARY KEY,
+                local_size INTEGER,
+                local_mtime REAL,
+                s3_size INTEGER,
+                s3_mtime REAL,
+                s3_etag TEXT,
+                last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
 
-            # Create index for faster lookups
-            conn.execute('CREATE INDEX IF NOT EXISTS idx_path ON files(path)')
+        # Create index for faster lookups
+        conn.execute('CREATE INDEX IF NOT EXISTS idx_path ON files(path)')
+        conn.commit()
+        conn.close()
 
     @contextmanager
     def _get_db(self):
         """Context manager for database connections"""
         conn = sqlite3.connect(self.db_file)
         conn.row_factory = sqlite3.Row
-        try:
-            yield conn
-            conn.commit()
-        except:
-            conn.rollback()
-            raise
-        finally:
-            conn.close()
+        yield conn
+        conn.commit()
+        conn.close()
 
     def _run_aws_command(self, cmd):
         """Run AWS CLI command with optional profile"""
         if self.aws_profile:
             cmd.extend(['--profile', self.aws_profile])
-        return subprocess.run(cmd, capture_output=True, text=True)
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        return result
 
     def _get_s3_url(self, relative_path=None):
         """Get S3 URL for a file or directory"""
@@ -149,15 +147,12 @@ class S3SyncManager:
                 if any('layers' in part.lower() for part in path_parts[:-1]):
                     continue
 
-                try:
-                    stat = os.stat(filepath)
-                    files[relative_path] = {
-                        'path': relative_path,
-                        'local_size': stat.st_size,
-                        'local_mtime': stat.st_mtime
-                    }
-                except (OSError, IOError) as e:
-                    print(f"  Warning: Could not process {filepath}: {e}")
+                stat = os.stat(filepath)
+                files[relative_path] = {
+                    'path': relative_path,
+                    'local_size': stat.st_size,
+                    'local_mtime': stat.st_mtime
+                }
 
         print(f"Found {len(files)} local files")
         return files
@@ -181,19 +176,11 @@ class S3SyncManager:
 
             result = self._run_aws_command(cmd)
 
-            if result.returncode != 0:
-                print(f"Error listing S3 objects: {result.stderr}")
-                break
-
             if not result.stdout:
                 print("No files found in S3")
                 break
 
-            try:
-                data = json.loads(result.stdout)
-            except json.JSONDecodeError:
-                print(f"Error parsing S3 response: {result.stdout}")
-                break
+            data = json.loads(result.stdout)
 
             if 'Contents' not in data:
                 if page_count == 0:
@@ -345,8 +332,7 @@ class S3SyncManager:
 
         return actions
 
-    def resolve_conflict(self, path, reason, local_info,
-                         s3_info):
+    def resolve_conflict(self, path, reason, local_info, s3_info):
         """Interactively resolve a conflict"""
         print(f"\n⚠️  CONFLICT: {path}")
         print(f"Reason: {reason}")
@@ -381,47 +367,35 @@ class S3SyncManager:
         print(f"  Uploading: {path} → remote")
 
         cmd = ['aws', 's3', 'cp', local_path, s3_path]
+        self._run_aws_command(cmd)
+
+        print(f"  ✓ Uploaded: {path}")
+
+        # Get fresh S3 info
+        cmd = ['aws', 's3api', 'head-object', '--bucket', self.s3_bucket,
+               '--key', f"{self.s3_prefix}/{path}"]
         result = self._run_aws_command(cmd)
 
-        if result.returncode == 0:
-            print(f"  ✓ Uploaded: {path}")
+        data = json.loads(result.stdout)
+        s3_mtime = self._parse_timestamp(data['LastModified'])
+        s3_etag = data.get('ETag', '').strip('"')
 
-            # Get fresh S3 info
-            cmd = ['aws', 's3api', 'head-object', '--bucket', self.s3_bucket,
-                   '--key', f"{self.s3_prefix}/{path}"]
-            result = self._run_aws_command(cmd)
+        # Update database
+        with self._get_db() as conn:
+            conn.execute('''
+                INSERT OR REPLACE INTO files 
+                (path, local_size, local_mtime, s3_size, s3_mtime, s3_etag)
+                VALUES (?, ?, ?, ?, ?, ?)
+            ''', (
+                path,
+                local_files[path]['local_size'],
+                local_files[path]['local_mtime'],
+                local_files[path]['local_size'],
+                s3_mtime,
+                s3_etag
+            ))
 
-            if result.returncode == 0:
-                try:
-                    data = json.loads(result.stdout)
-                    s3_mtime = self._parse_timestamp(data['LastModified'])
-                    s3_etag = data.get('ETag', '').strip('"')
-                except:
-                    s3_mtime = datetime.now().timestamp()
-                    s3_etag = None
-            else:
-                s3_mtime = datetime.now().timestamp()
-                s3_etag = None
-
-            # Update database
-            with self._get_db() as conn:
-                conn.execute('''
-                    INSERT OR REPLACE INTO files 
-                    (path, local_size, local_mtime, s3_size, s3_mtime, s3_etag)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                ''', (
-                    path,
-                    local_files[path]['local_size'],
-                    local_files[path]['local_mtime'],
-                    local_files[path]['local_size'],
-                    s3_mtime,
-                    s3_etag
-                ))
-
-            return True
-        else:
-            print(f"  ✗ Error uploading {path}: {result.stderr}")
-            return False
+        return True
 
     def perform_download(self, path, s3_files):
         """Download a single file from S3 and update tracking"""
@@ -434,49 +408,40 @@ class S3SyncManager:
         print(f"  Downloading: remote → {path}")
 
         cmd = ['aws', 's3', 'cp', s3_path, local_path]
-        result = self._run_aws_command(cmd)
+        self._run_aws_command(cmd)
 
-        if result.returncode == 0:
-            print(f"  ✓ Downloaded: {path}")
+        print(f"  ✓ Downloaded: {path}")
 
-            # Update database
-            with self._get_db() as conn:
-                conn.execute('''
-                    INSERT OR REPLACE INTO files 
-                    (path, local_size, local_mtime, s3_size, s3_mtime, s3_etag)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                ''', (
-                    path,
-                    s3_files[path]['s3_size'],
-                    datetime.now().timestamp(),
-                    s3_files[path]['s3_size'],
-                    s3_files[path]['s3_mtime'],
-                    s3_files[path].get('s3_etag')
-                ))
+        # Update database
+        with self._get_db() as conn:
+            conn.execute('''
+                INSERT OR REPLACE INTO files 
+                (path, local_size, local_mtime, s3_size, s3_mtime, s3_etag)
+                VALUES (?, ?, ?, ?, ?, ?)
+            ''', (
+                path,
+                s3_files[path]['s3_size'],
+                datetime.now().timestamp(),
+                s3_files[path]['s3_size'],
+                s3_files[path]['s3_mtime'],
+                s3_files[path].get('s3_etag')
+            ))
 
-            return True
-        else:
-            print(f"  ✗ Error downloading {path}: {result.stderr}")
-            return False
+        return True
 
     def perform_delete_local(self, path):
         """Delete a local file and update tracking"""
         local_path = os.path.join(self.local_dir, path)
 
         print(f"  Deleting local: {path}")
+        os.remove(local_path)
+        print(f"  ✓ Deleted local: {path}")
 
-        try:
-            os.remove(local_path)
-            print(f"  ✓ Deleted local: {path}")
+        # Remove from database
+        with self._get_db() as conn:
+            conn.execute('DELETE FROM files WHERE path = ?', (path,))
 
-            # Remove from database
-            with self._get_db() as conn:
-                conn.execute('DELETE FROM files WHERE path = ?', (path,))
-
-            return True
-        except Exception as e:
-            print(f"  ✗ Error deleting {path}: {e}")
-            return False
+        return True
 
     def perform_delete_remote(self, path):
         """Delete a file from S3 and update tracking"""
@@ -485,19 +450,15 @@ class S3SyncManager:
         print(f"  Deleting from S3: {path}")
 
         cmd = ['aws', 's3', 'rm', s3_path]
-        result = self._run_aws_command(cmd)
+        self._run_aws_command(cmd)
 
-        if result.returncode == 0:
-            print(f"  ✓ Deleted from S3: {path}")
+        print(f"  ✓ Deleted from S3: {path}")
 
-            # Remove from database
-            with self._get_db() as conn:
-                conn.execute('DELETE FROM files WHERE path = ?', (path,))
+        # Remove from database
+        with self._get_db() as conn:
+            conn.execute('DELETE FROM files WHERE path = ?', (path,))
 
-            return True
-        else:
-            print(f"  ✗ Error deleting {path}: {result.stderr}")
-            return False
+        return True
 
     def sync(self, dry_run=False):
         """Perform interactive sync operation"""
@@ -567,56 +528,39 @@ class S3SyncManager:
         # Perform operations
         print("\nSyncing...")
         success_count = 0
-        failed_count = 0
 
         # Process uploads
         for path, reason in uploads:
-            if self.perform_upload(path, local_files):
-                success_count += 1
-            else:
-                failed_count += 1
+            self.perform_upload(path, local_files)
+            success_count += 1
 
         # Process downloads
         for path, reason in downloads:
-            if self.perform_download(path, s3_files):
-                success_count += 1
-            else:
-                failed_count += 1
+            self.perform_download(path, s3_files)
+            success_count += 1
 
         # Process deletions
         for path, reason in deletes_local:
-            if self.perform_delete_local(path):
-                success_count += 1
-            else:
-                failed_count += 1
+            self.perform_delete_local(path)
+            success_count += 1
 
         for path, reason in deletes_remote:
-            if self.perform_delete_remote(path):
-                success_count += 1
-            else:
-                failed_count += 1
+            self.perform_delete_remote(path)
+            success_count += 1
 
         # Process resolved conflicts
         for path, action in resolved_actions:
-            success = False
             if action == SyncAction.UPLOAD:
-                success = self.perform_upload(path, local_files)
+                self.perform_upload(path, local_files)
             elif action == SyncAction.DOWNLOAD:
-                success = self.perform_download(path, s3_files)
+                self.perform_download(path, s3_files)
             elif action == SyncAction.DELETE_LOCAL:
-                success = self.perform_delete_local(path)
+                self.perform_delete_local(path)
             elif action == SyncAction.DELETE_REMOTE:
-                success = self.perform_delete_remote(path)
-
-            if success:
-                success_count += 1
-            else:
-                failed_count += 1
+                self.perform_delete_remote(path)
+            success_count += 1
 
         print(f"\n✓ Sync complete: {success_count}/{total_operations} operations successful")
-
-        if failed_count > 0:
-            print(f"  {failed_count} operations failed - run sync again to retry")
 
     def show_status(self, verbose=False):
         """Show sync status"""
@@ -722,7 +666,6 @@ def main():
             if response == 'y':
                 print(f"\nDownloading {len(files_to_download)} files...")
                 success_count = 0
-                failed_count = 0
 
                 for i, path in enumerate(files_to_download, 1):
                     if i % 100 == 0:
@@ -738,17 +681,10 @@ def main():
                     if args.profile:
                         cmd.extend(['--profile', args.profile])
 
-                    result = subprocess.run(cmd, capture_output=True, text=True)
-
-                    if result.returncode == 0:
-                        success_count += 1
-                    else:
-                        print(f"  ✗ Error downloading {path}: {result.stderr}")
-                        failed_count += 1
+                    subprocess.run(cmd, capture_output=True, text=True, check=True)
+                    success_count += 1
 
                 print(f"\n✓ Downloaded {success_count} files successfully")
-                if failed_count > 0:
-                    print(f"  {failed_count} files failed to download")
         else:
             print("✓ All S3 files already exist locally")
 
