@@ -16,6 +16,7 @@ RUN apt-get -y install libceres-dev libboost-system-dev libboost-program-options
 RUN apt-get -y install libblosc-dev libspdlog-dev 
 RUN apt-get -y install libgsl-dev libsdl2-dev libcurl4-openssl-dev
 RUN apt-get -y install file
+RUN apt-get -y install awscli
 
 COPY . /src
 RUN rm /src/CMakeCache.txt || true

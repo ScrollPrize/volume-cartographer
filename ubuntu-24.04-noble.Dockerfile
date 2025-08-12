@@ -11,6 +11,7 @@ RUN apt-get update
 RUN apt-get -y install libceres-dev xtensor-dev libopencv-dev libxsimd-dev libblosc-dev libspdlog-dev
 RUN apt-get -y install libgsl-dev libsdl2-dev libcurl4-openssl-dev
 RUN apt-get -y install file
+RUN apt-get -y install awscli
 
 COPY . /src
 RUN rm /src/CMakeCache.txt || true
