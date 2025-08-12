@@ -9,7 +9,20 @@ RUN apt-get -y install build-essential git cmake
 RUN apt-get -y install qt6-base-dev libboost-system-dev libboost-program-options-dev
 RUN apt-get -y install libceres-dev xtensor-dev libopencv-dev libxsimd-dev libblosc-dev libspdlog-dev
 RUN apt-get -y install libgsl-dev libsdl2-dev libcurl4-openssl-dev
-RUN apt-get -y install file
+RUN apt-get -y install file curl unzip
+
+RUN ARCH=$(uname -m) && \
+    if [ "$ARCH" = "x86_64" ]; then \
+        curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"; \
+    elif [ "$ARCH" = "aarch64" ]; then \
+        curl "https://awscli.amazonaws.com/awscli-exe-linux-aarch64.zip" -o "awscliv2.zip"; \
+    else \
+        echo "Unsupported architecture: $ARCH" && exit 1; \
+    fi && \
+    unzip awscliv2.zip && \
+    ./aws/install && \
+    rm -rf awscliv2.zip aws
+
 
 COPY . /src
 RUN rm /src/CMakeCache.txt || true
