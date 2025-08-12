@@ -9,7 +9,7 @@ RUN apt-get -y install build-essential git cmake
 RUN apt-get -y install qt6-base-dev libboost-system-dev libboost-program-options-dev
 RUN apt-get -y install libceres-dev xtensor-dev libopencv-dev libxsimd-dev libblosc-dev libspdlog-dev
 RUN apt-get -y install libgsl-dev libsdl2-dev libcurl4-openssl-dev
-RUN apt-get -y install file
+RUN apt-get -y install file curl
 
 RUN ARCH=$(uname -m) && \
     if [ "$ARCH" = "x86_64" ]; then \

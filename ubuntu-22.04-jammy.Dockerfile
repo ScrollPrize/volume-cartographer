@@ -15,7 +15,7 @@ RUN apt install -y tzdata
 RUN apt-get -y install libceres-dev libboost-system-dev libboost-program-options-dev xtensor-dev libopencv-dev
 RUN apt-get -y install libblosc-dev libspdlog-dev 
 RUN apt-get -y install libgsl-dev libsdl2-dev libcurl4-openssl-dev
-RUN apt-get -y install file
+RUN apt-get -y install file curl
 
 RUN ARCH=$(uname -m) && \
     if [ "$ARCH" = "x86_64" ]; then \
