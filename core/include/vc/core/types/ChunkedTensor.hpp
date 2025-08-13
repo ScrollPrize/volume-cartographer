@@ -18,6 +18,10 @@
 #include <fcntl.h>
 #include <sys/mman.h>
 
+#ifndef CCI_TLS_MAX // Max number for ChunkedCachedInterpolator
+#define CCI_TLS_MAX 256
+#endif
+
 struct vec3i_hash {
     size_t operator()(cv::Vec3i p) const
     {
@@ -602,17 +606,32 @@ private:
      *  (interpolator instance, thread)*. */
     Acc& local_accessor() const
     {
-        struct Holder {
-            Holder(ArRef ar) : accessor(ar) {}
-            Acc accessor;
+        // Per-thread, bounded cache keyed by the underlying array address.
+        // (Multiple interpolators over the same array share one accessor.)
+        struct TLS {
+            std::unordered_map<const void*, Acc> map;
+            std::deque<const void*> order;          // FIFO ~ LRU-ish
         };
-        // One Holder per (thread, *this*).  Indirection avoids ODR-issues.
-        thread_local std::unordered_map<const void*, Holder> tls;
+        thread_local TLS tls;
 
-        auto it = tls.find(this);
-        if (it == tls.end())
-            it = tls.emplace(this, Holder{_ar}).first;
-        return it->second.accessor;
+        constexpr std::size_t kMax = CCI_TLS_MAX;
+
+        const void* key = static_cast<const void*>(&_ar);
+
+        if (auto it = tls.map.find(key); it != tls.map.end()) {
+            return it->second;
+        }
+
+        // Evict oldest if at capacity
+        if (tls.map.size() >= kMax && !tls.order.empty()) {
+            const void* old = tls.order.front();
+            tls.order.pop_front();
+            tls.map.erase(old);
+        }
+
+        auto [it2, inserted] = tls.map.emplace(key, Acc{_ar});
+        if (inserted) tls.order.push_back(key);
+        return it2->second;
     }
 
     ArRef               _ar;
