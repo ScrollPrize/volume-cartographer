@@ -2,7 +2,6 @@
 // Chao Du 2015 April
 #include "CVolumeViewer.hpp"
 #include "UDataManipulateUtils.hpp"
-//#include "HBase.hpp"
 
 #include <QGraphicsView>
 #include <QGraphicsScene>
