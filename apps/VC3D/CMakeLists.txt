@@ -7,13 +7,11 @@ add_definitions(-DCHUNK_CACHE_SIZE_GB=${CHUNK_CACHE_SIZE_GB})
 
 set(srcs
     VCAppMain.cpp
-    CMesh.cpp
     CWindow.cpp
     CWindowContextMenu.cpp
     UDataManipulateUtils.cpp
     CVolumeViewer.cpp
     CVolumeViewerView.cpp
-    BlockingDialog.hpp
     ColorFrame.hpp
     SettingsDialog.cpp
     CSurfaceCollection.cpp

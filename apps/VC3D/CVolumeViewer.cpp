@@ -2,7 +2,7 @@
 // Chao Du 2015 April
 #include "CVolumeViewer.hpp"
 #include "UDataManipulateUtils.hpp"
-#include "HBase.hpp"
+//#include "HBase.hpp"
 
 #include <QGraphicsView>
 #include <QGraphicsScene>
@@ -95,8 +95,8 @@ CVolumeViewer::CVolumeViewer(CSurfaceCollection *col, QWidget* parent)
 // Destructor
 CVolumeViewer::~CVolumeViewer(void)
 {
-    deleteNULL(fGraphicsView);
-    deleteNULL(fScene);
+    delete fGraphicsView;
+    delete fScene;
 }
 
 void round_scale(float &scale)
