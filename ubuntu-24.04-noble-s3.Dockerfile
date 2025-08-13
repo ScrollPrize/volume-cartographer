@@ -31,10 +31,6 @@ RUN rm -r /src
 
 RUN apt-get -y install curl wget unzip
 
-RUN curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
-RUN unzip awscliv2.zip
-RUN ./aws/install
-
 RUN apt-get -y install fuse jq
 RUN wget https://github.com/kahing/goofys/releases/latest/download/goofys -O /usr/local/bin/goofys
 RUN chmod +x /usr/local/bin/goofys
