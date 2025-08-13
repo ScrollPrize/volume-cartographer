@@ -34,6 +34,10 @@ using qga = QGuiApplication;
 #define COLOR_SEG_XZ Qt::red
 #define COLOR_SEG_XY QColor(255, 140, 0)
 
+constexpr float MIN_ZOOM = 0.03125f;
+constexpr float MAX_ZOOM = 4.0f;
+
+
 CVolumeViewer::CVolumeViewer(CSurfaceCollection *col, QWidget* parent)
     : QWidget(parent)
     , fGraphicsView(nullptr)
@@ -104,8 +108,8 @@ void round_scale(float &scale)
     if (abs(scale-round(log2(scale))) < 0.02f)
         scale = pow(2,round(log2(scale)));
     // the most reduced OME zarr projection is 32x so make the min zoom out 1/32 = 0.03125
-    if (scale < 0.03125f) scale = 0.03125f;
-    if (scale > 4.0f) scale = 4.0f;
+    if (scale < MIN_ZOOM) scale = MIN_ZOOM;
+    if (scale > MAX_ZOOM) scale = MAX_ZOOM;
 }
 
 //get center of current visible area in scene coordinates
@@ -282,21 +286,24 @@ void CVolumeViewer::onZoom(int steps, QPointF scene_loc, Qt::KeyboardModifiers m
         float zoom = pow(ZOOM_FACTOR, steps);
         _scale *= zoom;
         round_scale(_scale);
-        recalcScales();
+        //we should only zoom when we haven't hit the max / min, otherwise the zoom starts to pan center on the mouse
+        if (_scale > MIN_ZOOM && _scale < MAX_ZOOM) {
+            recalcScales();
 
-        // The above scale is *not* part of Qt's scene-to-view transform, but part of the voxel-to-scene transform
-        // implemented in PlaneSurface::project; it causes a zoom around the surface origin
-        // Translations are represented in the Qt scene-to-view transform; these move the surface origin within the viewpoint
-        // To zoom centered on the mouse, we adjust the scene-to-view translation appropriately
-        // If the mouse were at the plane/surface origin, this adjustment should be zero
-        // If the mouse were right of the plane origin, should translate to the left so that point ends up where it was
-        fGraphicsView->translate(scene_loc.x() * (1 - zoom),
-                                scene_loc.y() * (1 - zoom));
+            // The above scale is *not* part of Qt's scene-to-view transform, but part of the voxel-to-scene transform
+            // implemented in PlaneSurface::project; it causes a zoom around the surface origin
+            // Translations are represented in the Qt scene-to-view transform; these move the surface origin within the viewpoint
+            // To zoom centered on the mouse, we adjust the scene-to-view translation appropriately
+            // If the mouse were at the plane/surface origin, this adjustment should be zero
+            // If the mouse were right of the plane origin, should translate to the left so that point ends up where it was
+            fGraphicsView->translate(scene_loc.x() * (1 - zoom),
+                                    scene_loc.y() * (1 - zoom));
 
-        curr_img_area = {0,0,0,0};
-        int max_size = 100000;
-        fGraphicsView->setSceneRect(-max_size/2, -max_size/2, max_size, max_size);
+            curr_img_area = {0,0,0,0};
+            int max_size = 100000;
+            fGraphicsView->setSceneRect(-max_size/2, -max_size/2, max_size, max_size);
 
+        }
         renderVisible();
     }
 
