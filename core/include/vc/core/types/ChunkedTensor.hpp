@@ -174,22 +174,19 @@ public:
     }
     T &safe_at(const cv::Vec3i &p)
     {
-        auto s = C::CHUNK_SIZE;
-        cv::Vec3i id = {p[0]/s,p[1]/s,p[2]/s};
+        const auto s = C::CHUNK_SIZE;
+        const cv::Vec3i id{ p[0]/s, p[1]/s, p[2]/s };
 
-        T *chunk = nullptr;
-
-        _mutex.lock_shared();
-        if (_chunks.count(id)) {
-            chunk = _chunks[id];
-            _mutex.unlock();
+        {
+            std::shared_lock<std::shared_mutex> rlock(_mutex);
+            if (auto it = _chunks.find(id); it != _chunks.end()) {
+                T* chunk = it->second;
+                return chunk[calc_off({p[0]-id[0]*s, p[1]-id[1]*s, p[2]-id[2]*s})];
+            }
         }
-        else {
-            _mutex.unlock();
-            chunk = cache_chunk_safe(id);
-        }
-
-        return chunk[calc_off({p[0]-id[0]*s,p[1]-id[1]*s,p[2]-id[2]*s})];
+        // compute/load outside shared lock
+        T* chunk = cache_chunk_safe(id);
+        return chunk[calc_off({p[0]-id[0]*s, p[1]-id[1]*s, p[2]-id[2]*s})];
     }
     T &safe_at(int z, int y, int x)
     {
