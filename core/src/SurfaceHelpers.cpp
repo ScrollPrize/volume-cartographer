@@ -16,6 +16,8 @@
 
 #include <fstream>
 #include <iostream>
+#include <unordered_set>
+#include <shared_mutex>
 
 // Forward declarations of global variables used across functions
 extern float straight_weight;
@@ -239,6 +241,18 @@ static void min_loc(const cv::Mat_<cv::Vec3f> &points, cv::Vec2f &loc, cv::Vec3f
             changed = true;
         }
     }
+}
+
+// Helper: clamp a rect to image bounds and return an empty rect if invalid
+static inline cv::Rect clamp_rect(const cv::Rect& r, int W, int H) {
+    cv::Rect img(0, 0, W, H);
+    cv::Rect rr = r & img;
+    if (rr.width <= 0 || rr.height <= 0) return cv::Rect();
+    return rr;
+}
+
+static inline bool is_empty(const cv::Rect& r) {
+    return r.width <= 0 || r.height <= 0;
 }
 
 //this works surprisingly well, though some artifacts where original there was a lot of skew
@@ -2596,6 +2610,8 @@ QuadSurface *grow_surf_from_surfs(SurfaceMeta *seed, const std::vector<SurfaceMe
     float step = params.value("step", 10);
     int max_width = params.value("max_width", 80000);
     
+    bool force_use_approved         = params.value("force_use_approved", true);
+    bool force_approved_postpass    = params.value("force_approved_postpass", true);
     local_cost_inl_th = params.value("local_cost_inl_th", 0.2f);
     same_surface_th = params.value("same_surface_th", 2.0f);
     straight_weight = params.value("straight_weight", 0.7f);            // Weight for 2D straight line constraints
@@ -2607,6 +2623,8 @@ QuadSurface *grow_surf_from_surfs(SurfaceMeta *seed, const std::vector<SurfaceMe
     straight_min_count = params.value("straight_min_count", 1.0f);      // Minimum number of straight constraints
     inlier_base_threshold = params.value("inlier_base_threshold", 20);  // Starting threshold for inliers
 
+    std::cout << "  force_use_approved: " << force_use_approved << std::endl;
+    std::cout << "  force_approved_postpass: " << force_approved_postpass << std::endl;
     std::cout << "  local_cost_inl_th: " << local_cost_inl_th << std::endl;
     std::cout << "  same_surface_th: " << same_surface_th << std::endl;
     std::cout << "  straight_weight: " << straight_weight << std::endl;
@@ -2630,6 +2648,10 @@ QuadSurface *grow_surf_from_surfs(SurfaceMeta *seed, const std::vector<SurfaceMe
         }
     }
     
+    // Tracks which approved patches have already been satisfied (naturally or by forcing)
+    // We will only *force* each of these once, but allow them to be used naturally any number of times.
+    std::unordered_set<SurfaceMeta*> approved_satisfied;
+
     for(auto sm : approved_sm)
         std::cout << "approved: " << sm->name() << std::endl;
 
@@ -2655,7 +2677,7 @@ QuadSurface *grow_surf_from_surfs(SurfaceMeta *seed, const std::vector<SurfaceMe
     int h = 15000/src_step/step*2+10+2*closing_r;
     cv::Size size = {w,h};
     cv::Rect bounds(0,0,w-1,h-1);
-    cv::Rect save_bounds_inv(closing_r+5,closing_r+5,h-closing_r-10,w-closing_r-10);
+    cv::Rect save_bounds_inv(closing_r+5,closing_r+5, w-closing_r-10, h-closing_r-10);
     cv::Rect active_bounds(closing_r+5,closing_r+5,w-closing_r-10,h-closing_r-10);
     cv::Rect static_bounds(0,0,0,h);
 
@@ -2715,6 +2737,14 @@ QuadSurface *grow_surf_from_surfs(SurfaceMeta *seed, const std::vector<SurfaceMe
         std::cout << "fringe point " << p << " surfcount " << data.surfs(p).size() << " init " << data.loc(seed, p) << data.lookup_int(seed, p) << std::endl;
     }
 
+    // Seed the satisfied set with any approved patches already attached at init,
+    // so we won't force them later (but they can still be used naturally).
+    for (auto p : fringe) {
+        for (auto s : data.surfs(p)) {
+            if (approved_sm.count(s)) approved_satisfied.insert(s);
+        }
+    }
+
     std::cout << "starting from " << x0 << " " << y0 << std::endl;
 
     ceres::Solver::Options options;
@@ -2748,15 +2778,19 @@ QuadSurface *grow_surf_from_surfs(SurfaceMeta *seed, const std::vector<SurfaceMe
 
                 for(auto n : neighs) {
                     cv::Vec2i pn = p+n;
-                    if (save_bounds_inv.contains(cv::Point(pn))
+                    // pn is [row, col] → cv::Point(x=col, y=row)
+                    if (save_bounds_inv.contains(cv::Point(pn[1], pn[0]))
                         && (state(pn) & STATE_PROCESSING) == 0
                         && (state(pn) & STATE_LOC_VALID) == 0)
                     {
                         state(pn) |= STATE_PROCESSING;
                         cands.insert(pn);
                     }
-                    else if (!save_bounds_inv.contains(cv::Point(pn)) && save_bounds_inv.br().y <= pn[1]) {
-                        at_right_border = true;
+                    else if (!save_bounds_inv.contains(cv::Point(pn[1], pn[0]))) {
+                        // if outside on the right we’ll see x >= right boundary
+                        if (pn[1] >= save_bounds_inv.br().x) {
+                            at_right_border = true;
+                        }
                     }
                 }
             }
@@ -2937,6 +2971,10 @@ QuadSurface *grow_surf_from_surfs(SurfaceMeta *seed, const std::vector<SurfaceMe
                 data_th.surfs(p).insert(best_surf);
                 data_th.loc(best_surf, p) = best_loc;
                 state(p) = STATE_LOC_VALID | STATE_COORD_VALID;
+                // Mark as satisfied if approved; this prevents later *forcing* but not natural reuse.
+                if (approved_sm.count(best_surf)) {
+                    mutex.lock(); approved_satisfied.insert(best_surf); mutex.unlock();
+                }
                 points(p) = best_coord;
                 inliers_sum_dbg(p) = best_inliers;
                 
@@ -2953,6 +2991,10 @@ QuadSurface *grow_surf_from_surfs(SurfaceMeta *seed, const std::vector<SurfaceMe
                     if (test_surf == best_surf)
                         continue;
                     
+                    // Natural co-attachment remains allowed for approved patches
+                    // (no "only once" restriction here).
+                    // We still mark 'satisfied' if they get used naturally.
+
                     auto *ptr = test_surf->surface()->pointer();
                     if (test_surf->surface()->pointTo(ptr, best_coord, same_surface_th, 10) <= same_surface_th) {
                         cv::Vec3f loc = test_surf->surface()->loc_raw(ptr);
@@ -2963,6 +3005,9 @@ QuadSurface *grow_surf_from_surfs(SurfaceMeta *seed, const std::vector<SurfaceMe
                         if (cost < local_cost_inl_th) {
                             data_th.surfs(p).insert(test_surf);
                             surftrack_add_local(test_surf, p, data_th, problem, state, points, step, src_step, SURF_LOSS | LOSS_ZLOC);
+                            if (approved_sm.count(test_surf)) {
+                                 mutex.lock(); approved_satisfied.insert(test_surf); mutex.unlock();
+                            }
                         }
                         else
                             data_th.erase(test_surf, p);
@@ -2970,6 +3015,36 @@ QuadSurface *grow_surf_from_surfs(SurfaceMeta *seed, const std::vector<SurfaceMe
                     delete ptr;
                 }
                 
+                // Force-add ALL approved patches that geometrically cover best_coord
+                // but *only force each patch once*. After that, it can still join naturally anywhere.
+                if (force_use_approved) {
+                    for (auto test_surf : approved_sm) {
+                        // Skip if already satisfied (either naturally or previously forced)
+                        mutex.lock_shared(); bool satisfied = approved_satisfied.count(test_surf); mutex.unlock_shared();
+                        if (satisfied) continue;
+                        if (data_th.has(test_surf, p)) {
+                            // If it’s already attached here by natural logic, mark satisfied and skip forcing.
+                            mutex.lock(); approved_satisfied.insert(test_surf); mutex.unlock();
+                            continue;
+                        }
+                        auto *ptr = test_surf->surface()->pointer();
+                        float res = test_surf->surface()->pointTo(ptr, best_coord, same_surface_th, 10);
+                        if (res <= same_surface_th) {
+                            // Project and attach regardless of the normal inlier/cost gate
+                            cv::Vec3f loc = test_surf->surface()->loc_raw(ptr);
+                            data_th.loc(test_surf, p) = {loc[1], loc[0]};
+                            data_th.surfs(p).insert(test_surf);
+
+                            // Add its usual local constraints so it co-optimizes
+                            surftrack_add_local(test_surf, p, data_th, problem, state,
+                                                points, step, src_step, SURF_LOSS | LOSS_ZLOC);
+                            // Mark this approved patch as satisfied (forced once)
+                            mutex.lock(); approved_satisfied.insert(test_surf); mutex.unlock();
+                        }
+                        delete ptr;
+                    }
+                }
+
                 ceres::Solver::Summary summary;
                 
                 ceres::Solve(options, &problem, &summary);
@@ -3174,10 +3249,19 @@ QuadSurface *grow_surf_from_surfs(SurfaceMeta *seed, const std::vector<SurfaceMe
             w += sliding_w;
             size = {w,h};
             bounds = {0,0,w-1,h-1};
-            save_bounds_inv = {closing_r+5,closing_r+5,h-closing_r-10,w-closing_r-10};
+            save_bounds_inv = {closing_r+5,closing_r+5, w-closing_r-10, h-closing_r-10};
 
             cv::Mat_<cv::Vec3d> old_points = points;
             points = cv::Mat_<cv::Vec3d>(size, {-1,-1,-1});
+
+            // Defensive: if expansion tries to create an invalid ROI, bail before optimize
+            active_bounds = clamp_rect(active_bounds, w, h);
+            save_bounds_inv = clamp_rect(save_bounds_inv, w, h);
+            if (is_empty(active_bounds) || is_empty(save_bounds_inv)) {
+                std::cerr << "grow_surf_from_surfs: empty active/save bounds after expand, aborting.\n";
+                return nullptr;
+            }
+
             old_points.copyTo(points(cv::Rect(0,0,old_points.cols,h)));
             
             cv::Mat_<uint8_t> old_state = state;
@@ -3185,7 +3269,7 @@ QuadSurface *grow_surf_from_surfs(SurfaceMeta *seed, const std::vector<SurfaceMe
             old_state.copyTo(state(cv::Rect(0,0,old_state.cols,h)));
 
             cv::Mat_<uint16_t> old_inliers_sum_dbg = inliers_sum_dbg;
-            inliers_sum_dbg = cv::Mat_<uint8_t>(size, 0);
+            inliers_sum_dbg = cv::Mat_<uint16_t>(size, 0);
             old_inliers_sum_dbg.copyTo(inliers_sum_dbg(cv::Rect(0,0,old_inliers_sum_dbg.cols,h)));
 
             int overlap = 5;
@@ -3214,9 +3298,48 @@ QuadSurface *grow_surf_from_surfs(SurfaceMeta *seed, const std::vector<SurfaceMe
     float const area_est_cm2 = area_est_vx2 * voxelsize * voxelsize / 1e8;
     std::cout << "area est: " << area_est_vx2 << " vx^2 (" << area_est_cm2 << " cm^2)" << std::endl;
 
-    cv::Mat_<cv::Vec3d> points_hr = surftrack_genpoints_hr(data, state, points, used_area, step, src_step);
+    if (force_approved_postpass) {
+        int enforced = 0;
+        for (auto s : approved_sm) {
+            // Only once (forcing): if already satisfied, skip
+            if (approved_satisfied.count(s)) continue;
 
-    QuadSurface *surf = new QuadSurface(points_hr(used_area_hr), {1/src_step,1/src_step});
+            // Try to attach it to the first traced point it geometrically covers
+            bool attached = false;
+            for (int j = used_area.y; j < used_area.br().y && !attached; ++j) {
+                for (int i = used_area.x; i < used_area.br().x && !attached; ++i) {
+                    if (state(j,i) & STATE_LOC_VALID) {
+                        auto *ptr = s->surface()->pointer();
+                        float res = s->surface()->pointTo(ptr, points({j,i}), same_surface_th, 10);
+                        if (res <= same_surface_th) {
+                            cv::Vec3f loc = s->surface()->loc_raw(ptr);
+                            data.surfs({j,i}).insert(s);
+                            data.loc(s, {j,i}) = {loc[1], loc[0]};
+                            approved_satisfied.insert(s);   // mark as satisfied (forced once)
+                            attached = true;
+                            ++enforced;
+                        }
+                        delete ptr;
+                    }
+                }
+            }
+            if (!attached) {
+                std::cout << "warning: approved surface " << s->name()
+                          << " not used (no overlap with traced region)" << std::endl;
+            }
+        }
+        std::cout << "force-attach approved (postpass, forced-only-once): " << enforced << std::endl;
+    }
+
+    cv::Mat_<cv::Vec3d> points_hr = surftrack_genpoints_hr(data, state, points, used_area, step, src_step);
+    // Clamp ROI to valid bounds and guard against empty/out-of-bounds crops
+    cv::Rect hr_bounds(0, 0, points_hr.cols, points_hr.rows);
+    cv::Rect roi = used_area_hr & hr_bounds;
+    if (roi.width <= 0 || roi.height <= 0) {
+        std::cerr << "grow_surf_from_surfs: empty or OOB ROI (" << roi << "), aborting surface build.\n";
+        return nullptr;
+    }
+    QuadSurface *surf = new QuadSurface(points_hr(roi), {1/src_step,1/src_step});
 
     surf->meta = new nlohmann::json;
     (*surf->meta)["area_vx2"] = area_est_vx2;
