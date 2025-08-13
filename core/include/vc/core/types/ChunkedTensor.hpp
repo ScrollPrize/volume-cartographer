@@ -431,7 +431,7 @@ public:
 
     Chunked3dAccessor(Chunked3d<T,C> &ar) : _ar(ar) {};
 
-    static Chunked3dAccessor &create(Chunked3d<T,C> &ar)
+    static Chunked3dAccessor create(Chunked3d<T,C> &ar)
     {
         return Chunked3dAccessor(ar);
     }
