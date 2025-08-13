@@ -19,6 +19,10 @@
 #include <fcntl.h>
 #include <sys/mman.h>
 
+#ifndef CCI_TLS_MAX // Max number for ChunkedCachedInterpolator
+#define CCI_TLS_MAX 256
+#endif
+
 struct vec3i_hash {
     size_t operator()(cv::Vec3i p) const
     {
@@ -525,59 +529,113 @@ protected:
     cv::Vec3i _corner = {-1,-1,-1};
 };
 
-//FIXME add thread safe variant!
+// ────────────────────────────────────────────────────────────────────────────────
+//  CachedChunked3dInterpolator – thread-safe version
+// ────────────────────────────────────────────────────────────────────────────────
+
 template <typename T, typename C>
 class CachedChunked3dInterpolator
 {
 public:
-    CachedChunked3dInterpolator(Chunked3d<T,C> &t) : _a(t)
-    {
-        _shape = t.shape();
-    };
+    using Acc   = Chunked3dAccessor<T, C>;
+    using ArRef = Chunked3d<T, C>&;
 
-    Chunked3dAccessor<T,C> _a;
+    explicit CachedChunked3dInterpolator(ArRef ar)
+        : _ar(ar), _shape(ar.shape())
+    {}
 
-    template <typename V> void Evaluate(const V &z, const V &y, const V &x, V *out)
+    CachedChunked3dInterpolator(const CachedChunked3dInterpolator&)            = delete;
+    CachedChunked3dInterpolator& operator=(const CachedChunked3dInterpolator&) = delete;
+
+    /** Trilinear interpolation. */
+    template <typename V>
+    inline void Evaluate(const V& z, const V& y, const V& x, V* out) const
     {
-        cv::Vec3d f = {val(z),val(y),val(x)};
-        cv::Vec3i corner = {floor(f[0]),floor(f[1]),floor(f[2])};
-        for(int i=0;i<3;i++) {
+        // ---- 1. get *this* thread’s private accessor ------------------------
+        Acc& a = local_accessor();
+
+        // ---- 2. fast trilinear interpolation --------------------
+        cv::Vec3d f { val(z), val(y), val(x) };
+
+        cv::Vec3i corner { static_cast<int>(std::floor(f[0])),
+                           static_cast<int>(std::floor(f[1])),
+                           static_cast<int>(std::floor(f[2])) };
+
+        for (int i=0; i<3; ++i) {
             corner[i] = std::max(corner[i], 0);
-            if (_shape.size())
+            if (!_shape.empty())
                 corner[i] = std::min(corner[i], _shape[i]-2);
         }
-        V fc[3] = { z - V(corner[0]), y - V(corner[1]), x - V(corner[2])};
-        for(int i=0;i<3;i++) {
-            if (fc[i] < V(0))
-                fc[i] = V(0);
-            else if (fc[i] > V(1))
-                fc[i] = V(1);
+
+        const V fx = z - V(corner[0]);
+        const V fy = y - V(corner[1]);
+        const V fz = x - V(corner[2]);
+
+        // clamp only once – cheaper than three branches per component
+        const V cx = std::clamp(fx, V(0), V(1));
+        const V cy = std::clamp(fy, V(0), V(1));
+        const V cz = std::clamp(fz, V(0), V(1));
+
+        // fetch the eight lattice points
+        const V c000 = V(a.safe_at(corner));
+        const V c100 = V(a.safe_at(corner + cv::Vec3i(1,0,0)));
+        const V c010 = V(a.safe_at(corner + cv::Vec3i(0,1,0)));
+        const V c110 = V(a.safe_at(corner + cv::Vec3i(1,1,0)));
+        const V c001 = V(a.safe_at(corner + cv::Vec3i(0,0,1)));
+        const V c101 = V(a.safe_at(corner + cv::Vec3i(1,0,1)));
+        const V c011 = V(a.safe_at(corner + cv::Vec3i(0,1,1)));
+        const V c111 = V(a.safe_at(corner + cv::Vec3i(1,1,1)));
+
+        // interpolate
+        const V c00 = (V(1)-cz)*c000 + cz*c001;
+        const V c01 = (V(1)-cz)*c010 + cz*c011;
+        const V c10 = (V(1)-cz)*c100 + cz*c101;
+        const V c11 = (V(1)-cz)*c110 + cz*c111;
+
+        const V c0  = (V(1)-cy)*c00 + cy*c01;
+        const V c1  = (V(1)-cy)*c10 + cy*c11;
+
+        *out = (V(1)-cx)*c0 + cx*c1;
+    }
+
+    // -------------------------------------------------------------------------
+    double val(const double& v) const { return v; }
+    template <typename JetT> double val(const JetT& v) const { return v.a; }
+
+private:
+    /** Return the accessor that is *unique to this combination of
+     *  (interpolator instance, thread)*. */
+    Acc& local_accessor() const
+    {
+        // Per-thread, bounded cache keyed by the underlying array address.
+        // (Multiple interpolators over the same array share one accessor.)
+        struct TLS {
+            std::unordered_map<const void*, Acc> map;
+            std::deque<const void*> order;          // FIFO ~ LRU-ish
+        };
+        thread_local TLS tls;
+
+        constexpr std::size_t kMax = CCI_TLS_MAX;
+
+        const void* key = static_cast<const void*>(&_ar);
+
+        if (auto it = tls.map.find(key); it != tls.map.end()) {
+            return it->second;
         }
 
-        V c000 = V(_a.safe_at(corner));
-        V c100 = V(_a.safe_at(corner+cv::Vec3i(1,0,0)));
-        V c010 = V(_a.safe_at(corner+cv::Vec3i(0,1,0)));
-        V c110 = V(_a.safe_at(corner+cv::Vec3i(1,1,0)));
-        V c001 = V(_a.safe_at(corner+cv::Vec3i(0,0,1)));
-        V c101 = V(_a.safe_at(corner+cv::Vec3i(1,0,1)));
-        V c011 = V(_a.safe_at(corner+cv::Vec3i(0,1,1)));
-        V c111 = V(_a.safe_at(corner+cv::Vec3i(1,1,1)));
+        // Evict oldest if at capacity
+        if (tls.map.size() >= kMax && !tls.order.empty()) {
+            const void* old = tls.order.front();
+            tls.order.pop_front();
+            tls.map.erase(old);
+        }
 
-        V c00 = (V(1)-fc[2])*c000 + fc[2]*c001;
-        V c01 = (V(1)-fc[2])*c010 + fc[2]*c011;
-        V c10 = (V(1)-fc[2])*c100 + fc[2]*c101;
-        V c11 = (V(1)-fc[2])*c110 + fc[2]*c111;
-
-        V c0 = (V(1)-fc[1])*c00 + fc[1]*c01;
-        V c1 = (V(1)-fc[1])*c10 + fc[1]*c11;
-
-        *out = (V(1)-fc[0])*c0 + fc[0]*c1;
-
-        // std::cout << fc[0] << " from " << c0 << " to " << c1 << f << corner << std::endl;
+        auto [it2, inserted] = tls.map.emplace(key, Acc{_ar});
+        if (inserted) tls.order.push_back(key);
+        return it2->second;
     }
-    double  val(const double &v) const { return v; }
-    template< typename JetT>
-    double  val(const JetT &v) const { return v.a; }
-    // static template <typename E> lin_int(E &loc, int max, )
-    std::vector<int> _shape;
+
+    ArRef               _ar;
+    std::vector<int>    _shape;
 };
+
