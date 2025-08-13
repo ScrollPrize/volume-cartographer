@@ -111,6 +111,12 @@ if (${VC_INSTALL_APPS})
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT Programs
     )
 
+    install(
+            PROGRAMS ${CMAKE_SOURCE_DIR}/scripts/vc_sync.py
+            DESTINATION ${CMAKE_INSTALL_BINDIR}
+            COMPONENT Programs
+    )
+
     qt_generate_deploy_app_script(
         TARGET ${target}
         OUTPUT_SCRIPT vc_gui_deploy_script
