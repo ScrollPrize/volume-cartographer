@@ -58,6 +58,7 @@ CommandLineToolRunner::~CommandLineToolRunner()
     }
 
     delete _consoleDialog;
+    // _consoleOutput is deleted by _consoleDialog
 }
 
 void CommandLineToolRunner::setVolumePath(const QString& path)
@@ -246,6 +247,7 @@ bool CommandLineToolRunner::execute(Tool tool)
     QString startMessage;
 
     if (tool == Tool::GrowSegFromSeeds) {
+        // vc_grow_seg_from_seeds needs to use xargs for parallell processes
         startMessage = tr("Starting %1 with %2 parallel processes for: %3")
                           .arg(toolCommand)
                           .arg(_parallelProcesses)
@@ -374,6 +376,8 @@ void CommandLineToolRunner::onProcessFinished(int exitCode, QProcess::ExitStatus
         QString message = tr("%1 completed successfully").arg(toolName(_currentTool));
         QString outputPath = getOutputPath();
 
+        // the runner can copy the output of a process to the clipboard, currently this only makes sense for rendering
+        // so the user can quickly open the output dir
         bool copyToClipboard = (_currentTool == Tool::RenderTifXYZ);
 
         if (copyToClipboard) {
@@ -461,11 +465,12 @@ QStringList CommandLineToolRunner::buildArguments(Tool tool)
                  << _srcSegment;
             break;
 
+
         case Tool::GrowSegFromSeeds:
             args << _volumePath
                  << _tgtDir
                  << _jsonParams;
-
+            // Only add coordinates if not in expand mode and not using random seeding
             if (!_useExpandMode && !_useRandomSeed) {
                 args << QString::number(_seed_x)
                      << QString::number(_seed_y)
