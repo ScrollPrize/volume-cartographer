@@ -386,8 +386,11 @@ bool VCCollection::loadFromJSON(const std::string& filename)
         }
     }
  
-    for (const auto& pair : _collections) {
-        emit collectionAdded(pair.first);
+    for (const auto& col_pair : _collections) {
+        emit collectionAdded(col_pair.first);
+        for (const auto& point_pair : col_pair.second.points) {
+            emit pointAdded(point_pair.second);
+        }
     }
  
     return true;
