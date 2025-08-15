@@ -218,7 +218,6 @@ bool CommandLineToolRunner::execute(Tool tool)
         _logStream = new QTextStream(_logFile);
         _logStream->setAutoDetectUnicode(true);
 
-        *_logStream << "=== ChaoVis Tool Execution Log ===" << Qt::endl;
         *_logStream << "Tool: " << toolCmd << Qt::endl;
         *_logStream << "Started: " << QDateTime::currentDateTime().toString(Qt::ISODate) << Qt::endl;
         *_logStream << "Arguments: " << buildArguments(tool).join(" ") << Qt::endl;
