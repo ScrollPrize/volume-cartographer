@@ -1403,8 +1403,8 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *c
         if (!fringe.size() && curr_ref_min > 2) {
             curr_ref_min--;
             std::cout << used_area << std::endl;
-            for(int j=used_area.y;j<=used_area.br().y;j++)
-                for(int i=used_area.x;i<=used_area.br().y;i++) {
+            for(int j=used_area.y;j<used_area.br().y;j++)
+                for(int i=used_area.x;i<used_area.br().x;i++) {
                     if (state(j, i) & STATE_LOC_VALID)
                         fringe.push_back({j,i});
                 }
