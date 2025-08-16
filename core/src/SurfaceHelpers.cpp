@@ -191,7 +191,7 @@ static float tdist_sum(const cv::Vec3f &v, const std::vector<cv::Vec3f> &tgts, c
 static void min_loc(const cv::Mat_<cv::Vec3f> &points, cv::Vec2f &loc, cv::Vec3f &out,
     const std::vector<cv::Vec3f> &tgts, const std::vector<float> &tds, bool z_search = true)
 {
-    cv::Rect boundary(1,1,points.cols-1,points.rows-1);
+    cv::Rect boundary(1,1,points.cols-2,points.rows-2);
     if (!boundary.contains(cv::Point(loc))) {
         out = {-1,-1,-1};
         return;
@@ -565,7 +565,7 @@ void freeze_inner_params(ceres::Problem &problem, int edge_dist, cv::Mat_<uint8_
 
 
     cv::Mat_<uint8_t> masked;
-    bitwise_and(masked, (uint8_t)inner_flags, masked);
+    bitwise_and(state, cv::Scalar(inner_flags), masked);
 
 
     cv::distanceTransform(masked, dist, cv::DIST_L1, cv::DIST_MASK_3);
@@ -1048,7 +1048,7 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *c
     int h = w;
     int z = w;
     cv::Size size = {w,h};
-    cv::Rect bounds(0,0,w-1,h-1);
+    cv::Rect bounds(0,0,w,h);
 
     int x0 = w/2;
     int y0 = h/2;
