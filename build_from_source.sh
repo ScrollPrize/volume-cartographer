@@ -230,7 +230,7 @@ cmake .. -G Ninja \
     -DBUILD_EXAMPLES=OFF \
     -DBUILD_DOCS=OFF \
     -DWITH_CUDA=OFF \
-    -DWITH_OPENMP=ON \
+    -DWITH_OPENMP=OFF \
     -DWITH_TBB=OFF \
     -DWITH_IPP=OFF \
     -DWITH_VTK=OFF \
