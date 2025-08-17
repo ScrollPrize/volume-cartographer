@@ -86,7 +86,7 @@ struct json_metadata {
           seed(seed_),
           elapsed_time_s(elapsed_time_s_) {}
 
-=    json_metadata(float area_vx2_,
+    json_metadata(float area_vx2_,
                   float area_cm2_,
                   double max_cost_,
                   double avg_cost_,
