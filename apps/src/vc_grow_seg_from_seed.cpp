@@ -315,16 +315,16 @@ int main(int argc, char *argv[])
 
     QuadSurface *surf = space_tracing_quad_phys(ds.get(), 1.0, &chunk_cache, origin, generations, step_size, cache_root, voxelsize);
 
-    double area_cm2 = (*surf->meta)["area_cm2"].get<double>();
+    double area_cm2 = surf->metadata.area_cm2;
     if (area_cm2 < min_area_cm)
         return EXIT_SUCCESS;
 
-    (*surf->meta)["source"] = "vc_grow_seg_from_seed";
-    (*surf->meta)["vc_gsfs_params"] = params;
-    (*surf->meta)["vc_gsfs_mode"] = mode;
-    (*surf->meta)["vc_gsfs_version"] = "dev";
+    surf->metadata.custom_fields["source"] = "vc_grow_seg_from_seed";
+    surf->metadata.custom_fields["vc_gsfs_params"] = params;
+    surf->metadata.custom_fields["vc_gsfs_mode"] = mode;
+    surf->metadata.custom_fields["vc_gsfs_version"] = "dev";
     if (mode == "expansion")
-        (*surf->meta)["seed_overlap"] = count_overlap;
+        surf->metadata.custom_fields["seed_overlap"] = count_overlap;
     std::string uuid = name_prefix + time_str();
     fs::path seg_dir = tgt_dir / uuid;
     std::cout << "saving " << seg_dir << std::endl;

@@ -62,9 +62,6 @@ static cv::Vec3f nominal_loc(const cv::Vec3f &nominal, const cv::Vec3f &internal
 
 Surface::~Surface()
 {
-    if (meta) {
-        delete meta;
-    }
 }
 
 PlaneSurface::PlaneSurface(cv::Vec3f origin_, cv::Vec3f normal) : _origin(origin_)
@@ -1518,8 +1515,7 @@ void QuadSurface::save(const std::string &path_, const std::string &uuid)
     cv::imwrite(path/"y.tif", xyz[1]);
     cv::imwrite(path/"z.tif", xyz[2]);
 
-    if (!meta)
-        meta = new nlohmann::json;
+    auto* meta = new nlohmann::json;
 
     (*meta)["bbox"] = {{bbox().low[0],bbox().low[1],bbox().low[2]},{bbox().high[0],bbox().high[1],bbox().high[2]}};
     (*meta)["type"] = "seg";
@@ -1531,20 +1527,6 @@ void QuadSurface::save(const std::string &path_, const std::string &uuid)
 
     //rename to make creation atomic
     fs::rename(path/"meta.json.tmp", path/+"meta.json");
-}
-
-void QuadSurface::save_meta()
-{
-    if (!meta)
-        throw std::runtime_error("can't save_meta() without metadata!");
-    if (path.empty())
-        throw std::runtime_error("no storage path for QuadSurface");
-
-    std::ofstream o(path/"meta.json.tmp");
-    o << std::setw(4) << (*meta) << std::endl;
-    
-    //rename to make creation atomic
-    fs::rename(path/"meta.json.tmp", path/"meta.json");
 }
 
 Rect3D QuadSurface::bbox()
@@ -1563,7 +1545,6 @@ Rect3D QuadSurface::bbox()
 
     return _bbox;
 }
-
 QuadSurface *load_quad_from_tifxyz(const std::string &path)
 {
     std::vector<cv::Mat_<float>> xyz = {cv::imread(path+"/x.tif",cv::IMREAD_UNCHANGED),cv::imread(path+"/y.tif",cv::IMREAD_UNCHANGED),cv::imread(path+"/z.tif",cv::IMREAD_UNCHANGED)};
@@ -1598,8 +1579,8 @@ QuadSurface *load_quad_from_tifxyz(const std::string &path)
     
     surf->path = path;
     surf->id   = metadata["uuid"];
-    surf->meta = new nlohmann::json(metadata);
-    
+    surf->metadata.from_json(metadata);
+
     return surf;
 }
 
@@ -1695,8 +1676,7 @@ SurfaceMeta::SurfaceMeta(const std::filesystem::path &path_, const nlohmann::jso
 {
     if (json.contains("bbox"))
         bbox = rect_from_json(json["bbox"]);
-    meta = new nlohmann::json;
-    *meta = json;
+    metadata.from_json(json);
 }
 
 SurfaceMeta::SurfaceMeta(const std::filesystem::path &path_) : path(path_)
@@ -1705,18 +1685,18 @@ SurfaceMeta::SurfaceMeta(const std::filesystem::path &path_) : path(path_)
     if (!meta_f.is_open() || !meta_f.good()) {
         throw std::runtime_error("Cannot open meta.json file at: " + path_.string());
     }
-    
-    meta = new nlohmann::json;
+
+    nlohmann::json json;
     try {
-        *meta = nlohmann::json::parse(meta_f);
+        json = nlohmann::json::parse(meta_f);
     } catch (const nlohmann::json::parse_error& e) {
-        delete meta;
-        meta = nullptr;
         throw std::runtime_error("Invalid JSON in meta.json at: " + path_.string() + " - " + e.what());
     }
-    
-    if (meta->contains("bbox"))
-        bbox = rect_from_json((*meta)["bbox"]);
+
+    if (json.contains("bbox"))
+        bbox = rect_from_json(json["bbox"]);
+
+    metadata.from_json(json);
 }
 
 SurfaceMeta::~SurfaceMeta()
@@ -1725,9 +1705,6 @@ SurfaceMeta::~SurfaceMeta()
         delete _surf;
     }
 
-    if (meta) {
-        delete meta;
-    }
 }
 
 void SurfaceMeta::readOverlapping()

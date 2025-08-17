@@ -1521,16 +1521,17 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *c
 
     QuadSurface *surf = new QuadSurface(locs, {1/T, 1/T});
 
-    surf->meta = new nlohmann::json;
-    (*surf->meta)["area_vx2"] = area_est_vx2;
-    (*surf->meta)["area_cm2"] = area_est_cm2;
-    (*surf->meta)["max_cost"] = max_cost;
-    (*surf->meta)["avg_cost"] = avg_cost;
-    (*surf->meta)["max_gen"] = generation;
-    (*surf->meta)["gen_avg_cost"] = gen_avg_cost;
-    (*surf->meta)["gen_max_cost"] = gen_max_cost;
-    (*surf->meta)["seed"] = {origin[0],origin[1],origin[2]};
-    (*surf->meta)["elapsed_time_s"] = f_timer.seconds();
+    surf->metadata = json_metadata(
+        area_est_vx2,
+        area_est_cm2,
+        max_cost,
+        avg_cost,
+        generation,
+        gen_avg_cost,
+        gen_max_cost,
+        cv::Vec3f(origin[0], origin[1], origin[2]),
+        f_timer.seconds()
+    );
 
     return surf;
 }
@@ -2623,9 +2624,9 @@ QuadSurface *grow_surf_from_surfs(SurfaceMeta *seed, const std::vector<SurfaceMe
     std::set<SurfaceMeta*> approved_sm;
     
     for(auto &sm : surfs_v) {
-        if (sm->meta->contains("tags") && sm->meta->at("tags").contains("approved"))
+        if (sm->metadata.tags.approved)
             approved_sm.insert(sm);
-        if (!sm->meta->contains("tags") || !sm->meta->at("tags").contains("defective")) {            
+        if (!sm->metadata.tags.defective) {
             surfs[sm->name()] = sm;
         }
     }
@@ -2735,7 +2736,8 @@ QuadSurface *grow_surf_from_surfs(SurfaceMeta *seed, const std::vector<SurfaceMe
         data_ths[i] = data;
     
     bool at_right_border = false;
-    for(int generation=0;generation<stop_gen;generation++) {
+    int generation = 0;
+    for(generation=0;generation<stop_gen;generation++) {
         std::unordered_set<cv::Vec2i,vec2i_hash> cands;
         if (generation == 0) {
             cands.insert(cv::Vec2i(y0-1,x0));
@@ -3095,20 +3097,28 @@ QuadSurface *grow_surf_from_surfs(SurfaceMeta *seed, const std::vector<SurfaceMe
             update_mapping = false;
 
         if (generation % 50 == 0 || update_mapping /*|| generation < 10*/) {
-            {
-                cv::Mat_<cv::Vec3d> points_hr = surftrack_genpoints_hr(data, state, points, used_area, step, src_step);
-                QuadSurface *dbg_surf = new QuadSurface(points_hr(used_area_hr), {1/src_step,1/src_step});
-                dbg_surf->meta = new nlohmann::json;
-                (*dbg_surf->meta)["vc_grow_seg_from_segments_params"] = params;
 
-                float const area_est_vx2 = loc_valid_count*src_step*src_step*step*step;
-                float const area_est_cm2 = area_est_vx2 * voxelsize * voxelsize / 1e8;
-                (*dbg_surf->meta)["area_vx2"] = area_est_vx2;
-                (*dbg_surf->meta)["area_cm2"] = area_est_cm2;
-                std::string uuid = Z_DBG_GEN_PREFIX+get_surface_time_str();
-                dbg_surf->save(tgt_dir / uuid, uuid);
-                delete dbg_surf;
-            }
+            cv::Mat_<cv::Vec3d> points_hr = surftrack_genpoints_hr(data, state, points, used_area, step, src_step);
+            QuadSurface *dbg_surf = new QuadSurface(points_hr(used_area_hr), {1/src_step,1/src_step});
+
+            float const area_est_vx2 = loc_valid_count*src_step*src_step*step*step;
+            float const area_est_cm2 = area_est_vx2 * voxelsize * voxelsize / 1e8;
+
+            dbg_surf->metadata.area_vx2 = area_est_vx2;
+            dbg_surf->metadata.area_cm2 = area_est_cm2;
+            dbg_surf->metadata.max_cost = 0.0;
+            dbg_surf->metadata.avg_cost = 0.0;
+            dbg_surf->metadata.max_gen = generation;
+            dbg_surf->metadata.gen_avg_cost.clear();
+            dbg_surf->metadata.gen_max_cost.clear();
+            dbg_surf->metadata.seed = cv::Vec3f(data.seed_coord[0], data.seed_coord[1], data.seed_coord[2]);
+            dbg_surf->metadata.elapsed_time_s = 0.0;
+            dbg_surf->metadata.custom_fields["vc_grow_seg_from_segments_params"] = params;
+
+            std::string uuid = Z_DBG_GEN_PREFIX+get_surface_time_str();
+            dbg_surf->save(tgt_dir / uuid, uuid);
+            delete dbg_surf;
+
         }
 
         //lets just see what happens
@@ -3141,20 +3151,28 @@ QuadSurface *grow_surf_from_surfs(SurfaceMeta *seed, const std::vector<SurfaceMe
                     if (state(j,i) & STATE_LOC_VALID)
                         fringe.insert(cv::Vec2i(j,i));
 
-            {
-                cv::Mat_<cv::Vec3d> points_hr = surftrack_genpoints_hr(data, state, points, used_area, step, src_step);
-                QuadSurface *dbg_surf = new QuadSurface(points_hr(used_area_hr), {1/src_step,1/src_step});
-                dbg_surf->meta = new nlohmann::json;
-                (*dbg_surf->meta)["vc_grow_seg_from_segments_params"] = params;
 
-                std::string uuid = Z_DBG_GEN_PREFIX+get_surface_time_str()+"_opt";
-                float const area_est_vx2 = loc_valid_count*src_step*src_step*step*step;
-                float const area_est_cm2 = area_est_vx2 * voxelsize * voxelsize / 1e8;
-                (*dbg_surf->meta)["area_vx2"] = area_est_vx2;
-                (*dbg_surf->meta)["area_cm2"] = area_est_cm2;
-                dbg_surf->save(tgt_dir / uuid, uuid);
-                delete dbg_surf;
-            }
+            cv::Mat_<cv::Vec3d> points_hr = surftrack_genpoints_hr(data, state, points, used_area, step, src_step);
+            QuadSurface *dbg_surf = new QuadSurface(points_hr(used_area_hr), {1/src_step,1/src_step});
+
+            float const area_est_vx2 = loc_valid_count*src_step*src_step*step*step;
+            float const area_est_cm2 = area_est_vx2 * voxelsize * voxelsize / 1e8;
+
+            dbg_surf->metadata.area_vx2 = area_est_vx2;
+            dbg_surf->metadata.area_cm2 = area_est_cm2;
+            dbg_surf->metadata.max_cost = 0.0;
+            dbg_surf->metadata.avg_cost = 0.0;
+            dbg_surf->metadata.max_gen = generation;
+            dbg_surf->metadata.gen_avg_cost.clear();
+            dbg_surf->metadata.gen_max_cost.clear();
+            dbg_surf->metadata.seed = cv::Vec3f(data.seed_coord[0], data.seed_coord[1], data.seed_coord[2]);
+            dbg_surf->metadata.elapsed_time_s = 0.0;
+            dbg_surf->metadata.custom_fields["vc_grow_seg_from_segments_params"] = params;
+
+            std::string uuid = Z_DBG_GEN_PREFIX+get_surface_time_str()+"_opt";
+            dbg_surf->save(tgt_dir / uuid, uuid);
+            delete dbg_surf;
+
         }
 
         float const current_area_vx2 = loc_valid_count*src_step*src_step*step*step;
@@ -3218,9 +3236,16 @@ QuadSurface *grow_surf_from_surfs(SurfaceMeta *seed, const std::vector<SurfaceMe
 
     QuadSurface *surf = new QuadSurface(points_hr(used_area_hr), {1/src_step,1/src_step});
 
-    surf->meta = new nlohmann::json;
-    (*surf->meta)["area_vx2"] = area_est_vx2;
-    (*surf->meta)["area_cm2"] = area_est_cm2;
+    surf->metadata.area_vx2 = area_est_vx2;
+    surf->metadata.area_cm2 = area_est_cm2;
+    surf->metadata.max_cost = 0.0;
+    surf->metadata.avg_cost = 0.0;
+    surf->metadata.max_gen = generation;
+    surf->metadata.gen_avg_cost.clear();
+    surf->metadata.gen_max_cost.clear();
+    surf->metadata.seed = cv::Vec3f(data.seed_coord[0], data.seed_coord[1], data.seed_coord[2]);
+    surf->metadata.elapsed_time_s = 0.0;
+    surf->metadata.custom_fields["vc_grow_seg_from_segments_params"] = params;
 
     return surf;
 }

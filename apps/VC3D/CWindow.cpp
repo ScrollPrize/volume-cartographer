@@ -1387,61 +1387,55 @@ void CWindow::onTagChanged(void)
         } else if (_vol_qsurfs.count(id) && _vol_qsurfs[id]) {
             surf = _vol_qsurfs[id]->surface();
         }
-        
-        if (!surf || !surf->meta) {
+
+        if (!surf) {
             continue;
         }
-        
+
         // Track if reviewed status changed from unchecked to checked
-        bool wasReviewed = surf->meta->contains("tags") && 
-                          surf->meta->at("tags").contains("reviewed");
+        bool wasReviewed = surf->metadata.tags.reviewed;
         bool isNowReviewed = _chkReviewed->checkState() == Qt::Checked;
         bool reviewedJustAdded = !wasReviewed && isNowReviewed;
-        
-        if (surf->meta->contains("tags")) {
-            sync_tag(surf->meta->at("tags"), _chkApproved->checkState() == Qt::Checked, "approved", username);
-            sync_tag(surf->meta->at("tags"), _chkDefective->checkState() == Qt::Checked, "defective", username);
-            sync_tag(surf->meta->at("tags"), _chkReviewed->checkState() == Qt::Checked, "reviewed", username);
-            sync_tag(surf->meta->at("tags"), _chkRevisit->checkState() == Qt::Checked, "revisit", username);
-            surf->save_meta();
+
+        // Update the tags based on checkbox states
+        surf->metadata.tags.approved = (_chkApproved->checkState() == Qt::Checked);
+        surf->metadata.tags.defective = (_chkDefective->checkState() == Qt::Checked);
+        surf->metadata.tags.reviewed = (_chkReviewed->checkState() == Qt::Checked);
+        surf->metadata.tags.revisit = (_chkRevisit->checkState() == Qt::Checked);
+
+        // Store username and date information in custom_fields if needed
+        if (!username.empty()) {
+            nlohmann::json tagInfo;
+            if (surf->metadata.tags.approved) {
+                tagInfo["approved"] = {
+                    {"user", username},
+                    {"date", QDateTime::currentDateTime().toString(Qt::ISODate).toStdString()}
+                };
+            }
+            if (surf->metadata.tags.defective) {
+                tagInfo["defective"] = {
+                    {"user", username},
+                    {"date", QDateTime::currentDateTime().toString(Qt::ISODate).toStdString()}
+                };
+            }
+            if (surf->metadata.tags.reviewed) {
+                tagInfo["reviewed"] = {
+                    {"user", username},
+                    {"date", QDateTime::currentDateTime().toString(Qt::ISODate).toStdString()}
+                };
+            }
+            if (surf->metadata.tags.revisit) {
+                tagInfo["revisit"] = {
+                    {"user", username},
+                    {"date", QDateTime::currentDateTime().toString(Qt::ISODate).toStdString()}
+                };
+            }
+            surf->metadata.custom_fields["tag_info"] = tagInfo;
         }
-        else if (_chkApproved->checkState() || _chkDefective->checkState() || _chkReviewed->checkState() || _chkRevisit->checkState()) {
-            surf->meta->push_back({"tags", nlohmann::json::object()});
-            if (_chkApproved->checkState()) {
-                if (!username.empty()) {
-                    surf->meta->at("tags")["approved"] = nlohmann::json::object();
-                    surf->meta->at("tags")["approved"]["user"] = username;
-                } else {
-                    surf->meta->at("tags")["approved"] = nullptr;
-                }
-            }
-            if (_chkDefective->checkState()) {
-                if (!username.empty()) {
-                    surf->meta->at("tags")["defective"] = nlohmann::json::object();
-                    surf->meta->at("tags")["defective"]["user"] = username;
-                } else {
-                    surf->meta->at("tags")["defective"] = nullptr;
-                }
-            }
-            if (_chkReviewed->checkState()) {
-                if (!username.empty()) {
-                    surf->meta->at("tags")["reviewed"] = nlohmann::json::object();
-                    surf->meta->at("tags")["reviewed"]["user"] = username;
-                } else {
-                    surf->meta->at("tags")["reviewed"] = nullptr;
-                }
-            }
-            if (_chkRevisit->checkState()) {
-                if (!username.empty()) {
-                    surf->meta->at("tags")["revisit"] = nlohmann::json::object();
-                    surf->meta->at("tags")["revisit"]["user"] = username;
-                } else {
-                    surf->meta->at("tags")["revisit"] = nullptr;
-                }
-            }
-            surf->save_meta();
-        }
-        
+
+        // Save the metadata to disk
+        surf->save(surf->path);
+
         // If reviewed was just added, mark overlapping segmentations with partial_review
         if (reviewedJustAdded && _vol_qsurfs.count(id)) {
             SurfaceMeta* surfMeta = _vol_qsurfs[id];
@@ -1453,31 +1447,32 @@ void CWindow::onTagChanged(void)
                 if (_vol_qsurfs.count(overlapId)) {
                     SurfaceMeta* overlapMeta = _vol_qsurfs[overlapId];
                     QuadSurface* overlapSurf = overlapMeta->surface();
-                    
-                    if (overlapSurf && overlapSurf->meta) {
+
+                    if (overlapSurf) {
                         // Don't mark as partial_review if it's already reviewed
-                        bool alreadyReviewed = overlapSurf->meta->contains("tags") && 
-                                             overlapSurf->meta->at("tags").contains("reviewed");
-                        
+                        bool alreadyReviewed = overlapSurf->metadata.tags.reviewed;
+
                         if (!alreadyReviewed) {
-                            // Ensure tags object exists
-                            if (!overlapSurf->meta->contains("tags")) {
-                                (*overlapSurf->meta)["tags"] = nlohmann::json::object();
-                            }
-                            
-                            // Add partial_review tag
+                            // Add partial_review information to custom_fields
+                            nlohmann::json partialReviewInfo;
+                            partialReviewInfo["partial_review"] = {
+                                {"source", id},
+                                {"date", QDateTime::currentDateTime().toString(Qt::ISODate).toStdString()}
+                            };
                             if (!username.empty()) {
-                                (*overlapSurf->meta)["tags"]["partial_review"] = nlohmann::json::object();
-                                (*overlapSurf->meta)["tags"]["partial_review"]["user"] = username;
-                                (*overlapSurf->meta)["tags"]["partial_review"]["source"] = id;
-                            } else {
-                                (*overlapSurf->meta)["tags"]["partial_review"] = nlohmann::json::object();
-                                (*overlapSurf->meta)["tags"]["partial_review"]["source"] = id;
+                                partialReviewInfo["partial_review"]["user"] = username;
                             }
-                            
+
+                            // Merge with existing tag_info if present
+                            if (overlapSurf->metadata.custom_fields.contains("tag_info")) {
+                                overlapSurf->metadata.custom_fields["tag_info"]["partial_review"] = partialReviewInfo["partial_review"];
+                            } else {
+                                overlapSurf->metadata.custom_fields["tag_info"] = partialReviewInfo;
+                            }
+
                             // Save the metadata
-                            overlapSurf->save_meta();
-                            
+                            overlapSurf->save(overlapSurf->path);
+
                             std::cout << "Added partial_review tag to " << overlapId << std::endl;
                         }
                     }
@@ -1547,9 +1542,9 @@ void CWindow::onSurfaceSelected()
             const QSignalBlocker b2{_chkDefective};
             const QSignalBlocker b3{_chkReviewed};
             const QSignalBlocker b4{_chkRevisit};
-            
-            std::cout << "surf " << _surf->path << _surfID <<  _surf->meta << std::endl;
-            
+
+            std::cout << "surf " << _surf->path << " " << _surfID << std::endl;
+
             _chkApproved->setEnabled(true);
             _chkDefective->setEnabled(true);
             _chkReviewed->setEnabled(true);
@@ -1559,22 +1554,11 @@ void CWindow::onSurfaceSelected()
             _chkDefective->setCheckState(Qt::Unchecked);
             _chkReviewed->setCheckState(Qt::Unchecked);
             _chkRevisit->setCheckState(Qt::Unchecked);
-            if (_surf->meta) {
-                if (_surf->meta->value("tags", nlohmann::json::object_t()).count("approved"))
-                    _chkApproved->setCheckState(Qt::Checked);
-                if (_surf->meta->value("tags", nlohmann::json::object_t()).count("defective"))
-                    _chkDefective->setCheckState(Qt::Checked);
-                if (_surf->meta->value("tags", nlohmann::json::object_t()).count("reviewed"))
-                    _chkReviewed->setCheckState(Qt::Checked);
-                if (_surf->meta->value("tags", nlohmann::json::object_t()).count("revisit"))
-                    _chkRevisit->setCheckState(Qt::Checked);
-            }
-            else {
-                _chkApproved->setEnabled(false);
-                _chkDefective->setEnabled(false);
-                _chkReviewed->setEnabled(true);
-                _chkRevisit->setEnabled(true);
-            }
+
+            _chkApproved->setCheckState(_surf->metadata.tags.approved ? Qt::Checked : Qt::Unchecked);
+            _chkDefective->setCheckState(_surf->metadata.tags.defective ? Qt::Checked : Qt::Unchecked);
+            _chkReviewed->setCheckState(_surf->metadata.tags.reviewed ? Qt::Checked : Qt::Unchecked);
+            _chkRevisit->setCheckState(_surf->metadata.tags.revisit ? Qt::Checked : Qt::Unchecked);
         }
     }
     else
@@ -1585,7 +1569,6 @@ void CWindow::onSurfaceSelected()
         onSegFilterChanged(0);
     }
 }
-
 void CWindow::FillSurfaceTree()
 {
     const QSignalBlocker blocker{treeWidgetSurfaces};
@@ -1596,9 +1579,11 @@ void CWindow::FillSurfaceTree()
         auto* item = new SurfaceTreeWidgetItem(treeWidgetSurfaces);
         item->setText(SURFACE_ID_COLUMN, QString(id.c_str()));
         item->setData(SURFACE_ID_COLUMN, Qt::UserRole, QVariant(id.c_str()));
-        double size = _vol_qsurfs[id]->meta->value("area_cm2", -1.f);
+        double size = _vol_qsurfs[id]->metadata.area_cm2;
+        if (size == 0.0f) size = -1.0f; // Use -1 as default if not set
         item->setText(2, QString::number(size, 'f', 3));
-        double cost = _vol_qsurfs[id]->meta->value("avg_cost", -1.f);
+        double cost = _vol_qsurfs[id]->metadata.avg_cost;
+        if (cost == 0.0) cost = -1.0; // Use -1 as default if not set
         item->setText(3, QString::number(cost, 'f', 3));
         item->setText(4, QString::number(_vol_qsurfs[id]->overlapping_str.size()));
 
@@ -1611,7 +1596,7 @@ void CWindow::FillSurfaceTree()
     treeWidgetSurfaces->resizeColumnToContents(3);
 
     if (!appInitComplete) {
-        // Apply initial sorting during apps tartup, but afterwards keep
+        // Apply initial sorting during app startup, but afterwards keep
         // whatever the user chose
         treeWidgetSurfaces->sortByColumn(SURFACE_ID_COLUMN, Qt::AscendingOrder);
     }
@@ -1622,11 +1607,9 @@ void CWindow::UpdateSurfaceTreeIcon(SurfaceTreeWidgetItem *item)
     std::string id = item->data(SURFACE_ID_COLUMN, Qt::UserRole).toString().toStdString();
 
     // Approved / defective icon
-    if (_vol_qsurfs[id]->surface()->meta) {
-        item->updateItemIcon(
-            _vol_qsurfs[id]->surface()->meta->value("tags", nlohmann::json::object_t()).count("approved"),
-            _vol_qsurfs[id]->surface()->meta->value("tags", nlohmann::json::object_t()).count("defective"));
-    }
+    item->updateItemIcon(
+        _vol_qsurfs[id]->surface()->metadata.tags.approved,
+        _vol_qsurfs[id]->surface()->metadata.tags.defective);
 }
 
 void CWindow::onSegFilterChanged(int index)
@@ -1747,9 +1730,8 @@ void CWindow::onSegFilterChanged(int index)
             // Filter by unreviewed
             if (chkFilterUnreviewed->isChecked()) {
                 auto* surface = _vol_qsurfs[id]->surface();
-                if (surface && surface->meta) {
-                    auto tags = surface->meta->value("tags", nlohmann::json::object_t());
-                    show = show && !tags.count("reviewed");
+                if (surface) {
+                    show = show && !surface->metadata.tags.reviewed;
                 } else {
                     show = show && true;
                 }
@@ -1758,9 +1740,8 @@ void CWindow::onSegFilterChanged(int index)
             // Filter by revisit
             if (chkFilterRevisit->isChecked()) {
                 auto* surface = _vol_qsurfs[id]->surface();
-                if (surface && surface->meta) {
-                    auto tags = surface->meta->value("tags", nlohmann::json::object_t());
-                    show = show && (tags.count("revisit") > 0);
+                if (surface) {
+                    show = show && surface->metadata.tags.revisit;
                 } else {
                     show = show && false;
                 }
@@ -1769,9 +1750,9 @@ void CWindow::onSegFilterChanged(int index)
             // Filter out expansion
             if (chkFilterNoExpansion->isChecked()) {
                 auto* surface = _vol_qsurfs[id]->surface();
-                if (surface && surface->meta) {
-                    if (surface->meta->contains("vc_gsfs_mode")) {
-                        std::string mode = surface->meta->value("vc_gsfs_mode", "");
+                if (surface) {
+                    if (surface->metadata.custom_fields.contains("vc_gsfs_mode")) {
+                        std::string mode = surface->metadata.custom_fields["vc_gsfs_mode"].get<std::string>();
                         show = show && (mode != "expansion");
                     } else {
                         show = show && true;
@@ -1784,9 +1765,8 @@ void CWindow::onSegFilterChanged(int index)
             // Filter out defective
             if (chkFilterNoDefective->isChecked()) {
                 auto* surface = _vol_qsurfs[id]->surface();
-                if (surface && surface->meta) {
-                    auto tags = surface->meta->value("tags", nlohmann::json::object_t());
-                    show = show && !tags.count("defective");
+                if (surface) {
+                    show = show && !surface->metadata.tags.defective;
                 } else {
                     show = show && true;
                 }
@@ -1795,9 +1775,8 @@ void CWindow::onSegFilterChanged(int index)
             // Filter out partial review
             if (chkFilterPartialReview->isChecked()) {
                 auto* surface = _vol_qsurfs[id]->surface();
-                if (surface && surface->meta) {
-                    auto tags = surface->meta->value("tags", nlohmann::json::object_t());
-                    show = show && !tags.count("partial_review");
+                if (surface) {
+                    show = show && !surface->metadata.hasPartialReview();
                 } else {
                     show = show && true;
                 }
@@ -1805,9 +1784,8 @@ void CWindow::onSegFilterChanged(int index)
 
             if (chkFilterHideUnapproved->isChecked()) {
                 auto* surface = _vol_qsurfs[id]->surface();
-                if (surface && surface->meta) {
-                    auto tags = surface->meta->value("tags", nlohmann::json::object_t());
-                    show = show && (tags.count("approved") > 0);
+                if (surface) {
+                    show = show && surface->metadata.tags.approved;
                 } else {
                     show = show && false;  // Hide segments without metadata when filter is active
                 }
@@ -2136,9 +2114,11 @@ void CWindow::AddSingleSegmentation(const std::string& segId)
             auto* item = new SurfaceTreeWidgetItem(treeWidgetSurfaces);
             item->setText(SURFACE_ID_COLUMN, QString(segId.c_str()));
             item->setData(SURFACE_ID_COLUMN, Qt::UserRole, QVariant(segId.c_str()));
-            double size = sm->meta->value("area_cm2", -1.f);
+            double size = sm->metadata.area_cm2;
+            if (size == 0.0f) size = -1.0f;
             item->setText(2, QString::number(size, 'f', 3));
-            double cost = sm->meta->value("avg_cost", -1.f);
+            double cost = sm->metadata.avg_cost;
+            if (cost == 0.0) cost = -1.0;
             item->setText(3, QString::number(cost, 'f', 3));
             item->setText(4, QString::number(sm->overlapping_str.size()));
             UpdateSurfaceTreeIcon(item);
@@ -2279,40 +2259,46 @@ void CWindow::onGenerateReviewReport()
     for (const auto& pair : _vol_qsurfs) {
         const std::string& surfaceId = pair.first;
         SurfaceMeta* surfMeta = pair.second;
-        
-        if (!surfMeta || !surfMeta->surface() || !surfMeta->surface()->meta) {
+
+        if (!surfMeta || !surfMeta->surface()) {
             continue;
         }
-        
-        nlohmann::json* meta = surfMeta->surface()->meta;
-        
+
         // Check if surface has reviewed tag
-        if (!meta->contains("tags") || !meta->at("tags").contains("reviewed")) {
+        if (!surfMeta->surface()->metadata.tags.reviewed) {
             continue;
         }
-        
+
         // Get review date
         QString reviewDate = "Unknown";
-        if (meta->at("tags").at("reviewed").contains("date")) {
-            QString fullDate = QString::fromStdString(meta->at("tags").at("reviewed").at("date").get<std::string>());
-            // Extract just the date portion (YYYY-MM-DD) from ISO date string
-            reviewDate = fullDate.left(10);
-        } else {
-            // Fallback to file modification time
+        if (surfMeta->surface()->metadata.tag_metadata.count("reviewed")) {
+            const auto& reviewInfo = surfMeta->surface()->metadata.tag_metadata.at("reviewed");
+            if (!reviewInfo.date.empty()) {
+                QString fullDate = QString::fromStdString(reviewInfo.date);
+                // Extract just the date portion (YYYY-MM-DD) from ISO date string
+                reviewDate = fullDate.left(10);
+            }
+        }
+
+        // Fallback to file modification time if no date found
+        if (reviewDate == "Unknown") {
             QFileInfo metaFile(QString::fromStdString(surfMeta->path.string()) + "/meta.json");
             if (metaFile.exists()) {
                 reviewDate = metaFile.lastModified().toString("yyyy-MM-dd");
             }
         }
-        
+
         // Get username
         QString username = "Unknown";
-        if (meta->at("tags").at("reviewed").contains("user")) {
-            username = QString::fromStdString(meta->at("tags").at("reviewed").at("user").get<std::string>());
+        if (surfMeta->surface()->metadata.tag_metadata.count("reviewed")) {
+            const auto& reviewInfo = surfMeta->surface()->metadata.tag_metadata.at("reviewed");
+            if (!reviewInfo.user.empty()) {
+                username = QString::fromStdString(reviewInfo.user);
+            }
         }
-        
-        // Get area
-        double area = meta->value("area_cm2", 0.0);
+
+        // Get area directly from metadata
+        double area = surfMeta->surface()->metadata.area_cm2;
         
         // Aggregate data
         dailyStats[reviewDate][username].totalArea += area;

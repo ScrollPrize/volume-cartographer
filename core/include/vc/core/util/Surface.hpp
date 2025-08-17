@@ -1,9 +1,11 @@
 #pragma once
 #include <filesystem>
 #include <set>
+#include <vector>
+#include <string>
 
-#include <opencv2/core.hpp> 
-#include <nlohmann/json_fwd.hpp>
+#include <opencv2/core.hpp>
+#include <nlohmann/json.hpp>
 
 #include "SurfaceDef.hpp"
 
@@ -33,6 +35,287 @@ public:
 struct Rect3D {
     cv::Vec3f low = {0,0,0};
     cv::Vec3f high = {0,0,0};
+};
+
+
+
+struct json_metadata {
+    float area_vx2 = 0.0f;
+    float area_cm2 = 0.0f;
+    double max_cost = 0.0;
+    double avg_cost = 0.0;
+    int max_gen = 0;
+    std::vector<float> gen_avg_cost;
+    std::vector<float> gen_max_cost;
+    cv::Vec3f seed = {0, 0, 0};
+    double elapsed_time_s = 0.0;
+
+    struct Tags {
+        bool approved = false;
+        bool defective = false;
+        bool reviewed = false;
+        bool revisit = false;
+    } tags;
+
+    struct TagInfo {
+        std::string user;
+        std::string date;
+        nlohmann::json extra;  // For any additional fields like "source" for partial_review
+    };
+
+    std::map<std::string, TagInfo> tag_metadata;
+    nlohmann::json custom_fields;
+
+    json_metadata() = default;
+    json_metadata(float area_vx2_,
+                  float area_cm2_,
+                  double max_cost_,
+                  double avg_cost_,
+                  int max_gen_,
+                  const std::vector<float>& gen_avg_cost_,
+                  const std::vector<float>& gen_max_cost_,
+                  const cv::Vec3f& seed_,
+                  double elapsed_time_s_)
+        : area_vx2(area_vx2_),
+          area_cm2(area_cm2_),
+          max_cost(max_cost_),
+          avg_cost(avg_cost_),
+          max_gen(max_gen_),
+          gen_avg_cost(gen_avg_cost_),
+          gen_max_cost(gen_max_cost_),
+          seed(seed_),
+          elapsed_time_s(elapsed_time_s_) {}
+
+=    json_metadata(float area_vx2_,
+                  float area_cm2_,
+                  double max_cost_,
+                  double avg_cost_,
+                  int max_gen_,
+                  const std::vector<float>& gen_avg_cost_,
+                  const std::vector<float>& gen_max_cost_,
+                  const cv::Vec3f& seed_,
+                  double elapsed_time_s_,
+                  bool approved_,
+                  bool defective_,
+                  bool reviewed_,
+                  bool revisit_)
+        : area_vx2(area_vx2_),
+          area_cm2(area_cm2_),
+          max_cost(max_cost_),
+          avg_cost(avg_cost_),
+          max_gen(max_gen_),
+          gen_avg_cost(gen_avg_cost_),
+          gen_max_cost(gen_max_cost_),
+          seed(seed_),
+          elapsed_time_s(elapsed_time_s_) {
+        tags.approved = approved_;
+        tags.defective = defective_;
+        tags.reviewed = reviewed_;
+        tags.revisit = revisit_;
+    }
+
+    void from_json(const nlohmann::json& j) {
+        area_vx2 = j.value("area_vx2", 0.0f);
+        area_cm2 = j.value("area_cm2", 0.0f);
+        max_cost = j.value("max_cost", 0.0);
+        avg_cost = j.value("avg_cost", 0.0);
+        max_gen = j.value("max_gen", 0);
+        elapsed_time_s = j.value("elapsed_time_s", 0.0);
+
+        gen_avg_cost.clear();
+        if (j.contains("gen_avg_cost") && j["gen_avg_cost"].is_array()) {
+            for (const auto& val : j["gen_avg_cost"]) {
+                gen_avg_cost.push_back(val.get<float>());
+            }
+        }
+
+        gen_max_cost.clear();
+        if (j.contains("gen_max_cost") && j["gen_max_cost"].is_array()) {
+            for (const auto& val : j["gen_max_cost"]) {
+                gen_max_cost.push_back(val.get<float>());
+            }
+        }
+
+        seed = {0, 0, 0};
+        if (j.contains("seed") && j["seed"].is_array() && j["seed"].size() == 3) {
+            seed[0] = j["seed"][0].get<float>();
+            seed[1] = j["seed"][1].get<float>();
+            seed[2] = j["seed"][2].get<float>();
+        }
+
+        tags.approved = false;
+        tags.defective = false;
+        tags.reviewed = false;
+        tags.revisit = false;
+        tag_metadata.clear();
+
+        if (j.contains("tags")) {
+            const auto& tags_json = j["tags"];
+
+            auto parse_tag = [this](const nlohmann::json& tag_json, const std::string& tag_name, bool& tag_flag) {
+                if (tag_json.contains(tag_name)) {
+                    tag_flag = true;
+                    if (tag_json[tag_name].is_object()) {
+                        TagInfo info;
+                        if (tag_json[tag_name].contains("user")) {
+                            info.user = tag_json[tag_name]["user"].get<std::string>();
+                        }
+                        if (tag_json[tag_name].contains("date")) {
+                            info.date = tag_json[tag_name]["date"].get<std::string>();
+                        }
+                        // Store any extra fields
+                        for (auto& [key, value] : tag_json[tag_name].items()) {
+                            if (key != "user" && key != "date") {
+                                info.extra[key] = value;
+                            }
+                        }
+                        tag_metadata[tag_name] = info;
+                    }
+                }
+            };
+
+            parse_tag(tags_json, "approved", tags.approved);
+            parse_tag(tags_json, "defective", tags.defective);
+            parse_tag(tags_json, "reviewed", tags.reviewed);
+            parse_tag(tags_json, "revisit", tags.revisit);
+
+            if (tags_json.contains("partial_review")) {
+                TagInfo info;
+                if (tags_json["partial_review"].is_object()) {
+                    if (tags_json["partial_review"].contains("user")) {
+                        info.user = tags_json["partial_review"]["user"].get<std::string>();
+                    }
+                    if (tags_json["partial_review"].contains("date")) {
+                        info.date = tags_json["partial_review"]["date"].get<std::string>();
+                    }
+                    if (tags_json["partial_review"].contains("source")) {
+                        info.extra["source"] = tags_json["partial_review"]["source"];
+                    }
+                }
+                tag_metadata["partial_review"] = info;
+            }
+        }
+
+        for (auto& [key, value] : j.items()) {
+            if (key != "area_vx2" && key != "area_cm2" && key != "max_cost" &&
+                key != "avg_cost" && key != "max_gen" && key != "elapsed_time_s" &&
+                key != "gen_avg_cost" && key != "gen_max_cost" && key != "seed" &&
+                key != "tags") {
+                custom_fields[key] = value;
+            }
+        }
+    }
+
+    nlohmann::json to_json() const {
+        nlohmann::json j;
+        j["area_vx2"] = area_vx2;
+        j["area_cm2"] = area_cm2;
+        j["max_cost"] = max_cost;
+        j["avg_cost"] = avg_cost;
+        j["max_gen"] = max_gen;
+        j["elapsed_time_s"] = elapsed_time_s;
+        j["gen_avg_cost"] = gen_avg_cost;
+        j["gen_max_cost"] = gen_max_cost;
+        j["seed"] = nlohmann::json::array({seed[0], seed[1], seed[2]});
+
+        nlohmann::json tags_json;
+
+        auto write_tag = [this, &tags_json](const std::string& tag_name, bool tag_value) {
+            if (tag_value) {
+                if (tag_metadata.count(tag_name)) {
+                    nlohmann::json tag_obj;
+                    const auto& info = tag_metadata.at(tag_name);
+                    if (!info.user.empty()) tag_obj["user"] = info.user;
+                    if (!info.date.empty()) tag_obj["date"] = info.date;
+                    for (auto& [key, value] : info.extra.items()) {
+                        tag_obj[key] = value;
+                    }
+                    tags_json[tag_name] = tag_obj;
+                } else {
+                    tags_json[tag_name] = true;
+                }
+            }
+        };
+
+        write_tag("approved", tags.approved);
+        write_tag("defective", tags.defective);
+        write_tag("reviewed", tags.reviewed);
+        write_tag("revisit", tags.revisit);
+
+        if (tag_metadata.count("partial_review")) {
+            const auto& info = tag_metadata.at("partial_review");
+            nlohmann::json pr_obj;
+            if (!info.user.empty()) pr_obj["user"] = info.user;
+            if (!info.date.empty()) pr_obj["date"] = info.date;
+            for (auto& [key, value] : info.extra.items()) {
+                pr_obj[key] = value;
+            }
+            tags_json["partial_review"] = pr_obj;
+        }
+
+        j["tags"] = tags_json;
+
+        for (auto& [key, value] : custom_fields.items()) {
+            j[key] = value;
+        }
+
+        return j;
+    }
+
+    bool isApproved() const { return tags.approved; }
+    bool isDefective() const { return tags.defective; }
+    bool isReviewed() const { return tags.reviewed; }
+    bool isRevisit() const { return tags.revisit; }
+
+    bool hasPartialReview() const { return tag_metadata.count("partial_review") > 0; }
+
+    void setApproved(bool value = true, const std::string& user = "", const std::string& date = "") {
+        tags.approved = value;
+        if (value && (!user.empty() || !date.empty())) {
+            tag_metadata["approved"] = {user, date, {}};
+        } else if (!value) {
+            tag_metadata.erase("approved");
+        }
+    }
+
+    void setDefective(bool value = true, const std::string& user = "", const std::string& date = "") {
+        tags.defective = value;
+        if (value && (!user.empty() || !date.empty())) {
+            tag_metadata["defective"] = {user, date, {}};
+        } else if (!value) {
+            tag_metadata.erase("defective");
+        }
+    }
+
+    void setReviewed(bool value = true, const std::string& user = "", const std::string& date = "") {
+        tags.reviewed = value;
+        if (value && (!user.empty() || !date.empty())) {
+            tag_metadata["reviewed"] = {user, date, {}};
+        } else if (!value) {
+            tag_metadata.erase("reviewed");
+        }
+    }
+
+    void setRevisit(bool value = true, const std::string& user = "", const std::string& date = "") {
+        tags.revisit = value;
+        if (value && (!user.empty() || !date.empty())) {
+            tag_metadata["revisit"] = {user, date, {}};
+        } else if (!value) {
+            tag_metadata.erase("revisit");
+        }
+    }
+
+    void setPartialReview(const std::string& source, const std::string& user = "", const std::string& date = "") {
+        TagInfo info;
+        info.user = user;
+        info.date = date;
+        info.extra["source"] = source;
+        tag_metadata["partial_review"] = info;
+    }
+
+    void clearPartialReview() {
+        tag_metadata.erase("partial_review");
+    }
 };
 
 bool intersect(const Rect3D &a, const Rect3D &b);
@@ -70,7 +353,8 @@ public:
     //coordgenerator relative to ptr&offset
     //needs to be deleted after use
     virtual void gen(cv::Mat_<cv::Vec3f> *coords, cv::Mat_<cv::Vec3f> *normals, cv::Size size, SurfacePointer *ptr, float scale, const cv::Vec3f &offset) = 0;
-    nlohmann::json *meta = nullptr;
+
+    json_metadata metadata;
     std::filesystem::path path;
     SurfaceID id;
 };
@@ -130,7 +414,6 @@ public:
 
     void save(const std::string &path, const std::string &uuid);
     void save(std::filesystem::path &path);
-    void save_meta();
     Rect3D bbox();
 
     virtual cv::Mat_<cv::Vec3f> rawPoints() { return *_points; }
@@ -226,7 +509,8 @@ public:
     std::filesystem::path path;
     QuadSurface *_surf = nullptr;
     Rect3D bbox;
-    nlohmann::json *meta = nullptr;
+
+    json_metadata metadata;
     std::set<std::string> overlapping_str;
     std::set<SurfaceMeta*> overlapping;
 };

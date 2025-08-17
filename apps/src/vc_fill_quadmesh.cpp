@@ -1446,8 +1446,7 @@ int main(int argc, char *argv[])
     {
         QuadSurface *surf_full = new QuadSurface(points(bbox), surfs[0]->_scale/trace_mul);
         fs::path tgt_dir = "./";
-        surf_full->meta = new nlohmann::json;
-        (*surf_full->meta)["vc_fill_quadmesh_params"] = params;
+        surf_full->metadata.custom_fields["vc_fill_quadmesh_params"] = params;
         std::string name_prefix = "fuse_fill_";
         std::string uuid = name_prefix + time_str();
         fs::path seg_dir = tgt_dir / uuid;
