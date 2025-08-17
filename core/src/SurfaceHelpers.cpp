@@ -3185,7 +3185,7 @@ QuadSurface *grow_surf_from_surfs(SurfaceMeta *seed, const std::vector<SurfaceMe
             old_state.copyTo(state(cv::Rect(0,0,old_state.cols,h)));
 
             cv::Mat_<uint16_t> old_inliers_sum_dbg = inliers_sum_dbg;
-            inliers_sum_dbg = cv::Mat_<uint8_t>(size, 0);
+            inliers_sum_dbg = cv::Mat_<uint16_t>(size, 0);
             old_inliers_sum_dbg.copyTo(inliers_sum_dbg(cv::Rect(0,0,old_inliers_sum_dbg.cols,h)));
 
             int overlap = 5;
