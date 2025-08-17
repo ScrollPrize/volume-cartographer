@@ -2621,6 +2621,10 @@ QuadSurface *grow_surf_from_surfs(SurfaceMeta *seed, const std::vector<SurfaceMe
     std::cout << "total surface count: " << surfs_v.size() << std::endl;
 
     std::set<SurfaceMeta*> approved_sm;
+
+    std::set<std::string> used_approved_names;
+    std::string log_filename = "/tmp/vc_grow_seg_from_segments_" + get_surface_time_str() + "_used_approved_segments.txt";
+    std::ofstream approved_log(log_filename);
     
     for(auto &sm : surfs_v) {
         if (sm->meta->contains("tags") && sm->meta->at("tags").contains("approved"))
@@ -2870,9 +2874,19 @@ QuadSurface *grow_surf_from_surfs(SurfaceMeta *seed, const std::vector<SurfaceMe
                 
                 int inliers_sum = 0;
                 int inliers_count = 0;
+
                 //TODO could also have priorities!
                 if (approved_sm.count(ref_surf) && straight_count_init >= 2 && count_init >= 4) {
                     std::cout << "found approved sm " << ref_surf->name() << std::endl;
+
+                    // Log approved surface if not already logged
+                    if (used_approved_names.insert(ref_surf->name()).second) {
+                        mutex.lock();
+                        approved_log << ref_surf->name() << std::endl;
+                        approved_log.flush();
+                        mutex.unlock();
+                    }
+
                     best_inliers = 1000;
                     best_coord = coord;
                     best_surf = ref_surf;
@@ -3105,6 +3119,7 @@ QuadSurface *grow_surf_from_surfs(SurfaceMeta *seed, const std::vector<SurfaceMe
                 float const area_est_cm2 = area_est_vx2 * voxelsize * voxelsize / 1e8;
                 (*dbg_surf->meta)["area_vx2"] = area_est_vx2;
                 (*dbg_surf->meta)["area_cm2"] = area_est_cm2;
+                (*dbg_surf->meta)["used_approved_segments"] = std::vector<std::string>(used_approved_names.begin(), used_approved_names.end());
                 std::string uuid = Z_DBG_GEN_PREFIX+get_surface_time_str();
                 dbg_surf->save(tgt_dir / uuid, uuid);
                 delete dbg_surf;
@@ -3152,6 +3167,7 @@ QuadSurface *grow_surf_from_surfs(SurfaceMeta *seed, const std::vector<SurfaceMe
                 float const area_est_cm2 = area_est_vx2 * voxelsize * voxelsize / 1e8;
                 (*dbg_surf->meta)["area_vx2"] = area_est_vx2;
                 (*dbg_surf->meta)["area_cm2"] = area_est_cm2;
+                (*dbg_surf->meta)["used_approved_segments"] = std::vector<std::string>(used_approved_names.begin(), used_approved_names.end());
                 dbg_surf->save(tgt_dir / uuid, uuid);
                 delete dbg_surf;
             }
@@ -3209,6 +3225,8 @@ QuadSurface *grow_surf_from_surfs(SurfaceMeta *seed, const std::vector<SurfaceMe
         if (!fringe.size())
             break;
     }
+
+    approved_log.close();
     
     float const area_est_vx2 = loc_valid_count*src_step*src_step*step*step;
     float const area_est_cm2 = area_est_vx2 * voxelsize * voxelsize / 1e8;
@@ -3221,6 +3239,7 @@ QuadSurface *grow_surf_from_surfs(SurfaceMeta *seed, const std::vector<SurfaceMe
     surf->meta = new nlohmann::json;
     (*surf->meta)["area_vx2"] = area_est_vx2;
     (*surf->meta)["area_cm2"] = area_est_cm2;
+    (*surf->meta)["used_approved_segments"] = std::vector<std::string>(used_approved_names.begin(), used_approved_names.end());
 
     return surf;
 }
