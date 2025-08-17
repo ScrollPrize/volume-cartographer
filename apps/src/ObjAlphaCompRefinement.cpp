@@ -154,7 +154,7 @@ int process_obj(const std::string &src, const std::string &tgt, DSReader &reader
         float border_off = params.value<float>("border_off", 1.0);
         int r = params.value<int>("r", 3);
 
-#pragma omp parallel for
+//#pragma omp parallel for
         for(int j=0;j<vs.size();j++) {
             float off = alphacomp_offset(reader, vs[j], vns[j], start, stop, step, low, high, r);
             vs[j] += vns[j]*(off + border_off);

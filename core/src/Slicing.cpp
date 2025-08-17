@@ -386,16 +386,16 @@ void readInterpolated3D(cv::Mat_<uint8_t> &out, z5::Dataset *ds,
         });
     std::mutex speculative_mutex;
 
-#pragma omp parallel
+//#pragma omp parallel
     {
         cv::Vec4i last_idx = {-1,-1,-1,-1};
         std::shared_ptr<xt::xarray<uint8_t>> chunk_ref;
         xt::xarray<uint8_t> *chunk = nullptr;
 
-#pragma omp for schedule(guided,1)
+//#pragma omp for schedule(guided,1)
         for(size_t y = 0;y<h;y++) {
             if (w*h > 10000000)
-#pragma omp critical
+//#pragma omp critical
             {
                 done++;
                 if (done % 100 == 0)
@@ -441,7 +441,7 @@ void readInterpolated3D(cv::Mat_<uint8_t> &out, z5::Dataset *ds,
 
                         if (should_speculate) {
                             // Launch speculative loading in a separate task
-                            #pragma omp task
+                            //#pragma omp task
                             {
                                 speculativeLoadNeighbors(ds, cache, group_idx,
                                                        ix, iy, iz);
@@ -517,7 +517,7 @@ void readInterpolated3D(cv::Mat_<uint8_t> &out, z5::Dataset *ds,
                 }
             }
         }
-        #pragma omp taskwait
+        //#pragma omp taskwait
     }
 }
 
@@ -675,13 +675,13 @@ cv::Mat_<cv::Vec3f> smooth_vc_segmentation(const cv::Mat_<cv::Vec3f> &points)
     
     cv::Mat trans = out.t();
     
-    #pragma omp parallel for
+    //#pragma omp parallel for
     for(int j=0;j<trans.rows;j++) 
         cv::GaussianBlur(trans({0,j,trans.cols,1}), blur({0,j,trans.cols,1}), {255,1}, 0);
     
     blur = blur.t();
     
-    #pragma omp parallel for
+    //#pragma omp parallel for
     for(int j=1;j<points.rows;j++)
         for(int i=1;i<points.cols-1;i++) {
             cv::Vec2f loc = {i,j};
@@ -711,7 +711,7 @@ void vc_segmentation_scales(cv::Mat_<cv::Vec3f> points, double &sx, double &sy)
         imax = points.size().width;
         step = 1;
     }
-#pragma omp parallel for
+//#pragma omp parallel for
     for(int j=jmin;j<jmax;j+=step) {
         double _sum_x = 0;
         double _sum_y = 0;
@@ -724,7 +724,7 @@ void vc_segmentation_scales(cv::Mat_<cv::Vec3f> points, double &sx, double &sy)
             _sum_y += sqrt(v.dot(v));
             _count++;
         }
-#pragma omp critical
+//#pragma omp critical
         {
             sum_x += _sum_x;
             sum_y += _sum_y;
@@ -741,7 +741,7 @@ cv::Mat_<cv::Vec3f> vc_segmentation_calc_normals(const cv::Mat_<cv::Vec3f> &poin
     cv::Mat_<cv::Vec3f> blur;
     cv::GaussianBlur(points, blur, {21,21}, 0);
     cv::Mat_<cv::Vec3f> normals(points.size());
-#pragma omp parallel for
+//#pragma omp parallel for
     for(int j=n_step;j<points.rows-n_step;j++)
         for(int i=n_step;i<points.cols-n_step;i++) {
             cv::Vec3f xv = normed(blur(j,i+n_step)-blur(j,i-n_step));
@@ -755,7 +755,7 @@ cv::Mat_<cv::Vec3f> vc_segmentation_calc_normals(const cv::Mat_<cv::Vec3f> &poin
         
         cv::GaussianBlur(normals, normals, {21,21}, 0);
         
-#pragma omp parallel for
+//#pragma omp parallel for
         for(int j=n_step;j<points.rows-n_step;j++)
             for(int i=n_step;i<points.cols-n_step;i++)
                 normals(j,i) = normed(normals(j,i));

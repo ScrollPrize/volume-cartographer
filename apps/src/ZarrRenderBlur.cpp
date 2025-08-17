@@ -291,13 +291,13 @@ cv::Mat_<cv::Vec3f> derive_regular_region_stupid_gauss(cv::Mat_<cv::Vec3f> point
     
     cv::Mat trans = out.t();
     
-#pragma omp parallel for
+//#pragma omp parallel for
     for(int j=0;j<trans.rows;j++) 
         cv::GaussianBlur(trans({0,j,trans.cols,1}), blur({0,j,trans.cols,1}), {255,1}, 0);
 
     blur = blur.t();
     
-#pragma omp parallel for
+//#pragma omp parallel for
     for(int j=1;j<points.rows;j++)
         for(int i=1;i<points.cols-1;i++) {
             // min_loc(points, {i,j}, out(j,i), {out(j,i)[0],out(j,i)[1],out(j,i)[2]});
@@ -321,7 +321,7 @@ cv::Mat_<cv::Vec3f> derive_regular_region_stupid_gauss_indirect(cv::Mat_<cv::Vec
     
     int dist = 20;
     
-    #pragma omp parallel for
+    //#pragma omp parallel for
     for(int j=2*dist;j<points.rows-2*dist;j++)
         for(int i=2*dist;i<points.cols-2*dist;i++) {
             std::vector<cv::Vec3f> tgts = {blur(j-dist,i),blur(j+dist,i),blur(j,i+dist/5),blur(j,i-dist/5)};
@@ -348,7 +348,7 @@ cv::Mat_<cv::Vec3f> derive_regular_region(cv::Mat_<cv::Vec3f> points)
 
     cv::GaussianBlur(out, out, {1,255}, 0);
     
-#pragma omp parallel for
+//#pragma omp parallel for
     for(int j=1;j<points.rows;j++)
         for(int i=1;i<points.cols-1;i++) {
             // min_loc(points, {i,j}, out(j,i), {out(j,i)[0],out(j,i)[1],out(j,i)[2]});
@@ -382,9 +382,9 @@ cv::Mat_<cv::Vec3f> derive_regular_region(cv::Mat_<cv::Vec3f> points)
 //     float sqd = sqrt(2);
 //     
 // //     // float dist
-// // // #pragma omp parallel for
+// // // //#pragma omp parallel for
 //     for(int j=500;j<1000;j++)
-// #pragma omp parallel for
+// //#pragma omp parallel for
 //         for(int i=200;i<800;i++) {
 //             std::vector<cv::Vec3f> tgts = {out(j-1,i-1),out(j-1,i),out(j-1,i+1)};
 //             // std::vector<cv::Vec3f> tgts = {out(j-1,i-1),out(j-1,i),out(j-1,i+1),out(j-1,i-2),out(j-1,i+2)};
@@ -396,7 +396,7 @@ cv::Mat_<cv::Vec3f> derive_regular_region(cv::Mat_<cv::Vec3f> points)
 //         }
 //         
 //     for(int j=510;j<520;j++)
-//         // #pragma omp parallel for
+//         // //#pragma omp parallel for
 //         for(int i=200;i<800;i++) {
 //             out(j,i) = {-1,-1,-1};
 //         }*/
@@ -410,10 +410,10 @@ cv::Mat_<cv::Vec3f> derive_regular_region(cv::Mat_<cv::Vec3f> points)
 //         
 //     cv::Mat tmp(src.size(), src.type());
 // 
-// #pragma omp parallel for
+// //#pragma omp parallel for
 //     for(int j=0;j<src.rows;j++) 
 //         cv::GaussianBlur(src({0,j,src.cols,1}), tmp({0,j,src.cols,1}), {size,1}, 0);
-// #pragma omp parallel for
+// //#pragma omp parallel for
 //     for(int i=0;i<src.cols;i++) 
 //         cv::GaussianBlur(tmp({i,0,1, src.rows}), tgt({i,0,1, src.rows}), {1,size}, 0);
 // }

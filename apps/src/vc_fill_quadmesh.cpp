@@ -743,7 +743,7 @@ cv::Mat_<cv::Vec3f> points_hr_grounding(const cv::Mat_<uint8_t> &state, std::vec
                     }
             }
 
-#pragma omp parallel for
+//#pragma omp parallel for
     for(int j=0;j<points_hr.rows;j++)
         for(int i=0;i<points_hr.cols;i++)
             if (counts_hr(j,i))
@@ -1228,7 +1228,7 @@ int main(int argc, char *argv[])
         
         std::cout << "proc col " << i << std::endl;
         ceres::Problem problem_col;
-#pragma omp parallel for
+//#pragma omp parallel for
         for(int j=std::max(bbox.y,lower_bound);j<std::min(bbox.br().y,upper_bound+1);j++) {
             cv::Vec2i p = {j,i};
 
@@ -1267,7 +1267,7 @@ int main(int argc, char *argv[])
         std::vector<int> add_idxs;
         
         //TODO re-use existing locs if there!
-#pragma omp parallel for
+//#pragma omp parallel for
         for(int j=bbox.y;j<bbox.br().y;j++) {
             for(int o=0;o<=opt_w;o++) {
                 //only add in area where we also inpaint
@@ -1283,7 +1283,7 @@ int main(int argc, char *argv[])
                     if (res >= 0 &&
                         cv::norm(at_int(surf_points[s], {loc[1],loc[0]}) - cv::Vec3f(points(po))) <= 100
                         && cv::norm(at_int(winds[s], {loc[1],loc[0]}) - tgt_wind[i-o]) <= wind_th)
-#pragma omp critical
+//#pragma omp critical
                         {
                             surf_locs[s](po) = loc;
                             add_idxs.push_back(s);

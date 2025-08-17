@@ -250,13 +250,13 @@ static cv::Mat_<cv::Vec3f> derive_regular_region_stupid_gauss(cv::Mat_<cv::Vec3f
     
     cv::Mat trans = out.t();
     
-#pragma omp parallel for
+//#pragma omp parallel for
     for(int j=0;j<trans.rows;j++) 
         cv::GaussianBlur(trans({0,j,trans.cols,1}), blur({0,j,trans.cols,1}), {255,1}, 0);
 
     blur = blur.t();
     
-#pragma omp parallel for
+//#pragma omp parallel for
     for(int j=1;j<points.rows;j++)
         for(int i=1;i<points.cols-1;i++) {
             cv::Vec2f loc = {i,j};
@@ -599,7 +599,7 @@ cv::Mat_<cv::Vec3f> upsample_with_grounding_simple(const cv::Mat_<cv::Vec3f> &sm
     cv::Vec2f step = {sx*10, sy*10};
     cv::resize(locs, locs, large.size(), cv::INTER_CUBIC);
 
-#pragma omp parallel for
+//#pragma omp parallel for
     for(int j=0;j<large.rows;j++) {
         for(int i=0;i<large.cols;i++) {
             cv::Vec3f tgt = large(j,i);
@@ -923,7 +923,7 @@ public:
         if (_thread_idx[t_id] == -1)
             _thread_idx[t_id] = rand() % _thread_count;
         _thread_points[t_id] = {-1,-1};
-#pragma omp critical
+//#pragma omp critical
         _thread_points[t_id] = extract_point_min_dist(_points, _thread_points, _thread_idx[t_id], _dist);
         return _thread_points[t_id];
     }
@@ -949,7 +949,7 @@ template <typename T, typename E>
 void _dist_iteration(T &from, T &to, int s)
 {
     E magic = -1;
-#pragma omp parallel for
+//#pragma omp parallel for
     for(int k=0;k<s;k++)
         for(int j=0;j<s;j++)
             for(int i=0;i<s;i++) {
@@ -987,7 +987,7 @@ T distance_transform(const T &chunk, int steps, int size)
         _dist_iteration<T,E>(c2,c1,size);
     }
 
-#pragma omp parallel for
+//#pragma omp parallel for
     for(int z=0;z<size;z++)
         for(int y=0;y<size;y++)
             for(int x=0;x<size;x++)
@@ -1013,7 +1013,7 @@ struct thresholdedDistance
 
         int good_count = 0;
 
-#pragma omp parallel for
+//#pragma omp parallel for
         for(int z=0;z<s;z++)
             for(int y=0;y<s;y++)
                 for(int x=0;x<s;x++)
@@ -1222,7 +1222,7 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *c
 
         OmpThreadPointCol cands_threadcol(max_local_opt_r*2+1, cands);
 
-#pragma omp parallel
+//#pragma omp parallel
         {
             CachedChunked3dInterpolator<uint8_t,thresholdedDistance> interp(proc_tensor);
 //             int idx = rand() % cands.size();
@@ -1273,7 +1273,7 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *c
 
                 if (ref_count < 2 || ref_count+0.35*rec_ref_sum < curr_ref_min /*|| (generation > 3 && ref_count2 < 14)*/) {
                     state(p) &= ~STATE_PROCESSING;
-#pragma omp critical
+//#pragma omp critical
                     rest_ps.push_back(p);
                     continue;
                 }
@@ -1352,7 +1352,7 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *c
                     locs(p) = phys_only_loc;
                     state(p) = STATE_COORD_VALID;
                     if (global_opt) {
-#pragma omp critical
+//#pragma omp critical
                         loss_count += emptytrace_create_missing_centered_losses(big_problem, loss_status, p, state, locs, a1,a2,a3,a4, 
                                                                                 interp_global, proc_tensor, Ts, OPTIMIZE_ALL);
                     }
@@ -1367,31 +1367,31 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *c
                         }
                         if (err > phys_fail_th) {
                             std::cout << "local phys fail! " << err << std::endl;
-#pragma omp atomic
+//#pragma omp atomic
                             phys_fail_count++;
-#pragma omp atomic
+//#pragma omp atomic
                             phys_fail_count_gen++;
                         }
                     }
                 }
                 else {
                     if (global_opt) {
-#pragma omp critical
+//#pragma omp critical
                         loss_count += emptytrace_create_missing_centered_losses(big_problem, loss_status, p, state, locs, a1,a2,a3,a4, 
                                                                                 interp_global, proc_tensor, Ts);
                     }
-#pragma omp atomic
+//#pragma omp atomic
                     succ++;
-#pragma omp atomic
+//#pragma omp atomic
                     succ_gen++;
-#pragma omp critical
+//#pragma omp critical
                     {
                         if (!used_area.contains(cv::Point(p[1],p[0]))) {
                             used_area = used_area | cv::Rect(p[1],p[0],1,1);
                         }
                     }
                     
-#pragma omp critical
+//#pragma omp critical
                     {
                         fringe.push_back(p);
                         succ_gen_ps.push_back(p);
@@ -1440,7 +1440,7 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *c
             if (opt_local.size()) {
                 OmpThreadPointCol opt_local_threadcol(17, opt_local);
 
-#pragma omp parallel
+//#pragma omp parallel
                 while (true)
                 {
                     CachedChunked3dInterpolator<uint8_t,thresholdedDistance> interp(proc_tensor);
@@ -2157,7 +2157,7 @@ cv::Mat_<cv::Vec3d> surftrack_genpoints_hr(SurfTrackerData &data, cv::Mat_<uint8
 {
     cv::Mat_<cv::Vec3f> points_hr(state.rows*step, state.cols*step, {0,0,0});
     cv::Mat_<int> counts_hr(state.rows*step, state.cols*step, 0);
-#pragma omp parallel for //FIXME data access is just not threading friendly ...
+//#pragma omp parallel for //FIXME data access is just not threading friendly ...
     for(int j=used_area.y;j<used_area.br().y-1;j++)
         for(int i=used_area.x;i<used_area.br().x-1;i++) {
             if (state(j,i) & (STATE_LOC_VALID|STATE_COORD_VALID)
@@ -2211,7 +2211,7 @@ cv::Mat_<cv::Vec3d> surftrack_genpoints_hr(SurfTrackerData &data, cv::Mat_<uint8
             }
         }
     }
-#pragma omp parallel for
+//#pragma omp parallel for
     for(int j=0;j<points_hr.rows;j++)
         for(int i=0;i<points_hr.cols;i++)
             if (counts_hr(j,i))
@@ -2412,7 +2412,7 @@ void optimize_surface_mapping(SurfTrackerData &data, cv::Mat_<uint8_t> &state, c
     cv::Mat_<cv::Vec3d> points_out(points.size(), {-1,-1,-1});
     cv::Mat_<uint8_t> state_out(state.size(), 0);
     cv::Mat_<uint8_t> support_count(state.size(), 0);
-#pragma omp parallel for
+//#pragma omp parallel for
     for(int j=used_area.y;j<used_area.br().y;j++)
         for(int i=used_area.x;i<used_area.br().x;i++)
             if (static_bounds.contains(cv::Point(i,j))) {
@@ -2493,7 +2493,7 @@ void optimize_surface_mapping(SurfTrackerData &data, cv::Mat_<uint8_t> &state, c
         fringe_next.setTo(0);
         
         added = 0;
-#pragma omp parallel for collapse(2) schedule(dynamic)
+//#pragma omp parallel for collapse(2) schedule(dynamic)
         for(int j=used_area.y;j<used_area.br().y-1;j++)
             for(int i=used_area.x;i<used_area.br().x-1;i++)
                 if (!static_bounds.contains(cv::Point(i,j)) && state_out(j,i) & STATE_LOC_VALID && (fringe(j, i) || fringe_next(j, i))) {
@@ -2528,7 +2528,7 @@ void optimize_surface_mapping(SurfTrackerData &data, cv::Mat_<uint8_t> &state, c
                             continue;
                         
                         mutex.lock();
-#pragma omp atomic
+//#pragma omp atomic
                         added++;
                         data_out.surfs({j,i}).insert(test_surf);
                         data_out.loc(test_surf, {j,i}) = {loc_3d[1], loc_3d[0]};
@@ -2543,7 +2543,7 @@ void optimize_surface_mapping(SurfTrackerData &data, cv::Mat_<uint8_t> &state, c
     }
                      
     //reset unsupported points
-#pragma omp parallel for
+//#pragma omp parallel for
     for(int j=used_area.y;j<used_area.br().y-1;j++)
         for(int i=used_area.x;i<used_area.br().x-1;i++)
             if (!static_bounds.contains(cv::Point(i,j))) {
@@ -2768,7 +2768,7 @@ QuadSurface *grow_surf_from_surfs(SurfaceMeta *seed, const std::vector<SurfaceMe
 
             std::shared_mutex mutex;
             int best_inliers_gen = 0;
-#pragma omp parallel
+//#pragma omp parallel
         while (true)
         {
             cv::Vec2i p = threadcol.next();
@@ -3020,7 +3020,7 @@ QuadSurface *grow_surf_from_surfs(SurfaceMeta *seed, const std::vector<SurfaceMe
             else {
                 state(p) = 0;
                 points(p) = {-1,-1,-1};
-#pragma omp critical
+//#pragma omp critical
                 best_inliers_gen = std::max(best_inliers_gen, best_inliers);
             }
         }

@@ -239,7 +239,7 @@ cv::Mat_<cv::Vec3f> points_hr_grounding(cv::Mat_<float> wind_lr, const cv::Mat_<
                     }
                 }
 
-#pragma omp parallel for
+//#pragma omp parallel for
     for(int j=0;j<points_hr.rows;j++)
         for(int i=0;i<points_hr.cols;i++)
             if (counts_hr(j,i))

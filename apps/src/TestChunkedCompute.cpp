@@ -35,7 +35,7 @@ template <typename T, typename E>
 void _dist_iteration(T &from, T &to, int s)
 {
     E magic = -1;
-#pragma omp parallel for
+//#pragma omp parallel for
     for(int k=0;k<s;k++)
         for(int j=0;j<s;j++)
             for(int i=0;i<s;i++) {
@@ -73,7 +73,7 @@ T distance_transform(const T &chunk, int steps, int size)
         _dist_iteration<T,E>(c2,c1,size);
     }
 
-    #pragma omp parallel for
+    //#pragma omp parallel for
     for(int z=0;z<size;z++)
         for(int y=0;y<size;y++)
             for(int x=0;x<size;x++)
@@ -95,7 +95,7 @@ struct thresholdedDistance
         int s = CHUNK_SIZE+2*BORDER;
         E magic = -1;
 
-#pragma omp parallel for
+//#pragma omp parallel for
         for(int z=0;z<s;z++)
             for(int y=0;y<s;y++)
                 for(int x=0;x<s;x++)
@@ -150,10 +150,10 @@ int main(int argc, char *argv[])
     //         for(int i=0;i<w;i++)
     //             img(j,i) = acc(4000,j,i);
     // }
-#pragma omp parallel
+//#pragma omp parallel
     {
         Chunked3dAccessor acc(proc_tensor);
-#pragma omp for
+//#pragma omp for
         for(int j=2000;j<3000;j++) {
             for(int i=2500;i<4500;i++)
                 img(j,i) = acc.safe_at(2000,j,i);

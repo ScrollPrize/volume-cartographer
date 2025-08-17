@@ -962,27 +962,27 @@ void CVolumeViewer::renderIntersections()
         for (auto key : _intersect_tgts)
             intersect_tgts_v.push_back(key);
 
-#pragma omp parallel for
+//#pragma omp parallel for
         for(int n=0;n<intersect_tgts_v.size();n++) {
             std::string key = intersect_tgts_v[n];
             bool haskey;
-#pragma omp critical
+//#pragma omp critical
             haskey = _intersect_items.count(key);
             if (!haskey && dynamic_cast<QuadSurface*>(_surf_col->surface(key))) {
                 QuadSurface *segmentation = dynamic_cast<QuadSurface*>(_surf_col->surface(key));
 
                 if (intersect(view_bbox, segmentation->bbox()))
-#pragma omp critical
+//#pragma omp critical
                     intersect_cands.push_back(key);
                 else
-#pragma omp critical
+//#pragma omp critical
                     _intersect_items[key] = {};
             }
         }
 
         std::vector<std::vector<std::vector<cv::Vec3f>>> intersections(intersect_cands.size());
 
-#pragma omp parallel for
+//#pragma omp parallel for
         for(int n=0;n<intersect_cands.size();n++) {
             std::string key = intersect_cands[n];
             QuadSurface *segmentation = dynamic_cast<QuadSurface*>(_surf_col->surface(key));
@@ -1085,11 +1085,11 @@ void CVolumeViewer::renderIntersections()
                 for (auto wp : seg)
                     src_locations.push_back(wp);
             
-#pragma omp parallel
+//#pragma omp parallel
             {
                 // SurfacePointer *ptr = crop->pointer();
                 SurfacePointer *ptr = _surf->pointer();
-#pragma omp for
+//#pragma omp for
                 for (auto wp : src_locations) {
                     // float res = crop->pointTo(ptr, wp, 2.0, 100);
                     // cv::Vec3f p = crop->loc(ptr)*_ds_scale + cv::Vec3f(_vis_center[0],_vis_center[1],0);
@@ -1099,7 +1099,7 @@ void CVolumeViewer::renderIntersections()
                     if (res >= 2.0)
                         p = {-1,-1,-1};
                         // std::cout << "WARNING pointTo() high residual in renderIntersections()" << std::endl;
-#pragma omp critical
+//#pragma omp critical
                     location_cache[wp] = p;
                 }
             }

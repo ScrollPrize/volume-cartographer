@@ -223,7 +223,7 @@ void PlaneSurface::gen(cv::Mat_<cv::Vec3f> *coords, cv::Mat_<cv::Vec3f> *normals
 
     cv::Vec3f use_origin = _origin + _normal*total_offset[2];
 
-#pragma omp parallel for
+//#pragma omp parallel for
     for(int j=0;j<h;j++)
         for(int i=0;i<w;i++) {
             (*coords)(j,i) = vx*(i*m+total_offset[0]) + vy*(j*m+total_offset[1]) + use_origin;

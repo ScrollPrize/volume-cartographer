@@ -1128,7 +1128,7 @@ void CWindow::LoadSurfaces(bool reload)
     if (!to_load.empty()) {
         std::cout << "Loading " << to_load.size() << " new surfaces..." << std::endl;
         
-        #pragma omp parallel for
+        //#pragma omp parallel for
         for(int i = 0; i < to_load.size(); i++) {
             auto seg = fVpkg->segmentation(to_load[i].first);
             try {

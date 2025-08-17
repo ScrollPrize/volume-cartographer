@@ -174,7 +174,7 @@ cv::Mat_<cv::Vec3f> surf_alpha_integ_dbg(z5::Dataset *ds, ChunkCache *chunk_cach
 //     
 //     cv::Mat_<cv::Vec3f> dist = avg_surf-new_surf;
 //     
-//     #pragma omp parallel for
+//     //#pragma omp parallel for
 //     for(int j=0;j<points.rows;j++)
 //         for(int i=0;i<points.cols;i++) {
 //             rel_height(j,i) = cv::norm(dist(j,i));

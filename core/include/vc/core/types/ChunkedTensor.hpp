@@ -216,12 +216,12 @@ public:
                 _chunks[id] = chunk;
             }
             else {
-#pragma omp atomic
+//#pragma omp atomic
                 chunk_compute_collisions++;
                 munmap(chunk, len_bytes);
                 chunk = _chunks[id];
             }
-#pragma omp atomic
+//#pragma omp atomic
             chunk_compute_total++;
             _mutex.unlock();
 
@@ -269,13 +269,13 @@ public:
                 throw std::runtime_error("oops rename failed!");
         }
         else {
-#pragma omp atomic
+//#pragma omp atomic
             chunk_compute_collisions++;
             munmap(chunk, len_bytes);
             unlink(tmp_path.string().c_str());
             chunk = _chunks[id];
         }
-#pragma omp atomic
+//#pragma omp atomic
         chunk_compute_total++;
         _mutex.unlock();
 
@@ -312,11 +312,11 @@ public:
             _chunks[id] = chunk;
         }
         else {
-#pragma omp atomic
+//#pragma omp atomic
             chunk_compute_collisions++;
             chunk = _chunks[id];
         }
-#pragma omp atomic
+//#pragma omp atomic
         chunk_compute_total++;
         _mutex.unlock();
 
@@ -343,12 +343,12 @@ public:
     //     if (!_chunks.count(id))
     //         _chunks[id] = small;
     //     else {
-    //         #pragma omp atomic
+    //         //#pragma omp atomic
     //         chunk_compute_collisions++;
     //         delete small;
     //         small = _chunks[id];
     //     }
-    //     #pragma omp atomic
+    //     //#pragma omp atomic
     //     chunk_compute_total++;
     //     _mutex.unlock();
     //
@@ -485,7 +485,7 @@ public:
                 get_chunk_safe(p);
         }
 
-        #pragma omp atomic
+        //#pragma omp atomic
         total++;
 
         // size_t pos_xt = &_chunk->operator()(p[0]-_corner[0],p[1]-_corner[1],p[2]-_corner[2]) - &_chunk->operator()(0,0,0);
@@ -513,7 +513,7 @@ public:
 
     void get_chunk_safe(const cv::Vec3i &p)
     {
-        #pragma omp atomic
+        //#pragma omp atomic
         miss++;
         cv::Vec3i id = {p[0]/C::CHUNK_SIZE,p[1]/C::CHUNK_SIZE,p[2]/C::CHUNK_SIZE};
         _chunk = _ar.chunk_safe(id);
