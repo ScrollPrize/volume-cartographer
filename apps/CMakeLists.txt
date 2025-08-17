@@ -26,6 +26,15 @@ target_link_libraries(vc_render_tifxyz
     Boost::program_options
 )
 
+add_executable(vc_surface_diff src/vc_surface_diff.cpp)
+target_link_libraries(vc_surface_diff
+        z5
+        opencv_core
+        VC::slicing
+        VC::surface
+        Boost::program_options
+)
+
 add_executable(vc_objrefine src/ObjAlphaCompRefinement.cpp)
 target_link_libraries(vc_objrefine
     z5
