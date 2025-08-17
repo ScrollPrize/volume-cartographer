@@ -78,6 +78,7 @@ public slots:
     void onGrowSegmentFromSegment(const SurfaceID& segmentId);
     void onAddOverlap(const SurfaceID& segmentId);
     void onConvertToObj(const SurfaceID& segmentId);
+    void onSlimFlattenAndRender(const SurfaceID& segmentId);
     void onGrowSeeds(const SurfaceID& segmentId, bool isExpand, bool isRandomSeed = false);
     void onToggleConsoleOutput();
     void onDeleteSegments(const std::vector<SurfaceID>& segmentIds);

@@ -1958,7 +1958,13 @@ void CWindow::onSurfaceContextMenuRequested(const QPoint& pos)
     connect(renderAction, &QAction::triggered, [this, segmentId]() {
         onRenderSegment(segmentId);
     });
-    
+
+    // SLIM-flatten and render (calls slot implemented in CWindowContextMenu.cpp)
+    QAction* slimFlattenAction = new QAction(tr("SLIM-flatten and render"), this);
+    connect(slimFlattenAction, &QAction::triggered, [this, segmentId]() {
+        onSlimFlattenAndRender(segmentId);
+    });
+
     // Grow segment from segment action
     QAction* growSegmentAction = new QAction(tr("Run Trace"), this);
     connect(growSegmentAction, &QAction::triggered, [this, segmentId]() {
@@ -1979,30 +1985,23 @@ void CWindow::onSurfaceContextMenuRequested(const QPoint& pos)
     
     // Seed submenu with options
     QMenu* seedMenu = new QMenu(tr("Run Seed"), &contextMenu);
-    
-    // Seed with Seed.json action
     QAction* seedWithSeedAction = new QAction(tr("Seed from Focus Point"), seedMenu);
     connect(seedWithSeedAction, &QAction::triggered, [this, segmentId]() {
         onGrowSeeds(segmentId, false, false);
     });
-    
-    // Random Seed with Seed.json action
     QAction* seedWithRandomAction = new QAction(tr("Random Seed"), seedMenu);
     connect(seedWithRandomAction, &QAction::triggered, [this, segmentId]() {
         onGrowSeeds(segmentId, false, true);
     });
-    
-    // Seed with Expand.json action
     QAction* seedWithExpandAction = new QAction(tr("Expand Seed"), seedMenu);
     connect(seedWithExpandAction, &QAction::triggered, [this, segmentId]() {
         onGrowSeeds(segmentId, true, false);
     });
-    
     seedMenu->addAction(seedWithSeedAction);
     seedMenu->addAction(seedWithRandomAction);
     seedMenu->addAction(seedWithExpandAction);
     
-    // Add all actions to the context menu
+    // Build menu
     contextMenu.addAction(copyPathAction);
     contextMenu.addSeparator();
     contextMenu.addMenu(seedMenu);
@@ -2010,12 +2009,11 @@ void CWindow::onSurfaceContextMenuRequested(const QPoint& pos)
     contextMenu.addAction(addOverlapAction);
     contextMenu.addSeparator();
     contextMenu.addAction(renderAction);
-    contextMenu.addSeparator();
     contextMenu.addAction(convertToObjAction);
+    contextMenu.addAction(slimFlattenAction);
     contextMenu.addSeparator();
     contextMenu.addAction(deleteAction);
     
-    // show the context menu at the position of the right-click
     contextMenu.exec(treeWidgetSurfaces->mapToGlobal(pos));
 }
 
