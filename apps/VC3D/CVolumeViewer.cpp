@@ -266,17 +266,14 @@ void CVolumeViewer::onZoom(int steps, QPointF scene_loc, Qt::KeyboardModifiers m
             adjustedSteps = (steps > 0) ? 1 : -1;
         }
 
-        if (auto* plane = dynamic_cast<PlaneSurface*>(_surf)) {
-            cv::Vec3f origin = plane->origin();
-            origin[2] += adjustedSteps;
-            if (volume) {
-                origin[2] = std::max(0.0f, std::min(origin[2], static_cast<float>(volume->numSlices() - 1)));
-            }
-            plane->setOrigin(origin);
-            _z_off = 0.0f;
-        }
-        else {
-            _z_off += adjustedSteps;
+        _z_off += adjustedSteps;
+
+        // Clamp to valid range if we have volume data
+        if (volume && dynamic_cast<PlaneSurface*>(_surf)) {
+            PlaneSurface* plane = dynamic_cast<PlaneSurface*>(_surf);
+            float effective_z = plane->origin()[2] + _z_off;
+            effective_z = std::max(0.0f, std::min(effective_z, static_cast<float>(volume->numSlices() - 1)));
+            _z_off = effective_z - plane->origin()[2];
         }
 
         renderVisible(true);
