@@ -696,9 +696,15 @@ void CWindow::CreateMenus(void)
     fViewMenu->addAction(ui.dockWidgetSegmentation->toggleViewAction());
     fViewMenu->addAction(ui.dockWidgetDistanceTransform->toggleViewAction());
     fViewMenu->addAction(ui.dockWidgetOpList->toggleViewAction());
+    fViewMenu->addAction(ui.dockWidgetDrawing->toggleViewAction());
     fViewMenu->addAction(ui.dockWidgetOpSettings->toggleViewAction());
     fViewMenu->addAction(ui.dockWidgetComposite->toggleViewAction());
     fViewMenu->addAction(ui.dockWidgetLocation->toggleViewAction());
+
+    if (_point_collection_widget) {
+        fViewMenu->addAction(_point_collection_widget->toggleViewAction());
+    }
+
     fViewMenu->addSeparator();
     fViewMenu->addAction(fResetMdiView);
     fViewMenu->addSeparator();
