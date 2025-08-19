@@ -9,6 +9,7 @@
 #include "PathData.hpp"
 #include "vc/core/util/VCCollection.hpp"
 #include "COutlinedTextItem.hpp"
+#include "vc/core/util/Surface.hpp"
 
 class ChunkCache;
 class Surface;
@@ -29,6 +30,11 @@ class POI;
 class Intersection;
 class SeedingWidget;
 class VCCollection;
+
+enum class SegmentColorMode {
+    NORMAL,
+    BY_CONTRIBUTING_SEGMENT
+};
 
 enum class ColorMap {
     GRAYSCALE,
@@ -77,6 +83,15 @@ public:
     void setResetViewOnSurfaceChange(bool reset);
     bool isCompositeEnabled() const { return _composite_enabled; }
     void setColorMap(ColorMap map) { _colorMap = map; renderVisible(true); }
+    void setSegmentColorMode(SegmentColorMode mode) { _segmentColorMode = mode; renderVisible(true); }
+    cv::Mat renderColoredBySegment(const cv::Rect &roi, QuadSurface* surf);
+    void renderSegmentWithColor(QuadSurface* surf, const cv::Rect& roi,
+                                           const cv::Vec3f& color, cv::Mat_<cv::Vec3b>& output);
+    cv::Vec3f hsv2rgb(int h, float s, float v);
+    cv::Mat render_area_standard(const cv::Rect &roi);
+
+
+
 
 
     void fitSurfaceInView();
@@ -225,6 +240,11 @@ protected:
 
     ColorMap _colorMap = ColorMap::GRAYSCALE;
     cv::Mat applyColorMap(const cv::Mat& grayscale);
+    SegmentColorMode _segmentColorMode = SegmentColorMode::NORMAL;
+    std::map<std::string, cv::Vec3f> _segmentColors;
+    std::map<std::string, QuadSurface*> _segmentCache;
+    cv::Mat_<cv::Vec4b> _lastColoredResult;
+    cv::Rect _lastColoredROI;
 
 };  // class CVolumeViewer
 

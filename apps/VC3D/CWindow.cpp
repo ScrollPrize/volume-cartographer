@@ -444,14 +444,25 @@ void CWindow::CreateWidgets(void)
     QComboBox* cmbColorMap = new QComboBox();
     cmbColorMap->addItems({"Grayscale", "Viridis", "HSV", "Jet", "Hot", "Cool", "Rainbow"});
 
-
-    // Add after existing composite controls connections
     connect(ui.cmbColorMap, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int index) {
         ColorMap map = static_cast<ColorMap>(index);
         for (auto& viewer : _viewers) {
             viewer->setColorMap(map);
         }
     });
+
+    connect(ui.cmbSegmentColor, QOverload<int>::of(&QComboBox::currentIndexChanged),
+        this, [this](int index) {
+    SegmentColorMode mode = index == 0 ?
+        SegmentColorMode::NORMAL : SegmentColorMode::BY_CONTRIBUTING_SEGMENT;
+
+    for (auto& viewer : _viewers) {
+        if (viewer->surfName() == "segmentation") {
+            viewer->setSegmentColorMode(mode);
+            break;
+        }
+    }
+});
     
     // Make Volume Package dock the active tab by default
     ui.dockWidgetVolumes->show();

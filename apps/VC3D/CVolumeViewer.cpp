@@ -549,6 +549,13 @@ void CVolumeViewer::fitSurfaceInView()
 void CVolumeViewer::onSurfaceChanged(std::string name, Surface *surf)
 {
     if (_surf_name == name) {
+        for (auto& [id, ptr] : _segmentCache) {
+            delete ptr;
+        }
+        _segmentCache.clear();
+        _segmentColors.clear();
+        _lastColoredResult = cv::Mat_<cv::Vec4b>();
+        _lastColoredROI = cv::Rect();
         _surf = surf;
         if (!_surf) {
             fScene->clear();
@@ -727,6 +734,13 @@ cv::Mat CVolumeViewer::render_area(const cv::Rect &roi)
     cv::Mat_<cv::Vec3f> coords;
     cv::Mat_<uint8_t> img;
 
+    if (_surf_name == "segmentation" && _segmentColorMode == SegmentColorMode::BY_CONTRIBUTING_SEGMENT) {
+        QuadSurface* quadSurf = dynamic_cast<QuadSurface*>(_surf);
+        if (quadSurf && quadSurf->meta) {
+            return renderColoredBySegment(roi, quadSurf);
+        }
+    }
+
     // Check if we should use composite rendering
     if (_surf_name == "segmentation" && _composite_enabled && (_composite_layers_front > 0 || _composite_layers_behind > 0)) {
         // Composite rendering for segmentation view
@@ -896,12 +910,16 @@ void CVolumeViewer::renderVisible(bool force)
 
     cv::Mat img = render_area({curr_img_area.x(), curr_img_area.y(), curr_img_area.width(), curr_img_area.height()});
 
-    // Apply colormap to grayscale image
-    cv::Mat colored = applyColorMap(img);
+    QImage qimg;
+    if (img.type() == CV_8UC4) {
+        // Already colored RGBA from segment rendering
+        qimg = Mat2QImage(img);
+    } else {
+        // Apply colormap to grayscale image
+        cv::Mat colored = applyColorMap(img);
+        qimg = Mat2QImage(colored);
+    }
 
-    // Convert to QImage - now expecting RGBA format
-    QImage qimg = Mat2QImage(colored);
-    
     QPixmap pixmap = QPixmap::fromImage(qimg, fSkipImageFormatConv ? Qt::NoFormatConversion : Qt::AutoColor);
  
     // Add the QPixmap to the scene as a QGraphicsPixmapItem
@@ -1881,4 +1899,144 @@ cv::Mat CVolumeViewer::applyColorMap(const cv::Mat& grayscale)
     }
 
     return colored;
+}
+
+cv::Mat CVolumeViewer::renderColoredBySegment(const cv::Rect &roi, QuadSurface* surf)
+{
+    // Check if we can reuse the last result
+    if (_lastColoredROI == roi && !_lastColoredResult.empty()) {
+        return _lastColoredResult;
+    }
+
+    if (!surf->meta->contains("surface_sequence")) {
+        return render_area_standard(roi);
+    }
+
+    cv::Mat_<cv::Vec4b> coloredImg(roi.size(), cv::Vec4b(0,0,0,255));
+
+    auto& sequence = (*surf->meta)["surface_sequence"];
+    std::string seedSurface = surf->meta->value("seed_surface", "");
+
+    // Generate colors only once
+    if (_segmentColors.empty()) {
+        int totalSegs = sequence.size() + (!seedSurface.empty() ? 1 : 0);
+        int hueStep = 360 / std::max(totalSegs, 1);
+        int hue = 0;
+
+        if (!seedSurface.empty()) {
+            _segmentColors[seedSurface] = hsv2rgb(hue, 0.8, 0.9);
+            hue += hueStep;
+        }
+
+        for (const auto& seg : sequence) {
+            std::string segId = seg.get<std::string>();
+            _segmentColors[segId] = hsv2rgb(hue, 0.8, 0.9);
+            hue += hueStep;
+        }
+
+        // Preload all segments
+        std::filesystem::path parentPath = surf->path.parent_path();
+        for (const auto& [segId, color] : _segmentColors) {
+            if (_segmentCache.count(segId)) continue;
+
+            std::filesystem::path segPath = parentPath / segId;
+            if (std::filesystem::exists(segPath)) {
+                try {
+                    _segmentCache[segId] = load_quad_from_tifxyz(segPath.string());
+                } catch (...) {}
+            }
+        }
+    }
+
+    // Render using cached segments
+    for (const auto& [segId, color] : _segmentColors) {
+        if (!_segmentCache.count(segId)) continue;
+
+        QuadSurface* contribSurf = _segmentCache[segId];
+
+        cv::Mat_<cv::Vec3f> segCoords;
+        contribSurf->gen(&segCoords, nullptr, roi.size(), nullptr, _scale,
+                        {roi.x/_scale, roi.y/_scale, _z_off});
+
+        cv::Mat_<uint8_t> img;
+        readInterpolated3D(img, volume->zarrDataset(_ds_sd_idx),
+                         segCoords*_ds_scale, cache);
+
+        for(int j = 0; j < roi.height; j++) {
+            for(int i = 0; i < roi.width; i++) {
+                if (segCoords(j,i)[0] != -1 && img(j,i) > 20) {
+                    float intensity = img(j,i) / 255.0f;
+                    coloredImg(j,i) = cv::Vec4b(
+                        color[2] * intensity * 255,
+                        color[1] * intensity * 255,
+                        color[0] * intensity * 255,
+                        255
+                    );
+                }
+            }
+        }
+    }
+
+    _lastColoredResult = coloredImg;
+    _lastColoredROI = roi;
+    return coloredImg;
+}
+
+// Add this helper method to do standard rendering
+cv::Mat CVolumeViewer::render_area_standard(const cv::Rect &roi)
+{
+    cv::Mat_<cv::Vec3f> coords;
+    cv::Mat_<uint8_t> img;
+
+    cv::Vec2f roi_c = {roi.x+roi.width/2, roi.y + roi.height/2};
+    _ptr = _surf->pointer();
+    cv::Vec3f diff = {roi_c[0],roi_c[1],0};
+    _surf->move(_ptr, diff/_scale);
+    _vis_center = roi_c;
+    _surf->gen(&coords, nullptr, roi.size(), _ptr, _scale, {-roi.width/2, -roi.height/2, _z_off});
+
+    readInterpolated3D(img, volume->zarrDataset(_ds_sd_idx), coords*_ds_scale, cache);
+    return img;
+}
+
+void CVolumeViewer::renderSegmentWithColor(QuadSurface* surf, const cv::Rect& roi,
+                                           const cv::Vec3f& color, cv::Mat_<cv::Vec3b>& output)
+{
+    cv::Mat_<cv::Vec3f> coords;
+    surf->gen(&coords, nullptr, roi.size(), nullptr, _scale,
+              {roi.x/_scale, roi.y/_scale, _z_off});
+
+    cv::Mat_<uint8_t> img;
+    readInterpolated3D(img, volume->zarrDataset(_ds_sd_idx), coords*_ds_scale, cache);
+
+    // Apply color where segment exists
+    for(int j = 0; j < roi.height; j++) {
+        for(int i = 0; i < roi.width; i++) {
+            if (coords(j,i)[0] != -1 && img(j,i) > 0) {
+                float intensity = img(j,i) / 255.0f;
+                output(j,i) = cv::Vec3b(
+                    color[2] * intensity * 255,
+                    color[1] * intensity * 255,
+                    color[0] * intensity * 255
+                );
+            }
+        }
+    }
+}
+
+cv::Vec3f CVolumeViewer::hsv2rgb(int h, float s, float v)
+{
+    float c = v * s;
+    float x = c * (1 - std::abs(std::fmod(h / 60.0, 2) - 1));
+    float m = v - c;
+
+    float r, g, b;
+    if (h < 60) { r = c; g = x; b = 0; }
+    else if (h < 120) { r = x; g = c; b = 0; }
+    else if (h < 180) { r = 0; g = c; b = x; }
+    else if (h < 240) { r = 0; g = x; b = c; }
+    else if (h < 300) { r = x; g = 0; b = c; }
+    else { r = c; g = 0; b = x; }
+
+    return cv::Vec3f(r + m, g + m, b + m);
 }
