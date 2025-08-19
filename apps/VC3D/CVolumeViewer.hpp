@@ -29,6 +29,16 @@ class POI;
 class Intersection;
 class SeedingWidget;
 class VCCollection;
+
+enum class ColorMap {
+    GRAYSCALE,
+    VIRIDIS,
+    HSV,
+    JET,
+    HOT,
+    COOL,
+    RAINBOW
+};
  
 class CVolumeViewer : public QWidget
 {
@@ -66,6 +76,8 @@ public:
     void setCompositeReverseDirection(bool reverse);
     void setResetViewOnSurfaceChange(bool reset);
     bool isCompositeEnabled() const { return _composite_enabled; }
+    void setColorMap(ColorMap map) { _colorMap = map; renderVisible(true); }
+
 
     void fitSurfaceInView();
     void updateAllOverlays();
@@ -210,6 +222,9 @@ protected:
 
     int _downscale_override = 0;  // 0=auto, 1=2x, 2=4x, 3=8x, 4=16x, 5=32x
     QTimer* _overlayUpdateTimer;
+
+    ColorMap _colorMap = ColorMap::GRAYSCALE;
+    cv::Mat applyColorMap(const cv::Mat& grayscale);
 
 };  // class CVolumeViewer
 

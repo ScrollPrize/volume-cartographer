@@ -16,6 +16,7 @@
 #include "vc/core/util/Slicing.hpp"
 
 #include <omp.h>
+#include <opencv2/imgproc.hpp>
 
 #include "OpChain.hpp"
 
@@ -878,23 +879,28 @@ private:
     std::chrono::time_point<std::chrono::high_resolution_clock> start;
 };
 
+
 void CVolumeViewer::renderVisible(bool force)
 {
     if (!volume || !volume->zarrDataset() || !_surf)
         return;
-    
+
     QRectF bbox = fGraphicsView->mapToScene(fGraphicsView->viewport()->geometry()).boundingRect();
-    
+
     if (!force && QRectF(curr_img_area).contains(bbox))
         return;
-    
+
     renderPaths();
-    
+
     curr_img_area = {bbox.left()-128,bbox.top()-128, bbox.width()+256, bbox.height()+256};
-    
+
     cv::Mat img = render_area({curr_img_area.x(), curr_img_area.y(), curr_img_area.width(), curr_img_area.height()});
-    
-    QImage qimg = Mat2QImage(img);
+
+    // Apply colormap to grayscale image
+    cv::Mat colored = applyColorMap(img);
+
+    // Convert to QImage - now expecting RGBA format
+    QImage qimg = Mat2QImage(colored);
     
     QPixmap pixmap = QPixmap::fromImage(qimg, fSkipImageFormatConv ? Qt::NoFormatConversion : Qt::AutoColor);
  
@@ -1805,4 +1811,74 @@ void CVolumeViewer::updateAllOverlays()
     renderIntersections();
     renderPaths();
     refreshPointPositions();
+}
+
+// Add to CVolumeViewer.cpp
+
+cv::Mat CVolumeViewer::applyColorMap(const cv::Mat& grayscale)
+{
+    cv::Mat colored;
+
+    switch(_colorMap) {
+        case ColorMap::GRAYSCALE: {
+            // Convert grayscale to RGBA by duplicating channels
+            cv::Mat rgb;
+            cv::cvtColor(grayscale, rgb, cv::COLOR_GRAY2RGB);
+            // Add alpha channel (fully opaque)
+            cv::Mat rgba;
+            cv::cvtColor(rgb, rgba, cv::COLOR_RGB2RGBA);
+            colored = rgba;
+            break;
+        }
+        case ColorMap::VIRIDIS: {
+            cv::Mat rgb;
+            cv::applyColorMap(grayscale, rgb, cv::COLORMAP_VIRIDIS);
+            cv::Mat rgba;
+            cv::cvtColor(rgb, rgba, cv::COLOR_RGB2RGBA);
+            colored = rgba;
+            break;
+        }
+        case ColorMap::HSV: {
+            cv::Mat rgb;
+            cv::applyColorMap(grayscale, rgb, cv::COLORMAP_HSV);
+            cv::Mat rgba;
+            cv::cvtColor(rgb, rgba, cv::COLOR_RGB2RGBA);
+            colored = rgba;
+            break;
+        }
+        case ColorMap::JET: {
+            cv::Mat rgb;
+            cv::applyColorMap(grayscale, rgb, cv::COLORMAP_JET);
+            cv::Mat rgba;
+            cv::cvtColor(rgb, rgba, cv::COLOR_RGB2RGBA);
+            colored = rgba;
+            break;
+        }
+        case ColorMap::HOT: {
+            cv::Mat rgb;
+            cv::applyColorMap(grayscale, rgb, cv::COLORMAP_HOT);
+            cv::Mat rgba;
+            cv::cvtColor(rgb, rgba, cv::COLOR_RGB2RGBA);
+            colored = rgba;
+            break;
+        }
+        case ColorMap::COOL: {
+            cv::Mat rgb;
+            cv::applyColorMap(grayscale, rgb, cv::COLORMAP_COOL);
+            cv::Mat rgba;
+            cv::cvtColor(rgb, rgba, cv::COLOR_RGB2RGBA);
+            colored = rgba;
+            break;
+        }
+        case ColorMap::RAINBOW: {
+            cv::Mat rgb;
+            cv::applyColorMap(grayscale, rgb, cv::COLORMAP_RAINBOW);
+            cv::Mat rgba;
+            cv::cvtColor(rgb, rgba, cv::COLOR_RGB2RGBA);
+            colored = rgba;
+            break;
+        }
+    }
+
+    return colored;
 }

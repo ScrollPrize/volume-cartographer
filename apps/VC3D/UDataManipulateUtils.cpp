@@ -22,17 +22,28 @@ auto QImage2Mat(const QImage& nSrc) -> cv::Mat
     return result;
 }
 
-// Convert from cv::Mat to QImage
-auto Mat2QImage(const cv::Mat& nSrc) -> QImage
+QImage Mat2QImage(const cv::Mat& src)
 {
-    cv::Mat tmp;
-    cvtColor(nSrc, tmp, cv::COLOR_BGR2RGB);  // copy and convert color space
-    QImage result(
-        static_cast<const std::uint8_t*>(tmp.data), tmp.cols, tmp.rows,
-        tmp.step, QImage::Format_RGB888);
-    result.bits();  // enforce depp copy, see documentation of
-    // QImage::QImage( const uchar *dta, int width, int height, Format format )
-    return result;
+    if (src.type() == CV_8UC1) {
+        // Grayscale
+        QImage qimg(src.data, src.cols, src.rows, src.step, QImage::Format_Grayscale8);
+        return qimg.copy();
+    }
+    else if (src.type() == CV_8UC3) {
+        // RGB - convert to RGBA for consistency
+        cv::Mat rgba;
+        cv::cvtColor(src, rgba, cv::COLOR_RGB2RGBA);
+        QImage qimg(rgba.data, rgba.cols, rgba.rows, rgba.step, QImage::Format_RGBA8888);
+        return qimg.copy();
+    }
+    else if (src.type() == CV_8UC4) {
+        // RGBA
+        QImage qimg(src.data, src.cols, src.rows, src.step, QImage::Format_RGBA8888);
+        return qimg.copy();
+    }
+    else {
+        return QImage();
+    }
 }
 
 }  // namespace ChaoVis

@@ -440,6 +440,18 @@ void CWindow::CreateWidgets(void)
     
     // Tab the composite widget with the Volume Package widget on the left dock
     tabifyDockWidget(ui.dockWidgetVolumes, ui.dockWidgetComposite);
+
+    QComboBox* cmbColorMap = new QComboBox();
+    cmbColorMap->addItems({"Grayscale", "Viridis", "HSV", "Jet", "Hot", "Cool", "Rainbow"});
+
+
+    // Add after existing composite controls connections
+    connect(ui.cmbColorMap, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int index) {
+        ColorMap map = static_cast<ColorMap>(index);
+        for (auto& viewer : _viewers) {
+            viewer->setColorMap(map);
+        }
+    });
     
     // Make Volume Package dock the active tab by default
     ui.dockWidgetVolumes->show();
