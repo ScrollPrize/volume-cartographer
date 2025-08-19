@@ -1113,6 +1113,7 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *c
     // Solve the initial optimisation problem, just placing the first four vertices around the seed
     ceres::Solver::Summary big_summary;
     ceres::Solve(options_big, &big_problem, &big_summary);
+    std::cout << big_summary.BriefReport() << "\n";
 
     // Prepare a new set of Ceres options used later during local solves
     ceres::Solver::Options options;
@@ -1121,17 +1122,11 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *c
     options.max_num_iterations = 200;
     options.function_tolerance = 1e-3;
 
-    std::cout << big_summary.BriefReport() << "\n";
-
     // Record the four vertices in the (previously empty) fringe, i.e. the current edge of the patch
     fringe.push_back({y0,x0});
     fringe.push_back({y0+1,x0});
     fringe.push_back({y0,x0+1});
     fringe.push_back({y0+1,x0+1});
-
-    // Re-solve the problem, which should be a no-op
-    ceres::Solve(options_big, &big_problem, &big_summary);
-
 
     std::vector<cv::Vec2i> neighs = {{1,0},{0,1},{-1,0},{0,-1}};
 
