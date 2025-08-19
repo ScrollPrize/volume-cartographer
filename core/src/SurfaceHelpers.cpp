@@ -1,3 +1,5 @@
+#include <omp.h>
+
 #include "SurfaceHelpers.hpp"
 
 #include <opencv2/highgui.hpp>
