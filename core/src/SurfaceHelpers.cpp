@@ -1060,7 +1060,6 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *c
     //FIXME show and handle area edge!
     int w = 2*stop_gen+50;
     int h = w;
-    int z = w;
     cv::Size size = {w,h};
     cv::Rect bounds(0,0,w,h);
 
@@ -1087,8 +1086,6 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *c
     std::vector<cv::Vec2i> fringe;
     std::vector<cv::Vec2i> cands;
 
-    float D = sqrt(2);
-
     float T = step;
     float Ts = step*reader.scale;
 
@@ -1101,7 +1098,6 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *c
     cv::Mat_<cv::Vec3d> a2(size);
     cv::Mat_<cv::Vec3d> a3(size);
     cv::Mat_<cv::Vec3d> a4(size);
-
 
     // The following track the state of the patch; they are each as big as the largest possible patch but initially empty
     // - locs defines the patch! It says for each 2D position, which 3D position it corresponds to
@@ -1245,8 +1241,6 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *c
 
         int succ_gen = 0;
         std::vector<cv::Vec2i> succ_gen_ps;
-
-        std::vector<cv::Vec2i> thread_ps(omp_get_max_threads());
 
         // Build a structure that allows parallel iteration over cands, while avoiding any two threads simultaneously
         // considering two points that are too close to each other...
@@ -1513,8 +1507,6 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *c
             std::cout << big_summary.BriefReport() << "\n";
             std::cout << "avg err: " << sqrt(big_summary.final_cost/big_summary.num_residual_blocks) << std::endl;
         }
-
-        cv::Rect used_plus = {used_area.x-8,used_area.y-8,used_area.width+16,used_area.height+16};
 
         if (generation > 10 && global_opt) {
             // Beyond 10 generations but while still trying global re-solves, simplify the big problem by fixing locations
