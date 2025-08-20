@@ -68,5 +68,3 @@ COPY docker_s3_entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
 ENV WANDB_ENTITY="vesuvius-challenge"
-
-ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
