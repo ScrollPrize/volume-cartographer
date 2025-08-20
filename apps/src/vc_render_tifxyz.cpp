@@ -500,7 +500,7 @@ int main(int argc, char *argv[])
     if (tgt_size.width >= 10000 && num_slices > 1)
         slice_gen = true;
     else {
-        surf->gen(&points, &normals, tgt_size, nullptr, tgt_scale, {-full_size.width/2+crop.x,-full_size.height/2+crop.y,0});
+        surf->gen(&points, &normals, tgt_size, cv::Vec3f(0,0,0), tgt_scale, {-full_size.width/2+crop.x,-full_size.height/2+crop.y,0});
         
         // Calculate the actual mesh centroid
         meshCentroid = calculateMeshCentroid(points);
@@ -550,7 +550,7 @@ int main(int argc, char *argv[])
                 // or a representative sample to ensure consistency
                 for(int x=crop.x;x<crop.x+crop.width;x+=1024) {
                     int w = std::min(tgt_size.width+crop.x-x, 1024);
-                    surf->gen(&points, &normals, {w,crop.height}, nullptr, tgt_scale, {-full_size.width/2+x,-full_size.height/2+crop.y,0});
+                    surf->gen(&points, &normals, {w,crop.height}, cv::Vec3f(0,0,0), tgt_scale, {-full_size.width/2+x,-full_size.height/2+crop.y,0});
                     
                     // Apply affine transform if provided
                     if (hasAffine) {

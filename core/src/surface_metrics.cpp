@@ -28,8 +28,7 @@ static float dist_point_segment_sq(const cv::Vec3f& p, const cv::Vec3f& a, const
 float find_intersection_direct(QuadSurface* surface, cv::Vec2f& loc, const cv::Vec3f& p1, const cv::Vec3f& p2, float init_step, float min_step, const cv::Vec3f& center_in_points)
 {
     cv::Vec3f ptr_loc = cv::Vec3f(loc[0], loc[1], 0) - center_in_points;
-    TrivialSurfacePointer ptr(ptr_loc);
-    if (!surface->valid(&ptr)) {
+    if (!surface->valid(ptr_loc)) {
         return -1.0f;
     }
 
@@ -37,7 +36,7 @@ float find_intersection_direct(QuadSurface* surface, cv::Vec2f& loc, const cv::V
     cv::Rect bounds = {0, 0, points.cols - 1, points.rows - 1};
 
     bool changed = true;
-    cv::Vec3f surface_point = surface->coord(&ptr);
+    cv::Vec3f surface_point = surface->coord(ptr_loc);
     float best_dist_sq = dist_point_segment_sq(surface_point, p1, p2);
     float current_dist_sq;
 
@@ -54,11 +53,10 @@ float find_intersection_direct(QuadSurface* surface, cv::Vec2f& loc, const cv::V
                 continue;
 
             cv::Vec3f cand_ptr_loc = cv::Vec3f(cand_loc_2f[0], cand_loc_2f[1], 0) - center_in_points;
-            TrivialSurfacePointer cand_ptr(cand_ptr_loc);
-            if (!surface->valid(&cand_ptr))
+            if (!surface->valid(cand_ptr_loc))
                 continue;
 
-            surface_point = surface->coord(&cand_ptr);
+            surface_point = surface->coord(cand_ptr_loc);
             current_dist_sq = dist_point_segment_sq(surface_point, p1, p2);
 
             if (current_dist_sq < best_dist_sq) {
@@ -88,9 +86,9 @@ cv::Vec2f find_closest_intersection(QuadSurface* surface, const cv::Vec3f& p1, c
     cv::Size s_size = surface->size();
     cv::Vec2f scale = surface->scale();
 
-    TrivialSurfacePointer zero_ptr({0,0,0});
-    cv::Vec3f center_in_points = surface->loc_raw(&zero_ptr);
-    
+    cv::Vec3f zero_ptr(0, 0, 0);
+    cv::Vec3f center_in_points = surface->loc_raw(zero_ptr);
+
     srand(time(NULL));
 
     for (int i = 0; i < 1000; ++i) { // 1000 random trials
@@ -102,8 +100,7 @@ cv::Vec2f find_closest_intersection(QuadSurface* surface, const cv::Vec3f& p1, c
         cv::Vec2f cand_loc_abs = { nominal_loc[0] * scale[0], nominal_loc[1] * scale[1] };
 
         cv::Vec3f ptr_loc = cv::Vec3f(cand_loc_abs[0], cand_loc_abs[1], 0) - center_in_points;
-        TrivialSurfacePointer ptr(ptr_loc);
-        if (!surface->valid(&ptr)) {
+        if (!surface->valid(ptr_loc)) {
             continue;
         }
 
@@ -113,8 +110,8 @@ cv::Vec2f find_closest_intersection(QuadSurface* surface, const cv::Vec3f& p1, c
             continue;
         }
 
-        TrivialSurfacePointer res_ptr(cv::Vec3f(cand_loc_abs[0], cand_loc_abs[1], 0) - center_in_points);
-        cv::Vec3f intersection_3d = surface->coord(&res_ptr);
+        cv::Vec3f res_ptr = cv::Vec3f(cand_loc_abs[0], cand_loc_abs[1], 0) - center_in_points;
+        cv::Vec3f intersection_3d = surface->coord(res_ptr);
         float current_prox_dist = cv::norm(intersection_3d - proximity_point);
 
         if (prox_dist < 0 || current_prox_dist < prox_dist) {
@@ -195,7 +192,7 @@ nlohmann::json calc_point_metrics(const ChaoVis::VCCollection& collection, QuadS
             }
         }
     }
-    
+
     if (total_segments > 0) {
         results["surface_missing_fraction"] = (float)total_invalid_intersections / total_segments;
     }
