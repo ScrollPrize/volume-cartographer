@@ -18,7 +18,7 @@ set(EXECUTABLE_OUTPUT_PATH ${CMAKE_BINARY_DIR}/bin)
 set(LIBRARY_OUTPUT_PATH ${CMAKE_BINARY_DIR}/lib)
 set(CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
 
-set(CMAKE_CXX_FLAGS " -Wno-narrowing -std=c++20 -DWITH_BLOSC=1 -DWITH_ZLIB=1" )
+set(CMAKE_CXX_FLAGS " -Wno-narrowing -std=c++20 -DWITH_BLOSC=1 -DWITH_ZLIB=1 -w" )
 
 if(NOT CMAKE_BUILD_TYPE)
     message(STATUS "Setting build type to 'Release' as none was specified.")

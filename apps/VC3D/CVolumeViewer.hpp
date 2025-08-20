@@ -141,7 +141,7 @@ protected:
     
     std::shared_ptr<volcart::Volume> volume = nullptr;
     Surface *_surf = nullptr;
-    SurfacePointer *_ptr = nullptr;
+    cv::Vec3f _ptr = cv::Vec3f(0,0,0);
     cv::Vec2f _vis_center = {0,0};
     std::string _surf_name;
     int axis = 0;

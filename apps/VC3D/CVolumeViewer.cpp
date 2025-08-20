@@ -128,7 +128,7 @@ QPointF CVolumeViewer::volumeToScene(const cv::Vec3f& vol_point)
     if (plane) {
         p = plane->project(vol_point, 1.0, _scale);
     } else if (quad) {
-        SurfacePointer* ptr = quad->pointer();
+        auto ptr = quad->pointer();
         _surf->pointTo(ptr, vol_point, 4.0, 100);
         p = _surf->loc(ptr) * _scale;
     }
@@ -148,7 +148,7 @@ bool scene2vol(cv::Vec3f &p, cv::Vec3f &n, Surface *_surf, const std::string &_s
     try {
         cv::Vec3f surf_loc = {scene_loc.x()/_ds_scale, scene_loc.y()/_ds_scale,0};
         
-        SurfacePointer *ptr = _surf->pointer();
+        auto ptr = _surf->pointer();
         
         n = _surf->normal(ptr, surf_loc);
         p = _surf->coord(ptr, surf_loc);
@@ -177,10 +177,9 @@ void CVolumeViewer::onCursorMove(QPointF scene_loc)
             if (plane) {
                 sp = plane->project(p, 1.0, _scale);
             } else if (quad) {
-                SurfacePointer *ptr = quad->pointer();
+                auto ptr = quad->pointer();
                 _surf->pointTo(ptr, p, 4.0, 100);
                 sp = _surf->loc(ptr) * _scale;
-                delete ptr;
             }
             _cursor->setPos(sp[0], sp[1]);
         }
@@ -410,7 +409,6 @@ void CVolumeViewer::setSurface(const std::string &name)
 {
     _surf_name = name;
     _surf = nullptr;
-    _ptr = nullptr;
     onSurfaceChanged(name, _surf_col->surface(name));
 }
 
@@ -661,7 +659,7 @@ void CVolumeViewer::onPOIChanged(std::string name, POI *poi)
             
             _surf_col->setSurface(_surf_name, plane);
         } else if (auto* quad = dynamic_cast<QuadSurface*>(_surf)) {
-            SurfacePointer* ptr = quad->pointer();
+            auto ptr = quad->pointer();
             float dist = quad->pointTo(ptr, poi->p, 4.0, 100);
             
             if (dist < 4.0) {
@@ -676,7 +674,6 @@ void CVolumeViewer::onPOIChanged(std::string name, POI *poi)
                     _center_marker->hide();
                 }
             }
-            delete ptr;
         }
     }
     else if (name == "cursor") {
@@ -697,7 +694,7 @@ void CVolumeViewer::onPOIChanged(std::string name, POI *poi)
         }
         else if (_surf_name == "segmentation" && crop)
         {
-            SurfacePointer *ptr = crop->pointer();
+            auto ptr = crop->pointer();
             dist = crop->pointTo(ptr, poi->p, 2.0);
             sp = crop->loc(ptr)*_scale ;//+ cv::Vec3f(_vis_center[0],_vis_center[1],0);
         }
@@ -841,7 +838,7 @@ cv::Mat CVolumeViewer::render_area(const cv::Rect &roi)
         // Standard single-slice rendering
         //PlaneSurface use absolute positioning to simplify intersection logic
         if (dynamic_cast<PlaneSurface*>(_surf)) {
-            _surf->gen(&coords, nullptr, roi.size(), nullptr, _scale, {roi.x, roi.y, _z_off});
+            _surf->gen(&coords, nullptr, roi.size(), cv::Vec3f(0,0,0), _scale, {roi.x, roi.y, _z_off});
         }
         else {
             cv::Vec2f roi_c = {roi.x+roi.width/2, roi.y + roi.height/2};
@@ -947,11 +944,11 @@ void CVolumeViewer::renderIntersections()
     if (plane) {
         cv::Rect plane_roi = {curr_img_area.x()/_scale, curr_img_area.y()/_scale, curr_img_area.width()/_scale, curr_img_area.height()/_scale};
 
-        cv::Vec3f corner = plane->coord(nullptr, {plane_roi.x, plane_roi.y, 0.0});
+        cv::Vec3f corner = plane->coord(cv::Vec3f(0,0,0), {plane_roi.x, plane_roi.y, 0.0});
         Rect3D view_bbox = {corner, corner};
-        view_bbox = expand_rect(view_bbox, plane->coord(nullptr, {plane_roi.br().x, plane_roi.y, 0}));
-        view_bbox = expand_rect(view_bbox, plane->coord(nullptr, {plane_roi.x, plane_roi.br().y, 0}));
-        view_bbox = expand_rect(view_bbox, plane->coord(nullptr, {plane_roi.br().x, plane_roi.br().y, 0}));
+        view_bbox = expand_rect(view_bbox, plane->coord(cv::Vec3f(0,0,0), {plane_roi.br().x, plane_roi.y, 0}));
+        view_bbox = expand_rect(view_bbox, plane->coord(cv::Vec3f(0,0,0), {plane_roi.x, plane_roi.br().y, 0}));
+        view_bbox = expand_rect(view_bbox, plane->coord(cv::Vec3f(0,0,0), {plane_roi.br().x, plane_roi.br().y, 0}));
 
         std::vector<std::string> intersect_cands;
         std::vector<std::string> intersect_tgts_v;
@@ -1085,7 +1082,7 @@ void CVolumeViewer::renderIntersections()
 #pragma omp parallel
             {
                 // SurfacePointer *ptr = crop->pointer();
-                SurfacePointer *ptr = _surf->pointer();
+                auto ptr = _surf->pointer();
 #pragma omp for
                 for (auto wp : src_locations) {
                     // float res = crop->pointTo(ptr, wp, 2.0, 100);
@@ -1215,7 +1212,7 @@ void CVolumeViewer::renderPaths()
                 p = plane->project(wp, 1.0, _scale);
             }
             else if (quad) {
-                SurfacePointer *ptr = quad->pointer();
+                auto ptr = quad->pointer();
                 float res = _surf->pointTo(ptr, wp, 4.0, 100);
                 p = _surf->loc(ptr)*_scale;
                 if (res >= 4.0)
@@ -1273,7 +1270,7 @@ void CVolumeViewer::renderPaths()
                 p = plane->project(wp, 1.0, _scale);
             }
             else if (quad) {
-                SurfacePointer *ptr = quad->pointer();
+                auto ptr = quad->pointer();
                 float res = _surf->pointTo(ptr, wp, 4.0, 100);
                 p = _surf->loc(ptr)*_scale;
                 if (res >= 4.0)
@@ -1317,7 +1314,7 @@ void CVolumeViewer::renderOrUpdatePoint(const ColPoint& point)
     if (auto* plane = dynamic_cast<PlaneSurface*>(_surf)) {
         z_dist = std::abs(plane->pointDist(point.p));
     } else if (auto* quad = dynamic_cast<QuadSurface*>(_surf)) {
-        SurfacePointer* ptr = quad->pointer();
+        auto ptr = quad->pointer();
         z_dist = quad->pointTo(ptr, point.p, 10.0, 100);
     }
 
