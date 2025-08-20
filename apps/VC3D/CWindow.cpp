@@ -696,9 +696,15 @@ void CWindow::CreateMenus(void)
     fViewMenu->addAction(ui.dockWidgetSegmentation->toggleViewAction());
     fViewMenu->addAction(ui.dockWidgetDistanceTransform->toggleViewAction());
     fViewMenu->addAction(ui.dockWidgetOpList->toggleViewAction());
+    fViewMenu->addAction(ui.dockWidgetDrawing->toggleViewAction());
     fViewMenu->addAction(ui.dockWidgetOpSettings->toggleViewAction());
     fViewMenu->addAction(ui.dockWidgetComposite->toggleViewAction());
     fViewMenu->addAction(ui.dockWidgetLocation->toggleViewAction());
+
+    if (_point_collection_widget) {
+        fViewMenu->addAction(_point_collection_widget->toggleViewAction());
+    }
+
     fViewMenu->addSeparator();
     fViewMenu->addAction(fResetMdiView);
     fViewMenu->addSeparator();
@@ -1298,7 +1304,7 @@ void CWindow::onVolumeClicked(cv::Vec3f vol_loc, cv::Vec3f normal, Surface *surf
                 segYZ = new PlaneSurface();
 
             //FIXME actually properly use ptr
-            SurfacePointer *ptr = segment->pointer();
+            auto ptr = segment->pointer();
             segment->pointTo(ptr, vol_loc, 1.0);
             
             cv::Vec3f p2;
@@ -2602,7 +2608,7 @@ void CWindow::onPointDoubleClicked(uint64_t pointId)
         // Find the closest normal on the segmentation surface
         Surface* seg_surface = _surf_col->surface("segmentation");
         if (auto* quad_surface = dynamic_cast<QuadSurface*>(seg_surface)) {
-            SurfacePointer* ptr = quad_surface->pointer();
+            auto ptr = quad_surface->pointer();
             quad_surface->pointTo(ptr, point_opt->p, 4.0, 100);
             poi->n = quad_surface->normal(ptr, quad_surface->loc(ptr));
         } else {

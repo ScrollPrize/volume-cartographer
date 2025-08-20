@@ -487,6 +487,10 @@ int gen_straight_loss(ceres::Problem &problem, const cv::Vec2i &p, const cv::Vec
 int gen_dist_loss(ceres::Problem &problem, const cv::Vec2i &p, const cv::Vec2i &off, cv::Mat_<uint8_t> &state, cv::Mat_<cv::Vec3d> &dpoints, 
     float unit, bool optimize_all, ceres::ResidualBlockId *res, float w)
 {
+    // Add a loss saying that dpoints(p) and dpoints(p+off) should themselves be distance |off| apart
+    // Here dpoints is a 2D grid mapping surface-space points to 3D volume space
+    // So this says that distances should be preserved from volume to surface
+
     if (!coord_valid(state(p)))
         return 0;
     if (!coord_valid(state(p+off)))
@@ -645,6 +649,8 @@ uint8_t max_d_ign(uint8_t a, uint8_t b)
 template <typename T, typename C>
 int gen_space_loss(ceres::Problem &problem, const cv::Vec2i &p, cv::Mat_<uint8_t> &state, cv::Mat_<cv::Vec3d> &loc, Chunked3d<T,C> &t, float w = 0.1)
 {
+    // Add a loss saying that value of 3D volume tensor t at location loc(p) should be near-zero
+
     if (!loc_valid(state(p)))
         return 0;
 
@@ -657,32 +663,15 @@ template <typename T, typename C>
 int gen_space_line_loss(ceres::Problem &problem, const cv::Vec2i &p, const cv::Vec2i &off, cv::Mat_<uint8_t> &state, 
     cv::Mat_<cv::Vec3d> &loc, Chunked3d<T,C> &t, int steps, float w = 0.1, float dist_th = 2)
 {
+    // Add a loss saying that value of 3D volume tensor t should be near-zero for all locations along
+    // the line from loc(p) to loc(p + off)
+
     if (!loc_valid(state(p)))
         return 0;
     if (!loc_valid(state(p+off)))
         return 0;
 
     problem.AddResidualBlock(SpaceLineLossAcc<T,C>::Create(t, steps, w), nullptr, &loc(p)[0], &loc(p+off)[0]);
-
-    return 1;
-}
-
-template <typename T, typename C>
-int gen_anchor_loss(ceres::Problem &problem, const cv::Vec2i &p, const cv::Vec2i &off, double *anchor, cv::Mat_<uint8_t> &state,
-    cv::Mat_<cv::Vec3d> &loc, Chunked3d<T,C> &t, int steps, float w = 0.001)
-{
-    return 0;
-
-    if (!loc_valid(state(p)))
-        return 0;
-    if (!loc_valid(state(p+off)))
-        return 0;
-
-    anchor[0] = loc(p+off)[0];
-    anchor[1] = loc(p+off)[1];
-    anchor[2] = loc(p+off)[2];
-
-    problem.AddResidualBlock(AnchorLoss<T,C>::Create(t, w), nullptr, &loc(p)[0], &loc(p+off)[0]);
 
     return 1;
 }
@@ -741,22 +730,11 @@ int conditional_spaceline_loss(int bit, const cv::Vec2i &p, const cv::Vec2i &off
     return set;
 };
 
-
-template <typename T, typename C>
-int conditional_anchor_loss(int bit, const cv::Vec2i &p, const cv::Vec2i &off, double *anchor, cv::Mat_<uint16_t> &loss_status, 
-    ceres::Problem &problem, cv::Mat_<uint8_t> &state, cv::Mat_<cv::Vec3d> &loc, Chunked3d<T,C> &t, int steps)
-{
-    int set = 0;
-    if (!loss_mask(bit, p, off, loss_status))
-        set = set_loss_mask(bit, p, off, loss_status, gen_anchor_loss(problem, p, off, anchor, state, loc, t, steps));
-    return set;
-};
-
 //create only missing losses so we can optimize the whole problem
 template <typename I, typename T, typename C>
 int emptytrace_create_missing_centered_losses(ceres::Problem &problem, cv::Mat_<uint16_t> &loss_status, const cv::Vec2i &p, 
-    cv::Mat_<uint8_t> &state, cv::Mat_<cv::Vec3d> &loc, cv::Mat_<cv::Vec3d> &a1, cv::Mat_<cv::Vec3d> &a2, cv::Mat_<cv::Vec3d> &a3, cv::Mat_<cv::Vec3d> &a4, 
-    const I &interp, Chunked3d<T,C> &t, float unit, int flags = SPACE_LOSS | OPTIMIZE_ALL)
+    cv::Mat_<uint8_t> &state, cv::Mat_<cv::Vec3d> &loc, const I &interp, Chunked3d<T,C> &t, float unit,
+    int flags = SPACE_LOSS | OPTIMIZE_ALL)
 {
     //generate losses for point p
     int count = 0;
@@ -797,13 +775,6 @@ int emptytrace_create_missing_centered_losses(ceres::Problem &problem, cv::Mat_<
 
         count += conditional_spaceline_loss(8, p, {0,1}, loss_status, problem, state, loc, t, unit);
         count += conditional_spaceline_loss(8, p, {0,-1}, loss_status, problem, state, loc, t, unit);
-
-        //FIXME should anchor loss be from last good position (potentially of the anchors anchor?)
-        count += conditional_anchor_loss(9, p, {1,0}, &a1(p)[0], loss_status, problem, state, loc, t, unit);
-        count += conditional_anchor_loss(10, p, {-1,0}, &a2(p)[0], loss_status, problem, state, loc, t, unit);
-
-        count += conditional_anchor_loss(11, p, {0,1}, &a3(p)[0], loss_status, problem, state, loc, t, unit);
-        count += conditional_anchor_loss(12, p, {0,-1}, &a4(p)[0], loss_status, problem, state, loc, t, unit);
     }
 
     return count;
@@ -812,8 +783,7 @@ int emptytrace_create_missing_centered_losses(ceres::Problem &problem, cv::Mat_<
 //optimize within a radius, setting edge points to constant
 template <typename I, typename T, typename C>
 float local_optimization(int radius, const cv::Vec2i &p, cv::Mat_<uint8_t> &state, cv::Mat_<cv::Vec3d> &locs, 
-    cv::Mat_<cv::Vec3d> &a1, cv::Mat_<cv::Vec3d> &a2, cv::Mat_<cv::Vec3d> &a3, cv::Mat_<cv::Vec3d> &a4, const I &interp, 
-    Chunked3d<T,C> &t, float unit, bool quiet = false)
+    const I &interp, Chunked3d<T,C> &t, float unit, bool quiet = false)
 {
     ceres::Problem problem;
     cv::Mat_<uint16_t> loss_status(state.size());
@@ -828,7 +798,7 @@ float local_optimization(int radius, const cv::Vec2i &p, cv::Mat_<uint8_t> &stat
         for(int ox=std::max(p[1]-radius,0);ox<=std::min(p[1]+radius,locs.cols-1);ox++) {
             cv::Vec2i op = {oy, ox};
             if (cv::norm(p-op) <= radius)
-                emptytrace_create_missing_centered_losses(problem, loss_status, op, state, locs, a1,a2,a3,a4, interp, t, unit);
+                emptytrace_create_missing_centered_losses(problem, loss_status, op, state, locs, interp, t, unit);
         }
     for(int oy=std::max(p[0]-r_outer,0);oy<=std::min(p[0]+r_outer,locs.rows-1);oy++)
         for(int ox=std::max(p[1]-r_outer,0);ox<=std::min(p[1]+r_outer,locs.cols-1);ox++) {
@@ -912,6 +882,7 @@ public:
         _points(src),
         _thread_points(_thread_count,{-1,-1}),
         _thread_idx(_thread_count, -1) {};
+
     template <typename T>
     OmpThreadPointCol(float dist, T src) :
         _thread_count(omp_get_max_threads()),
@@ -919,6 +890,7 @@ public:
         _points(src.begin(), src.end()),
         _thread_points(_thread_count,{-1,-1}),
         _thread_idx(_thread_count, -1) {};
+
     cv::Point2i next()
     {
         int t_id = omp_get_thread_num();
@@ -929,6 +901,7 @@ public:
         _thread_points[t_id] = extract_point_min_dist(_points, _thread_points, _thread_idx[t_id], _dist);
         return _thread_points[t_id];
     }
+
 protected:
     int _thread_count;
     float _dist;
@@ -1045,37 +1018,35 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *c
     ALifeTime f_timer("empty space tracing\n");
     DSReader reader = {ds,scale,cache};
 
+    // Calculate the maximum possible size the patch might grow to
     //FIXME show and handle area edge!
     int w = 2*stop_gen+50;
     int h = w;
-    int z = w;
     cv::Size size = {w,h};
     cv::Rect bounds(0,0,w,h);
 
     int x0 = w/2;
     int y0 = h/2;
 
+    // Together these represent the cached distance-transform of the thresholded surface volume
     thresholdedDistance compute;
-
     Chunked3d<uint8_t,thresholdedDistance> proc_tensor(compute, ds, cache, cache_root);
 
-
+    // Debug: test the chunk cache by reading one voxel
     passTroughComputor pass;
-
     Chunked3d<uint8_t,passTroughComputor> dbg_tensor(pass, ds, cache);
-
     std::cout << "seed val " << origin << " " <<
     (int)dbg_tensor(origin[2],origin[1],origin[0]) << std::endl;
 
     ALifeTime *timer = new ALifeTime("search & optimization ...");
 
-    //start of empty space tracing
+    // This provides a cached interpolated version of the original surface volume
     CachedChunked3dInterpolator<uint8_t,thresholdedDistance> interp_global(proc_tensor);
 
+    // fringe contains all 2D points around the edge of the patch where we might expand it
+    // cands will contain new points adjacent to the fringe that are candidates to expand into
     std::vector<cv::Vec2i> fringe;
     std::vector<cv::Vec2i> cands;
-
-    float D = sqrt(2);
 
     float T = step;
     float Ts = step*reader.scale;
@@ -1083,12 +1054,9 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *c
     int r = 1;
     int r2 = 2;
 
-
-    cv::Mat_<cv::Vec3d> a1(size);
-    cv::Mat_<cv::Vec3d> a2(size);
-    cv::Mat_<cv::Vec3d> a3(size);
-    cv::Mat_<cv::Vec3d> a4(size);
-
+    // The following track the state of the patch; they are each as big as the largest possible patch but initially empty
+    // - locs defines the patch! It says for each 2D position, which 3D position it corresponds to
+    // - state tracks whether each 2D position is part of the patch yet, and whether its 3D position has been found
     cv::Mat_<cv::Vec3d> locs(size,cv::Vec3f(-1,-1,-1));
     cv::Mat_<uint8_t> state(size,0);
     cv::Mat_<uint8_t> phys_fail(size,0);
@@ -1098,6 +1066,7 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *c
     cv::Vec3f vx = {1,0,0};
     cv::Vec3f vy = {0,1,0};
 
+    // Initialise the trace at the center of the available area, as a tiny single-quad patch at the seed point
     cv::Rect used_area(x0,y0,2,2);
     //these are locations in the local volume!
     locs(y0,x0) = origin;
@@ -1110,13 +1079,16 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *c
     state(y0,x0+1) = STATE_LOC_VALID | STATE_COORD_VALID;
     state(y0+1,x0+1) = STATE_LOC_VALID | STATE_COORD_VALID;
 
+    // This Ceres problem is parameterised by locs; residuals are progressively added as the patch grows enforcing that
+    // all points in the patch are correct distance in 2D vs 3D space, not too high curvature, near surface prediction, etc.
     ceres::Problem big_problem;
 
+    // Add losses for every 'active' surface point (just the four currently) that doesn't yet have them
     int loss_count = 0;
-    loss_count += emptytrace_create_missing_centered_losses(big_problem, loss_status, {y0,x0}, state, locs, a1,a2,a3,a4,interp_global, proc_tensor, Ts);
-    loss_count += emptytrace_create_missing_centered_losses(big_problem, loss_status, {y0+1,x0}, state, locs, a1,a2,a3,a4, interp_global, proc_tensor, Ts);
-    loss_count += emptytrace_create_missing_centered_losses(big_problem, loss_status, {y0,x0+1}, state, locs, a1,a2,a3,a4, interp_global, proc_tensor, Ts);
-    loss_count += emptytrace_create_missing_centered_losses(big_problem, loss_status, {y0+1,x0+1}, state, locs, a1,a2,a3,a4, interp_global, proc_tensor, Ts);
+    loss_count += emptytrace_create_missing_centered_losses(big_problem, loss_status, {y0,x0}, state, locs, interp_global, proc_tensor, Ts);
+    loss_count += emptytrace_create_missing_centered_losses(big_problem, loss_status, {y0+1,x0}, state, locs,  interp_global, proc_tensor, Ts);
+    loss_count += emptytrace_create_missing_centered_losses(big_problem, loss_status, {y0,x0+1}, state, locs,  interp_global, proc_tensor, Ts);
+    loss_count += emptytrace_create_missing_centered_losses(big_problem, loss_status, {y0+1,x0+1}, state, locs,  interp_global, proc_tensor, Ts);
 
     std::cout << "init loss count " << loss_count << std::endl;
 
@@ -1140,31 +1112,29 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *c
     options_big.minimizer_progress_to_stdout = false;
     options_big.max_num_iterations = 10000;
 
+    // Solve the initial optimisation problem, just placing the first four vertices around the seed
     ceres::Solver::Summary big_summary;
     ceres::Solve(options_big, &big_problem, &big_summary);
+    std::cout << big_summary.BriefReport() << "\n";
 
+    // Prepare a new set of Ceres options used later during local solves
     ceres::Solver::Options options;
     options.linear_solver_type = ceres::DENSE_QR;
     options.minimizer_progress_to_stdout = false;
     options.max_num_iterations = 200;
     options.function_tolerance = 1e-3;
 
-
-    std::cout << big_summary.BriefReport() << "\n";
-
+    // Record the four vertices in the (previously empty) fringe, i.e. the current edge of the patch
     fringe.push_back({y0,x0});
     fringe.push_back({y0+1,x0});
     fringe.push_back({y0,x0+1});
     fringe.push_back({y0+1,x0+1});
 
-    ceres::Solve(options_big, &big_problem, &big_summary);
-
-
     std::vector<cv::Vec2i> neighs = {{1,0},{0,1},{-1,0},{0,-1}};
 
-    int succ = 0;
+    int succ = 0;  // number of quads successfully added to the patch (each of size approx. step**2)
 
-    int generation = 0;
+    int generation = 0;  // each generation considers expanding by one step at every fringe point
     int phys_fail_count = 0;
     double phys_fail_th = 0.1;
 
@@ -1187,8 +1157,10 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *c
         if (stop_gen && generation >= stop_gen)
             break;
 
-        std::vector<cv::Vec2i> rest_ps;
+        std::vector<cv::Vec2i> rest_ps;  // contains candidates we didn't fully consider for some reason (write-only!)
 
+        // For every point in the fringe (where we might expand the patch outwards), add to cands all
+        // new 2D points we might add to the patch (and later find the corresponding 3D point for)
         for(auto p : fringe)
         {
             if ((state(p) & STATE_LOC_VALID) == 0) {
@@ -1220,10 +1192,11 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *c
         int succ_gen = 0;
         std::vector<cv::Vec2i> succ_gen_ps;
 
-        std::vector<cv::Vec2i> thread_ps(omp_get_max_threads());
-
+        // Build a structure that allows parallel iteration over cands, while avoiding any two threads simultaneously
+        // considering two points that are too close to each other...
         OmpThreadPointCol cands_threadcol(max_local_opt_r*2+1, cands);
 
+        // ...then start iterating over candidates in parallel using the above to yield points
 #pragma omp parallel
         {
             CachedChunked3dInterpolator<uint8_t,thresholdedDistance> interp(proc_tensor);
@@ -1236,6 +1209,9 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *c
                 if (state(p) & (STATE_LOC_VALID | STATE_COORD_VALID))
                     continue;
 
+                // p is now a 2D point we consider adding to the patch; find the best 3D point to map it to
+
+                // Iterate all adjacent points that are in the patch, and find their 3D locations
                 int ref_count = 0;
                 cv::Vec3d avg = {0,0,0};
                 std::vector<cv::Vec2i> srcs;
@@ -1247,6 +1223,7 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *c
                             srcs.push_back({oy,ox});
                         }
                         
+                // Of those adjacent points, find the one that itself has most adjacent in-patch points
                 cv::Vec2i best_l = srcs[0];
                 int best_ref_l = -1;
                 int rec_ref_sum = 0;
@@ -1265,6 +1242,7 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *c
                     }
                 }
 
+                // Unused
                 int ref_count2 = 0;
                 for(int oy=std::max(p[0]-r2,0);oy<=std::min(p[0]+r2,locs.rows-1);oy++)
                     for(int ox=std::max(p[1]-r2,0);ox<=std::min(p[1]+r2,locs.cols-1);ox++)
@@ -1273,6 +1251,8 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *c
                             ref_count2++;
                         }
 
+                // If the candidate 2D point is too 'loosely' connected to the patch, skip it; thus we prefer to keep the patch
+                // compact rather than growing tendrils
                 if (ref_count < 2 || ref_count+0.35*rec_ref_sum < curr_ref_min /*|| (generation > 3 && ref_count2 < 14)*/) {
                     state(p) &= ~STATE_PROCESSING;
 #pragma omp critical
@@ -1280,10 +1260,13 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *c
                     continue;
                 }
 
+                // Initial guess for the corresponding 3D location is a perturbation of the position of the best-connected neighbor
                 avg /= ref_count;
                 cv::Vec3d init = locs(best_l)+cv::Vec3d((rand()%1000)/10000.0-0.05,(rand()%1000)/10000.0-0.05,(rand()%1000)/10000.0-0.05);
                 locs(p) = init;
 
+                // Set up a new local optimzation problem for the candidate point and its neighbors (initially just distance
+                // and curvature losses, not nearness-to-surface)
                 ceres::Problem problem;
 
                 state(p) = STATE_LOC_VALID | STATE_COORD_VALID;
@@ -1294,6 +1277,8 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *c
 
                 double loss1 = summary.final_cost;
 
+                // If the solve couldn't find a good 3D position for the new point, try again with a different random initialisation (this time
+                // around the average neighbor location instead of the best one)
                 if (loss1 > phys_fail_th) {
                     cv::Vec3d best_loc = locs(p);
                     double best_loss = loss1;
@@ -1316,6 +1301,7 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *c
                 cv::Vec3d phys_only_loc = locs(p);
                 // locs(p) = init;
 
+                // Add to the local problem losses saying the new point should fall near the surface predictions
                 gen_space_loss(problem, p, state, locs, proc_tensor);
 
                 gen_space_line_loss(problem, p, {1,0}, state, locs, proc_tensor, T, 0.1, 100);
@@ -1323,14 +1309,10 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *c
                 gen_space_line_loss(problem, p, {0,1}, state, locs, proc_tensor, T, 0.1, 100);
                 gen_space_line_loss(problem, p, {0,-1}, state, locs, proc_tensor, T, 0.1, 100);
 
-                double anchors[12];
-                gen_anchor_loss(problem, p, {1,0}, anchors, state, locs, proc_tensor, T);
-                gen_anchor_loss(problem, p, {-1,0}, anchors+3, state, locs, proc_tensor, T);
-                gen_anchor_loss(problem, p, {0,1}, anchors+6, state, locs, proc_tensor, T);
-                gen_anchor_loss(problem, p, {0,-1}, anchors+9, state, locs, proc_tensor, T);
-
+                // Re-solve the updated local problem
                 ceres::Solve(options, &problem, &summary);
 
+                // Measure the worst-case distance from the surface predictions, of edges between the new point and its neighbors
                 double dist;
                 interp.Evaluate(locs(p)[2],locs(p)[1],locs(p)[0], &dist);
                 int count = 0;
@@ -1351,19 +1333,23 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *c
                 init_dist(p) = dist;
 
                 if (dist >= dist_th || summary.final_cost >= 0.1) {
+                    // The solution to the local problem is bad -- large loss, or too far from the surface; still add to the global
+                    // problem (as below) but don't mark the point location as valid
                     locs(p) = phys_only_loc;
                     state(p) = STATE_COORD_VALID;
                     if (global_opt) {
 #pragma omp critical
-                        loss_count += emptytrace_create_missing_centered_losses(big_problem, loss_status, p, state, locs, a1,a2,a3,a4, 
+                        loss_count += emptytrace_create_missing_centered_losses(big_problem, loss_status, p, state, locs,
                                                                                 interp_global, proc_tensor, Ts, OPTIMIZE_ALL);
                     }
                     if (loss1 > phys_fail_th) {
+                        // If even the first local solve (geometry only) was bad, try a less-local re-solve, that also adjusts the
+                        // neighbors at progressively increasing radii as needed
                         phys_fail(p) = 1;
 
                         float err = 0;
                         for(int range = 1; range<=max_local_opt_r;range++) {
-                            err = local_optimization(range, p, state, locs, a1,a2,a3,a4, interp, proc_tensor, Ts);
+                            err = local_optimization(range, p, state, locs, interp, proc_tensor, Ts);
                             if (err <= phys_fail_th)
                                 break;
                         }
@@ -1377,9 +1363,11 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *c
                     }
                 }
                 else {
+                    // We found a good solution to the local problem; add losses for the new point to the global problem, add the
+                    // new point to the fringe, and record as successful
                     if (global_opt) {
 #pragma omp critical
-                        loss_count += emptytrace_create_missing_centered_losses(big_problem, loss_status, p, state, locs, a1,a2,a3,a4, 
+                        loss_count += emptytrace_create_missing_centered_losses(big_problem, loss_status, p, state, locs,
                                                                                 interp_global, proc_tensor, Ts);
                     }
 #pragma omp atomic
@@ -1399,9 +1387,10 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *c
                         succ_gen_ps.push_back(p);
                     }
                 }
-            }
+            }  // end parallel iteration over cands
         }
-        
+
+        // If there are now no fringe points, reduce the required compactness when considering cands for the next generation
         if (!fringe.size() && curr_ref_min > 2) {
             curr_ref_min--;
             std::cout << used_area << std::endl;
@@ -1414,12 +1403,10 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *c
         }
         else if (fringe.size())
             curr_ref_min = ref_max;
-        
 
         for(auto p: fringe)
             if (locs(p)[0] == -1)
                 std::cout << "impossible! " << p << " " << cv::Vec2i(y0,x0) << std::endl;
-
 
         if (generation >= 3) {
             options_big.max_num_iterations = 10;
@@ -1434,6 +1421,8 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *c
             options_big.minimizer_progress_to_stdout = false;
 
         if (!global_opt) {
+            // For late generations, instead of re-solving the global problem, solve many local-ish problems, around each
+            // of the newly added points
             std::vector<cv::Vec2i> opt_local;
             for(auto p : succ_gen_ps)
                 if (p[0] % 4 == 0 && p[1] % 4 == 0)
@@ -1450,26 +1439,29 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *c
                     if (p[0] == -1)
                         break;
 
-                    local_optimization(8, p, state, locs, a1,a2,a3,a4, interp, proc_tensor, Ts, true);
+                    local_optimization(8, p, state, locs, interp, proc_tensor, Ts, true);
                 }
             }
         }
         else {
+            // For early generations, re-solve the big problem, jointly optimising the locations of all points in the patch
             std::cout << "running big solve" << std::endl;
             ceres::Solve(options_big, &big_problem, &big_summary);
             std::cout << big_summary.BriefReport() << "\n";
             std::cout << "avg err: " << sqrt(big_summary.final_cost/big_summary.num_residual_blocks) << std::endl;
         }
 
-        cv::Rect used_plus = {used_area.x-8,used_area.y-8,used_area.width+16,used_area.height+16};
-
         if (generation > 10 && global_opt) {
+            // Beyond 10 generations but while still trying global re-solves, simplify the big problem by fixing locations
+            // of points that are already 'certain', in the sense they are not near any other points that don't yet have valid
+            // locations
             cv::Mat_<cv::Vec2d> _empty;
             freeze_inner_params(big_problem, 10, state, locs, _empty, loss_status, STATE_LOC_VALID | STATE_COORD_VALID);
         }
 
         cands.resize(0);
 
+        // Record the cost of the current patch, by re-evaluating all losses within the patch bbox region
         cv::Mat_<cv::Vec3d> locs_crop = locs(used_area);
         cv::Mat_<uint8_t> state_crop = state(used_area);
         double max_cost = 0;
@@ -1496,7 +1488,7 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *c
         timer_gen.unit_string = "vx^2";
         print_accessor_stats();
 
-    }
+    }  // end while fringe is non-empty
     delete timer;
 
     locs = locs(used_area);
@@ -2456,7 +2448,7 @@ void optimize_surface_mapping(SurfTrackerData &data, cv::Mat_<uint8_t> &state, c
                     surfs.insert(data.surfsC({y+1,x+1}).begin(), data.surfsC({y+1,x+1}).end());
                     
                     for(auto &s : surfs) {
-                        auto *ptr = s->surface()->pointer();
+                        auto ptr = s->surface()->pointer();
                         float res = s->surface()->pointTo(ptr, points_out(j, i), same_surface_th, 10);
                         if (res <= same_surface_th) {
                             mutex.lock();
@@ -2465,7 +2457,6 @@ void optimize_surface_mapping(SurfTrackerData &data, cv::Mat_<uint8_t> &state, c
                             data_out.loc(s, {j,i}) = {loc[1], loc[0]};
                             mutex.unlock();
                         }
-                        delete ptr;
                     }
                 }
             }
@@ -2513,13 +2504,12 @@ void optimize_surface_mapping(SurfTrackerData &data, cv::Mat_<uint8_t> &state, c
                         }
                         mutex.unlock();
                         
-                        auto *ptr = test_surf->surface()->pointer();
+                        auto ptr = test_surf->surface()->pointer();
                         if (test_surf->surface()->pointTo(ptr, points_out(j, i), same_surface_th, 10) > same_surface_th)
                             continue;
                         
                         int count = 0;
                         cv::Vec3f loc_3d = test_surf->surface()->loc_raw(ptr);
-                        delete ptr;
                         int straight_count = 0;
                         float cost;
                         mutex.lock();
@@ -2710,13 +2700,12 @@ QuadSurface *grow_surf_from_surfs(SurfaceMeta *seed, const std::vector<SurfaceMe
         cv::Vec3f coord = points(p);
         std::cout << "testing " << p << " from cands: " << seed->overlapping.size() << coord << std::endl;
         for(auto s : seed->overlapping) {
-            auto *ptr = s->surface()->pointer();
+            auto ptr = s->surface()->pointer();
             if (s->surface()->pointTo(ptr, coord, same_surface_th) <= same_surface_th) {
                 cv::Vec3f loc = s->surface()->loc_raw(ptr);
                 data.surfs(p).insert(s);
                 data.loc(s, p) = {loc[1], loc[0]};
             }
-            delete ptr;
         }
         std::cout << "fringe point " << p << " surfcount " << data.surfs(p).size() << " init " << data.loc(seed, p) << data.lookup_int(seed, p) << std::endl;
     }
@@ -2900,7 +2889,7 @@ QuadSurface *grow_surf_from_surfs(SurfaceMeta *seed, const std::vector<SurfaceMe
                 }
 
                 for(auto test_surf : local_surfs) {
-                    auto *ptr = test_surf->surface()->pointer();
+                    auto ptr = test_surf->surface()->pointer();
                     //FIXME this does not check geometry, only if its also on the surfaces (which might be good enough...)
                     if (test_surf->surface()->pointTo(ptr, coord, same_surface_th, 10) <= same_surface_th) {
                         int count = 0;
@@ -2916,7 +2905,6 @@ QuadSurface *grow_surf_from_surfs(SurfaceMeta *seed, const std::vector<SurfaceMe
                             inliers_count++;
                         }
                     }
-                    delete ptr;
                 }
                 if ((inliers_count >= 2 || ref_seed) && inliers_sum > best_inliers) {
                     best_inliers = inliers_sum;
@@ -2969,7 +2957,7 @@ QuadSurface *grow_surf_from_surfs(SurfaceMeta *seed, const std::vector<SurfaceMe
                     if (test_surf == best_surf)
                         continue;
                     
-                    auto *ptr = test_surf->surface()->pointer();
+                    auto ptr = test_surf->surface()->pointer();
                     if (test_surf->surface()->pointTo(ptr, best_coord, same_surface_th, 10) <= same_surface_th) {
                         cv::Vec3f loc = test_surf->surface()->loc_raw(ptr);
                         data_th.loc(test_surf, p) = {loc[1], loc[0]};
@@ -2983,7 +2971,6 @@ QuadSurface *grow_surf_from_surfs(SurfaceMeta *seed, const std::vector<SurfaceMe
                         else
                             data_th.erase(test_surf, p);
                     }
-                    delete ptr;
                 }
                 
                 ceres::Solver::Summary summary;
@@ -2992,7 +2979,7 @@ QuadSurface *grow_surf_from_surfs(SurfaceMeta *seed, const std::vector<SurfaceMe
                 
                 //TODO only add/test if we have 2 neighs which both find locations
                 for(auto test_surf : more_local_surfs) {
-                    auto *ptr = test_surf->surface()->pointer();
+                    auto ptr = test_surf->surface()->pointer();
                     float res = test_surf->surface()->pointTo(ptr, best_coord, same_surface_th, 10);
                     if (res <= same_surface_th) {
                         cv::Vec3f loc = test_surf->surface()->loc_raw(ptr);
@@ -3007,7 +2994,6 @@ QuadSurface *grow_surf_from_surfs(SurfaceMeta *seed, const std::vector<SurfaceMe
                             data_th.surfs(p).insert(test_surf);
                         };
                     }
-                    delete ptr;
                 }
                 
                 mutex.lock();
