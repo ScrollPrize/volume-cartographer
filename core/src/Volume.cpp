@@ -67,7 +67,7 @@ void Volume::zarrOpen()
         return;
 
     isZarr = true;
-    zarrFile_ = new z5::filesystem::handle::File(path_);
+    zarrFile_ = std::make_unique<z5::filesystem::handle::File>(path_);
     z5::filesystem::handle::Group group(path_, z5::FileMode::FileMode::r);
     z5::readAttributes(group, zarrGroup_);
     
