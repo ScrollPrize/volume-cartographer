@@ -72,6 +72,13 @@ target_link_libraries(vc_obj2tifxyz
     VC::surface
 )
 
+add_executable(vc_obj2tifxyz_legacy src/vc_obj2tifxyz_legacy.cpp)
+target_link_libraries(vc_obj2tifxyz_legacy
+    opencv_highgui
+    VC::slicing
+    VC::surface
+)
+
 add_executable(vc_tifxyz_inp_mask src/vc_tifxyz_inp_mask.cpp)
 target_link_libraries(vc_tifxyz_inp_mask
     opencv_highgui
