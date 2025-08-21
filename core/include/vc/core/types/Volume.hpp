@@ -260,7 +260,7 @@ protected:
     /** Slice file name padding */
     int numSliceCharacters_{0};
 
-    z5::filesystem::handle::File *zarrFile_;
+    std::unique_ptr<z5::filesystem::handle::File> zarrFile_;
     std::vector<std::unique_ptr<z5::Dataset>> zarrDs_;
     nlohmann::json zarrGroup_;
     
