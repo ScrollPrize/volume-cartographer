@@ -20,17 +20,15 @@ using json = nlohmann::json;
  * @brief Structure to hold affine transform data
  */
 struct AffineTransform {
-    cv::Mat_<float> matrix;  // 3x4 matrix in ZYX format
-    cv::Vec3f offset;        // optional pre-transform offset
-    bool hasOffset;
+    cv::Mat_<float> matrix;  // 3x4 matrix in XYZ format
     
-    AffineTransform() : hasOffset(false), offset(0, 0, 0) {
+    AffineTransform() {
         matrix = cv::Mat_<float>::eye(3, 4);
     }
 };
 
 /**
- * @brief Load affine transform from file (JSON or text format)
+ * @brief Load affine transform from file (JSON)
  * 
  * @param filename Path to affine transform file
  * @return AffineTransform Loaded transform data
@@ -43,68 +41,30 @@ AffineTransform loadAffineTransform(const std::string& filename) {
         throw std::runtime_error("Cannot open affine transform file: " + filename);
     }
     
-    // Try to parse as JSON first
     try {
         json j;
         file >> j;
         
-        if (j.contains("affine")) {
-            auto affine = j["affine"];
-            if (affine.size() != 3) {
+        if (j.contains("transformation_matrix")) {
+            auto mat = j["transformation_matrix"];
+            if (mat.size() != 3) {
                 throw std::runtime_error("Affine matrix must have 3 rows");
             }
             
             transform.matrix = cv::Mat_<float>(3, 4);
             for (int i = 0; i < 3; i++) {
-                if (affine[i].size() != 4) {
+                if (mat[i].size() != 4) {
                     throw std::runtime_error("Each row of affine matrix must have 4 elements");
                 }
                 for (int j = 0; j < 4; j++) {
-                    transform.matrix(i, j) = affine[i][j].get<float>();
+                    transform.matrix(i, j) = mat[i][j].get<float>();
                 }
             }
         }
-        
-        if (j.contains("offset")) {
-            auto offset = j["offset"];
-            if (offset.size() != 3) {
-                throw std::runtime_error("Offset must have 3 elements");
-            }
-            transform.offset = cv::Vec3f(offset[0].get<float>(), 
-                                        offset[1].get<float>(), 
-                                        offset[2].get<float>());
-            transform.hasOffset = true;
-        }
     } catch (json::parse_error&) {
-        // Not JSON, try plain text format
-        file.clear();
-        file.seekg(0);
-        
-        std::vector<float> values;
-        float val;
-        while (file >> val) {
-            values.push_back(val);
-        }
-        
-        if (values.size() != 12 && values.size() != 15) {
-            throw std::runtime_error("Text file must contain 12 values (3x4 matrix) or 15 values (3x4 matrix + 3 offset values)");
-        }
-        
-        // Load the 3x4 matrix
-        transform.matrix = cv::Mat_<float>(3, 4);
-        for (int i = 0; i < 3; i++) {
-            for (int j = 0; j < 4; j++) {
-                transform.matrix(i, j) = values[i * 4 + j];
-            }
-        }
-        
-        // Load offset if present
-        if (values.size() == 15) {
-            transform.offset = cv::Vec3f(values[12], values[13], values[14]);
-            transform.hasOffset = true;
-        }
+        throw std::runtime_error("Error parsing affine transform file: " + filename);
     }
-    
+
     return transform;
 }
 
@@ -128,24 +88,19 @@ void applyAffineTransform(cv::Mat_<cv::Vec3f>& points,
                 continue;
             }
             
-            // Apply optional offset first
-            if (transform.hasOffset) {
-                pt += transform.offset;
-            }
-            
-            // Apply affine transform (note: matrix is in ZYX format as per the Rust example)
+            // Apply affine transform (note: matrix is in XYZ format)
             float px = pt[0];
             float py = pt[1];
             float pz = pt[2];
             
-            // Row 0 (Z in output)
-            float z_new = transform.matrix(0, 2) * px + transform.matrix(0, 1) * py + 
+            // Row 0 (X in output)
+            float x_new = transform.matrix(0, 2) * px + transform.matrix(0, 1) * py + 
                          transform.matrix(0, 0) * pz + transform.matrix(0, 3);
             // Row 1 (Y in output) 
             float y_new = transform.matrix(1, 2) * px + transform.matrix(1, 1) * py + 
                          transform.matrix(1, 0) * pz + transform.matrix(1, 3);
-            // Row 2 (X in output)
-            float x_new = transform.matrix(2, 2) * px + transform.matrix(2, 1) * py + 
+            // Row 2 (Z in output)
+            float z_new = transform.matrix(2, 2) * px + transform.matrix(2, 1) * py + 
                          transform.matrix(2, 0) * pz + transform.matrix(2, 3);
             
             pt[0] = x_new;
@@ -169,11 +124,11 @@ void applyAffineTransform(cv::Mat_<cv::Vec3f>& points,
             float nz = n[2];
             
             // Apply rotation part of affine transform
-            float nz_new = transform.matrix(0, 2) * nx + transform.matrix(0, 1) * ny + 
+            float nx_new = transform.matrix(0, 2) * nx + transform.matrix(0, 1) * ny + 
                           transform.matrix(0, 0) * nz;
             float ny_new = transform.matrix(1, 2) * nx + transform.matrix(1, 1) * ny + 
                           transform.matrix(1, 0) * nz;
-            float nx_new = transform.matrix(2, 2) * nx + transform.matrix(2, 1) * ny + 
+            float nz_new = transform.matrix(2, 2) * nx + transform.matrix(2, 1) * ny + 
                           transform.matrix(2, 0) * nz;
             
             // Normalize the transformed normal
