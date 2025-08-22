@@ -136,7 +136,7 @@ class S3SyncManager:
 
             for filename in filenames:
                 # Skip hidden files, sync config, and database
-                if filename.startswith('.') or filename in ['.s3sync.json', '.s3sync.db']:
+                if filename.startswith('.') or filename in ['.s3sync.json', '.s3sync.db'] or filename.endswith('.obj'):
                     continue
 
                 filepath = os.path.join(root, filename)
