@@ -24,6 +24,7 @@
 #include <QComboBox>
 #include <QFutureWatcher>
 #include <QRegularExpressionValidator>
+#include <QProcess>
 
 #include <atomic>
 #include <omp.h>
@@ -76,7 +77,9 @@ CWindow::CWindow() :
     ui.setupUi(this);
     // setAttribute(Qt::WA_DeleteOnClose);
 
-    chunk_cache = new ChunkCache(CHUNK_CACHE_SIZE_GB*1024*1024*1024);
+    // avoid 32-bit int overflow in the multiplication (10*1024*1024*1024 > INT32_MAX)
+    const size_t cache_bytes = static_cast<size_t>(CHUNK_CACHE_SIZE_GB) * 1024ull * 1024ull * 1024ull;
+    chunk_cache = new ChunkCache(cache_bytes);
     std::cout << "chunk cache size is " << CHUNK_CACHE_SIZE_GB << " gigabytes " << std::endl;
     
     _surf_col = new CSurfaceCollection();
@@ -560,6 +563,12 @@ void CWindow::CreateWidgets(void)
 
     connect(ui.btnEditMask, &QPushButton::pressed, this, &CWindow::onEditMaskPressed);
     
+    // Generate grayscale images (_0000.tif) for all segments
+    connect(ui.btnGenerateAllMasks, &QPushButton::clicked, this, &CWindow::onGenerateAllMasks);
+    
+    // Pull masks from S3 and build multipage mask.tif in each segment folder
+    connect(ui.btnSyncMasks, &QPushButton::clicked, this, &CWindow::onSynchronizeMasks);
+
     // Connect composite view controls
     connect(ui.chkCompositeEnabled, &QCheckBox::toggled, this, [this](bool checked) {
         // Find the segmentation viewer and update its composite setting
@@ -1895,6 +1904,328 @@ void CWindow::onEditMaskPressed(void)
     QDesktopServices::openUrl(QUrl::fromLocalFile(path.string().c_str()));
 }
 
+bool CWindow::buildPatchImage(QuadSurface* surf, cv::Mat_<uint8_t>& img)
+{
+    if (!surf || !currentVolume) return false;
+
+    cv::Mat_<cv::Vec3f> points = surf->rawPoints();
+    if (points.empty()) return false;
+
+    // Mirror the sampling/scaling logic from onEditMaskPressed(), but only produce img
+    if (points.cols >= 4000) {
+        readInterpolated3D(img, currentVolume->zarrDataset(2), points * 0.25f, chunk_cache);
+    } else {
+        cv::Mat_<cv::Vec3f> scaled;
+        cv::resize(points, scaled, {0,0},
+                   1.0f / surf->_scale[0],
+                   1.0f / surf->_scale[1],
+                   cv::INTER_CUBIC);
+
+        readInterpolated3D(img, currentVolume->zarrDataset(0), scaled, chunk_cache);
+        cv::resize(img, img, {0,0}, 0.25, 0.25, cv::INTER_CUBIC);
+    }
+    return true;
+}
+
+void CWindow::onGenerateAllMasks()
+{
+    if (!fVpkg || !currentVolume) {
+        QMessageBox::warning(this, tr("Error"), tr("Please load a volume package first."));
+        return;
+    }
+    if (_vol_qsurfs.empty()) {
+        QMessageBox::information(this, tr("Nothing to do"), tr("No segments found in the current directory."));
+        return;
+    }
+
+    // Choose output folder (default next to the volpkg)
+    const QString suggested = fVpkgPath + "/inference_input";
+    QString outDir = QFileDialog::getExistingDirectory(
+        this,
+        tr("Select output folder for inference images"),
+        suggested,
+        QFileDialog::ShowDirsOnly | QFileDialog::DontResolveSymlinks | QFileDialog::ReadOnly | QFileDialog::DontUseNativeDialog
+    );
+    if (outDir.isEmpty()) return;
+
+    namespace fs = std::filesystem;
+    const fs::path outPath(outDir.toStdString());
+    try { fs::create_directories(outPath); } catch (...) {}
+
+    QProgressDialog progress(tr("Generating images..."), tr("Cancel"), 0,
+                             static_cast<int>(_vol_qsurfs.size()), this);
+    progress.setWindowModality(Qt::ApplicationModal);
+    progress.setAutoClose(true);
+    progress.setAutoReset(true);
+
+    int done  = 0;
+    int saved = 0;
+
+    // Generate grayscale images "<segmentId>_0000.tif"
+    for (const auto& kv : _vol_qsurfs) {
+        if (progress.wasCanceled()) break;
+
+        const std::string& segId = kv.first;
+        SurfaceMeta* meta = kv.second;
+        QuadSurface* surf = meta ? meta->surface() : nullptr;
+        if (!surf) {
+            progress.setValue(++done);
+            qApp->processEvents();
+            continue;
+        }
+
+        cv::Mat_<uint8_t> img;
+        if (!buildPatchImage(surf, img)) { // uses same sampling/scaling as mask editor
+            progress.setValue(++done);
+            qApp->processEvents();
+            continue;
+        }
+
+        const fs::path dst = outPath / (segId + "_0000.tif");
+        try {
+            if (cv::imwrite(dst.string(), img)) ++saved;
+        } catch (const cv::Exception&) {
+            // ignore single-segment failures; continue the batch
+        }
+
+        progress.setLabelText(tr("Generating images... (%1/%2)\n%3")
+                              .arg(done + 1)
+                              .arg(_vol_qsurfs.size())
+                              .arg(QString::fromStdString(segId)));
+        progress.setValue(++done);
+        qApp->processEvents();
+    }
+
+    // === S3 sync + Argo submit ===
+    const QString pkg = volpkgNameSafe();
+
+    QSettings settings("VC.ini", QSettings::IniFormat);
+    const QString awsExe   = settings.value("cli/aws",  "aws").toString();
+    const QString argoExe  = settings.value("cli/argo", "argo").toString();
+    const QString ns       = settings.value("argo/namespace", "default").toString();
+    const QString wfName   = settings.value("argo/workflow_template", "vc3d-nnunet-masks").toString();
+
+    // Pick a profile: env wins, INI as fallback
+    QString profile = qEnvironmentVariable("AWS_PROFILE");
+    if (profile.isEmpty())
+        profile = settings.value("aws/profile", "").toString();
+
+    // nnUNet parameters
+    const QString results  = settings.value("nnunet/results_dir", "/recon/models/vc3d-masks/nnUNet_results").toString();
+    const QString modelId  = settings.value("nnunet/model_id", "601").toString();
+    const QString folds    = settings.value("nnunet/folds", "0").toString(); // or "all"
+    const QString trainer  = settings.value("nnunet/trainer", "nnUNetTrainer").toString();
+    const QString plans    = settings.value("nnunet/plans", "nnUNetResEncUNetPlans_22G").toString();
+    const QString config   = settings.value("nnunet/config", "2d").toString();
+    const QString batch    = settings.value("nnunet/batch_size", "32").toString();
+
+    // S3 URIs (upload) and in-cluster PVC paths (Argo)
+    const QString s3Base   = "s3://scrollprize-reconstruction/vc3d-masks/" + pkg;
+    const QString s3Input  = s3Base + "/nnunet_input";
+    const QString s3Masks  = s3Base + "/nnunet_output";
+
+    const QString imagesDirInCluster = "/recon/vc3d-masks/" + pkg + "/nnunet_input";
+    const QString masksDirInCluster  = "/recon/vc3d-masks/" + pkg + "/nnunet_output";
+
+    // Build AWS sync args AFTER s3Input exists
+    QStringList awsSyncArgs;
+    awsSyncArgs << "s3" << "sync" << outDir << s3Input << "--only-show-errors";
+    if (!profile.isEmpty()) {
+        awsSyncArgs << "--profile" << profile;
+    }
+
+    // Sync: local → s3 (only if we actually wrote images)
+    if (saved > 0) {
+        if (!runProcessShowOutput(awsExe, awsSyncArgs)) {
+            return; // error already shown by runProcessShowOutput
+        }
+    } else {
+        // Nothing saved; still submit Argo (it may no-op if nothing to do)
+        statusBar()->showMessage(tr("No new images saved; submitting workflow anyway."), 4000);
+    }
+
+    // Submit Argo workflow
+    QStringList argoArgs;
+    argoArgs << "submit"
+             << "-n" << ns
+             << "--from" << "workflowtemplate/" + wfName
+             << "-p" << "images-dir=" + imagesDirInCluster
+             << "-p" << "masks-dir=" + masksDirInCluster
+             << "-p" << "nnunet-results-dir=" + results
+             << "-p" << "nnunet-model-id=" + modelId
+             << "-p" << "nnunet-folds=" + folds
+             << "-p" << "nnunet-trainer=" + trainer
+             << "-p" << "nnunet-plans=" + plans
+             << "-p" << "nnunet-configuration=" + config
+             << "-p" << "batch-size=" + batch;
+
+    if (!runProcessShowOutput(argoExe, argoArgs)) {
+        return; // error already shown
+    }
+
+    QMessageBox::information(this, tr("Submitted"),
+        tr("Saved %1 image(s) to:\n%2\n\nUploaded to:\n%3\n\nWorkflow submitted.\nImages: %4\nMasks:  %5")
+        .arg(saved)
+        .arg(outDir)
+        .arg(s3Input)
+        .arg(imagesDirInCluster)
+        .arg(masksDirInCluster));
+}
+
+void CWindow::onSynchronizeMasks()
+{
+    if (!fVpkg || !currentVolume) {
+        QMessageBox::warning(this, tr("Error"), tr("Please load a volume package first."));
+        return;
+    }
+    if (_vol_qsurfs.empty()) {
+        QMessageBox::information(this, tr("Nothing to do"), tr("No segments found in the current directory."));
+        return;
+    }
+
+    // === figure out S3 paths and a local download folder ===
+    const QString pkg = volpkgNameSafe();
+
+    QSettings settings("VC.ini", QSettings::IniFormat);
+    const QString awsExe  = settings.value("cli/aws",  "aws").toString();
+
+    // Prefer env AWS_PROFILE; fall back to VC.ini
+    QString profile = qEnvironmentVariable("AWS_PROFILE");
+    if (profile.isEmpty())
+        profile = settings.value("aws/profile", "").toString();
+
+    const QString s3Base  = "s3://scrollprize-reconstruction/vc3d-masks/" + pkg;
+    const QString s3Masks = s3Base + "/nnunet_output";
+
+    // Default local output next to the volpkg
+    const QString localOutDir = fVpkgPath + "/inference_output";
+    try { std::filesystem::create_directories(localOutDir.toStdString()); } catch (...) {}
+
+    // === aws s3 sync (remote → local) ===
+    QStringList awsArgs;
+    awsArgs << "s3" << "sync" << s3Masks << localOutDir << "--only-show-errors";
+    if (!profile.isEmpty()) {
+        awsArgs << "--profile" << profile;
+    }
+
+    if (!runProcessShowOutput(awsExe, awsArgs)) {
+        return; // error already shown
+    }
+
+    // === build multipage mask.tif for each known segment ===
+    // Page 0: (downloaded) mask (scaled 0/1 → 0/255)
+    // Page 1: grayscale patch image (same logic as buildPatchImage)
+    QProgressDialog progress(tr("Synchronizing masks..."), tr("Cancel"), 0,
+                             static_cast<int>(_vol_qsurfs.size()), this);
+    progress.setWindowModality(Qt::ApplicationModal);
+    progress.setAutoClose(true);
+    progress.setAutoReset(true);
+
+    auto findMaskPathFor = [&](const std::string& segId) -> QString {
+        // Try a few common naming patterns
+        const QString base = QString::fromStdString(segId);
+        const QStringList patterns{
+            base + "_0000.tif", base + "_0000.png",
+            base + ".tif",      base + ".png",
+            base + "_mask.tif", base + "_mask.png"
+        };
+        for (const QString& p : patterns) {
+            QString full = QDir(localOutDir).filePath(p);
+            if (QFileInfo::exists(full)) return full;
+        }
+        // Fallback: glob base_*.(tif|png) and take first
+        QDir d(localOutDir);
+        QStringList filters; filters << base + "_*.tif" << base + "_*.png";
+        const QStringList entries = d.entryList(filters, QDir::Files, QDir::Name);
+        if (!entries.isEmpty()) return d.filePath(entries.front());
+        return QString();
+    };
+
+    int done = 0;
+    int wrote = 0;
+    for (const auto& kv : _vol_qsurfs) {
+        if (progress.wasCanceled()) break;
+
+        const std::string& segId = kv.first;
+        SurfaceMeta* meta = kv.second;
+        QuadSurface* surf = meta ? meta->surface() : nullptr;
+
+        progress.setLabelText(tr("Synchronizing masks... (%1/%2)\n%3")
+                              .arg(done + 1)
+                              .arg(_vol_qsurfs.size())
+                              .arg(QString::fromStdString(segId)));
+        qApp->processEvents();
+
+        if (!surf) { progress.setValue(++done); continue; }
+
+        const QString maskPath = findMaskPathFor(segId);
+        if (maskPath.isEmpty()) {
+            // Nothing downloaded for this segment; skip quietly
+            progress.setValue(++done);
+            continue;
+        }
+
+        // Read downloaded mask (preserve depth)
+        cv::Mat raw = cv::imread(maskPath.toStdString(), cv::IMREAD_UNCHANGED);
+        if (raw.empty()) {
+            progress.setValue(++done);
+            continue;
+        }
+
+        // Convert to single-channel if needed
+        if (raw.channels() > 1) {
+            cv::cvtColor(raw, raw, cv::COLOR_BGR2GRAY);
+        }
+
+        // Scale 0–1 to 0–255 (and in general, make sure we end up CV_8U)
+        cv::Mat mask8;
+        {
+            cv::Mat asFloat;
+            raw.convertTo(asFloat, CV_32F);
+            double minv = 0.0, maxv = 0.0;
+            cv::minMaxLoc(asFloat, &minv, &maxv);
+            if (maxv <= 1.0 + 1e-6) {
+                // Probabilities or {0,1}
+                raw.convertTo(mask8, CV_8U, 255.0, 0.0);
+            } else {
+                // Already in 0..255 or other scale; just cast
+                raw.convertTo(mask8, CV_8U);
+            }
+        }
+
+        // Build the grayscale patch image to pair with the mask
+        cv::Mat_<uint8_t> img;
+        if (!buildPatchImage(surf, img)) {
+            progress.setValue(++done);
+            continue;
+        }
+
+        // Ensure sizes match (resize mask to image size with nearest-neighbor)
+        if (mask8.size() != img.size()) {
+            cv::resize(mask8, mask8, img.size(), 0, 0, cv::INTER_NEAREST);
+        }
+
+        // Write multipage mask.tif: [mask, img]
+        try {
+            const std::filesystem::path dst = meta->path / "mask.tif";
+            std::vector<cv::Mat> pages{mask8, img};
+            imwritemulti(dst, pages); // same helper used elsewhere in this file
+            ++wrote;
+        } catch (const cv::Exception&) {
+            // Ignore one-off failures
+        }
+
+        progress.setValue(++done);
+        qApp->processEvents();
+    }
+
+    QMessageBox::information(
+        this, tr("Synchronization complete"),
+        tr("Downloaded masks to:\n%1\n\nUpdated %2 segment(s) with a multipage mask.tif.")
+            .arg(localOutDir)
+            .arg(wrote));
+}
+
 void CWindow::onRefreshSurfaces()
 {
     LoadSurfacesIncremental();
@@ -2644,4 +2975,54 @@ void CWindow::onCopyCoordinates()
         QApplication::clipboard()->setText(coords);
         statusBar()->showMessage(tr("Coordinates copied to clipboard: %1").arg(coords), 2000);
     }
+}
+
+QString CWindow::volpkgNameSafe() const
+{
+    if (!fVpkg) return "unknown";
+    QString name = QString::fromStdString(fVpkg->name());
+    name.replace(QRegularExpression("[^A-Za-z0-9._-]"), "_");
+    return name;
+}
+
+bool CWindow::runProcessShowOutput(const QString& program, const QStringList& args, const QString& workDir)
+{
+    QProcess p;
+    if (!workDir.isEmpty()) p.setWorkingDirectory(workDir);
+
+    // Inherit system env, but ensure AWS_PROFILE from VC.ini is injected if present
+    QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+    QSettings settings("VC.ini", QSettings::IniFormat);
+    const QString iniProfile = settings.value("aws/profile", "").toString();
+    if (!iniProfile.isEmpty() && !env.contains("AWS_PROFILE")) {
+        env.insert("AWS_PROFILE", iniProfile);
+    }
+    p.setProcessEnvironment(env);
+
+    p.setProcessChannelMode(QProcess::MergedChannels);
+    p.start(program, args);
+    if (!p.waitForStarted()) {
+        QMessageBox::critical(this, tr("Error"), tr("Failed to start %1").arg(program));
+        return false;
+    }
+    QByteArray out;
+    while (p.state() == QProcess::Running) {
+        p.waitForReadyRead(100);
+        out += p.readAll();
+        qApp->processEvents();
+    }
+    p.waitForFinished(-1);
+    out += p.readAll();
+    if (p.exitStatus() != QProcess::NormalExit || p.exitCode() != 0) {
+        QMessageBox::critical(this, tr("Command failed"),
+            tr("%1 exited with code %2.\n\nCommand:\n%3 %4\n\nOutput:\n%5")
+            .arg(program)
+            .arg(p.exitCode())
+            .arg(program)
+            .arg(args.join(' '))
+            .arg(QString::fromUtf8(out)));
+        return false;
+    }
+    statusBar()->showMessage(tr("%1 OK").arg(program), 4000);
+    return true;
 }

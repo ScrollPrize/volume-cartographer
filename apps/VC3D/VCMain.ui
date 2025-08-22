@@ -510,6 +510,26 @@
             </property>
            </widget>
           </item>
+          <item>
+            <widget class="QPushButton" name="btnGenerateAllMasks">
+            <property name="text">
+            <string>Generate all masks (experimental 1)</string>
+            </property>
+            <property name="icon">
+            <iconset theme="system-run"/>
+            </property>
+            </widget>
+            </item>
+        <item>
+            <widget class="QPushButton" name="btnSyncMasks">
+                <property name="text">
+                <string>Synchronize Masks (experimental 2)</string>
+                </property>
+                <property name="icon">
+                <iconset theme="folder-sync"/>
+                </property>
+            </widget>
+            </item>
          </layout>
         </widget>
        </item>

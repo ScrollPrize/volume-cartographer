@@ -12,6 +12,10 @@
 #include "vc/core/util/VCCollection.hpp"
 
 #include <QShortcut>
+#include <QProcess>
+#include <QRegularExpression>
+#include <QDir>
+#include <QSettings>
 
 #define MAX_RECENT_VOLPKG 10
 
@@ -142,6 +146,13 @@ private:
 
     void setVolume(std::shared_ptr<volcart::Volume> newvol);
 
+    bool buildPatchImage(QuadSurface* surf, cv::Mat_<uint8_t>& img);
+    // safe volpkg name for S3/paths
+    QString volpkgNameSafe() const;
+    // run a CLI and show output or a nice error
+    bool runProcessShowOutput(const QString& program, const QStringList& args, const QString& workDir = QString());
+
+
 private slots:
     void Open(void);
     void Open(const QString& path);
@@ -154,6 +165,8 @@ private slots:
     void onSegFilterChanged(int index);
     void onSegmentationDirChanged(int index);
     void onEditMaskPressed();
+    void onGenerateAllMasks();
+    void onSynchronizeMasks();
     void onRefreshSurfaces();
     void onGenerateReviewReport();
     void onManualLocationChanged();

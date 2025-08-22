@@ -32,6 +32,22 @@ RUN ARCH=$(uname -m) && \
     ./aws/install && \
     rm -rf awscliv2.zip aws
 
+ARG ARGO_VERSION=v3.5.6
+RUN set -eux; \
+  ARCH="$(uname -m)"; \
+  case "$ARCH" in \
+    x86_64)  ARGO_ARCH=amd64 ;; \
+    aarch64) ARGO_ARCH=arm64 ;; \
+    *) echo "Unsupported arch: $ARCH" >&2; exit 1 ;; \
+  esac; \
+  curl -fsSL -o /tmp/argo.gz \
+    "https://github.com/argoproj/argo-workflows/releases/download/${ARGO_VERSION}/argo-linux-${ARGO_ARCH}.gz"; \
+  gunzip /tmp/argo.gz; \
+  install -m 0755 /tmp/argo /usr/local/bin/argo; \
+  rm -f /tmp/argo; \
+  argo version --short
+
+
 ENV MAMBA_ROOT_PREFIX=/opt/micromamba
 SHELL ["/bin/bash", "-lc"]
 RUN micromamba create -y -n py310 -c conda-forge python=3.10 pip
