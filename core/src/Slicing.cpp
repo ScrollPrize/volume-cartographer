@@ -251,74 +251,8 @@ bool ChunkCache::has(cv::Vec4i idx)
     return _store.count(idx);
 }
 
-
-// Add this helper function before readInterpolated3D
-void speculativeLoadNeighbors(z5::Dataset *ds, ChunkCache *cache, int group_idx,
-                               int iz, int iy, int ix) {
-    // Define the 26 neighbors in a 3x3x3 cube (excluding center)
-    static const std::vector<std::array<int, 3>> neighbors = {
-        // Same z-plane (8 neighbors)
-        {-1, -1, 0}, {0, -1, 0}, {1, -1, 0},
-        {-1, 0, 0},              {1, 0, 0},
-        {-1, 1, 0},  {0, 1, 0},  {1, 1, 0},
-        // z-1 plane (9 neighbors)
-        {-1, -1, -1}, {0, -1, -1}, {1, -1, -1},
-        {-1, 0, -1},  {0, 0, -1},  {1, 0, -1},
-        {-1, 1, -1},  {0, 1, -1},  {1, 1, -1},
-        // z+1 plane (9 neighbors)
-        {-1, -1, 1}, {0, -1, 1}, {1, -1, 1},
-        {-1, 0, 1},  {0, 0, 1},  {1, 0, 1},
-        {-1, 1, 1},  {0, 1, 1},  {1, 1, 1}
-    };
-
-    // Get dataset dimensions in chunks
-    auto shape = ds->shape();
-    auto chunkShape = ds->chunking().blockShape();
-    int max_iz = (shape[0] + chunkShape[0] - 1) / chunkShape[0];
-    int max_iy = (shape[1] + chunkShape[1] - 1) / chunkShape[1];
-    int max_ix = (shape[2] + chunkShape[2] - 1) / chunkShape[2];
-
-    // Try to load each neighbor
-    for (const auto& offset : neighbors) {
-        int nz = iz + offset[2];
-        int ny = iy + offset[1];
-        int nx = ix + offset[0];
-
-        // Check bounds
-        if (nz < 0 || nz >= max_iz ||
-            ny < 0 || ny >= max_iy ||
-            nx < 0 || nx >= max_ix) {
-            continue;
-        }
-
-        cv::Vec4i neighbor_idx = {group_idx, nz, ny, nx};
-
-        // Check if already in cache
-        cache->mutex.lock();
-        bool needs_load = !cache->has(neighbor_idx);
-        cache->mutex.unlock();
-
-        if (needs_load) {
-            // Load the chunk
-            auto chunk = z5::multiarray::readChunk<uint8_t>(*ds,
-                {size_t(nz), size_t(ny), size_t(nx)});
-
-            // Add to cache
-            cache->mutex.lock();
-            // Double-check it wasn't loaded by another thread
-            if (!cache->has(neighbor_idx)) {
-                cache->put(neighbor_idx, chunk);
-            } else {
-                // Another thread loaded it, delete our copy
-                delete chunk;
-            }
-            cache->mutex.unlock();
-        }
-    }
-}
-
 void readInterpolated3D(cv::Mat_<uint8_t> &out, z5::Dataset *ds,
-                        const cv::Mat_<cv::Vec3f> &coords, ChunkCache *cache) {
+                               const cv::Mat_<cv::Vec3f> &coords, ChunkCache *cache) {
     out = cv::Mat_<uint8_t>(coords.size(), 0);
 
     if (!cache) {
@@ -336,72 +270,121 @@ void readInterpolated3D(cv::Mat_<uint8_t> &out, z5::Dataset *ds,
     int h = coords.rows;
 
     std::shared_mutex mutex;
+    std::unordered_map<cv::Vec4i,std::shared_ptr<xt::xarray<uint8_t>>,vec4i_hash> chunks;
 
     // Lambda for retrieving single values (unchanged)
-    auto retrieve_single_value_cached = [&cw,&ch,&cd,&mutex,&cache,&group_idx,&ds](
-            int ox, int oy, int oz) -> uint8_t {
-        std::shared_ptr<xt::xarray<uint8_t>> chunk_ref;
+    auto retrieve_single_value_cached = [&cw,&ch,&cd,&group_idx,&chunks](
+        int ox, int oy, int oz) -> uint8_t {
+
+            int ix = int(ox)/cw;
+            int iy = int(oy)/ch;
+            int iz = int(oz)/cd;
+
+            cv::Vec4i idx = {group_idx,ix,iy,iz};
+
+            xt::xarray<uint8_t> *chunk  = chunks[idx].get();
+
+            if (!chunk)
+                return 0;
+
+            int lx = ox-ix*cw;
+            int ly = oy-iy*ch;
+            int lz = oz-iz*cd;
+
+            return chunk->operator()(lx,ly,lz);
+        };
+
+        // size_t done = 0;
+
+        #pragma omp parallel
+        {
+            cv::Vec4i last_idx = {-1,-1,-1,-1};
+            std::shared_ptr<xt::xarray<uint8_t>> chunk_ref;
+            xt::xarray<uint8_t> *chunk = nullptr;
+            std::unordered_map<cv::Vec4i,std::shared_ptr<xt::xarray<uint8_t>>,vec4i_hash> chunks_local;
+
+            #pragma omp for collapse(2)
+            for(size_t y = 0;y<h;y++) {
+                for(size_t x = 0;x<w;x++) {
+                    float ox = coords(y,x)[2];
+                    float oy = coords(y,x)[1];
+                    float oz = coords(y,x)[0];
+
+                    if (ox < 0 || oy < 0 || oz < 0)
+                        continue;
+
+                    int ix = int(ox)/cw;
+                    int iy = int(oy)/ch;
+                    int iz = int(oz)/cd;
+
+                    cv::Vec4i idx = {group_idx,ix,iy,iz};
+
+                    if (idx != last_idx) {
+                        last_idx = idx;
+                        chunks_local[idx] = nullptr;
+                    }
+
+                    int lx = ox-ix*cw;
+                    int ly = oy-iy*ch;
+                    int lz = oz-iz*cd;
+
+                    if (lx+1 >= cw || ly+1 >= ch || lz+1 >= cd) {
+                        if (lx+1>=cw) {
+                            cv::Vec4i idx2 = idx;
+                            idx2[1]++;
+                            chunks_local[idx2] = nullptr;
+                        }
+                        if (ly+1>=ch) {
+                            cv::Vec4i idx2 = idx;
+                            idx2[2]++;
+                            chunks_local[idx2] = nullptr;
+                        }
+
+                        if (lz+1>=cd) {
+                            cv::Vec4i idx2 = idx;
+                            idx2[3]++;
+                            chunks_local[idx2] = nullptr;
+                        }
+                    }
+                }
+            }
+
+#pragma omp barrier
+#pragma omp critical
+            chunks.merge(chunks_local);
+
+        }
+
+#pragma omp paralle for schedule(dynamic)
+    for(auto &it : chunks) {
         xt::xarray<uint8_t> *chunk = nullptr;
+        std::shared_ptr<xt::xarray<uint8_t>> chunk_ref;
 
-        int ix = int(ox)/cw;
-        int iy = int(oy)/ch;
-        int iz = int(oz)/cd;
-
-        cv::Vec4i idx = {group_idx,ix,iy,iz};
+        cv::Vec4i idx = it.first;
 
         cache->mutex.lock();
-
         if (!cache->has(idx)) {
             cache->mutex.unlock();
-            chunk = z5::multiarray::readChunk<uint8_t>(*ds,
-                {size_t(ix),size_t(iy),size_t(iz)});
+            chunk = z5::multiarray::readChunk<uint8_t>(*ds, {size_t(idx[1]),size_t(idx[2]),size_t(idx[3])});
             cache->mutex.lock();
             cache->put(idx, chunk);
             chunk_ref = cache->get(idx);
         } else {
             chunk_ref = cache->get(idx);
-            chunk = chunk_ref.get();
+            // chunk = chunk_ref.get();
         }
+        chunks[idx] = chunk_ref;
         cache->mutex.unlock();
+    }
 
-        if (!chunk)
-            return 0;
-
-        int lx = ox-ix*cw;
-        int ly = oy-iy*ch;
-        int lz = oz-iz*cd;
-
-        return chunk->operator()(lx,ly,lz);
-    };
-
-    size_t done = 0;
-
-    // Track which chunks we've already speculatively loaded
-    std::set<cv::Vec4i, std::function<bool(const cv::Vec4i&, const cv::Vec4i&)>>
-        speculatively_loaded([](const cv::Vec4i& a, const cv::Vec4i& b) {
-            if (a[0] != b[0]) return a[0] < b[0];
-            if (a[1] != b[1]) return a[1] < b[1];
-            if (a[2] != b[2]) return a[2] < b[2];
-            return a[3] < b[3];
-        });
-    std::mutex speculative_mutex;
-
-#pragma omp parallel
+    #pragma omp parallel
     {
         cv::Vec4i last_idx = {-1,-1,-1,-1};
         std::shared_ptr<xt::xarray<uint8_t>> chunk_ref;
         xt::xarray<uint8_t> *chunk = nullptr;
 
-#pragma omp for schedule(guided,1)
+        #pragma omp for collapse(2)
         for(size_t y = 0;y<h;y++) {
-            if (w*h > 10000000)
-#pragma omp critical
-            {
-                done++;
-                if (done % 100 == 0)
-                    std::cout << "done: " << double(done)/h*100 << "%" << std::endl;
-            }
-
             for(size_t x = 0;x<w;x++) {
                 float ox = coords(y,x)[2];
                 float oy = coords(y,x)[1];
@@ -418,110 +401,70 @@ void readInterpolated3D(cv::Mat_<uint8_t> &out, z5::Dataset *ds,
 
                 if (idx != last_idx) {
                     last_idx = idx;
-
-                    cache->mutex.lock();
-
-                    if (!cache->has(idx)) {
-                        cache->mutex.unlock();
-                        chunk = z5::multiarray::readChunk<uint8_t>(*ds,
-                            {size_t(ix),size_t(iy),size_t(iz)});
-                        cache->mutex.lock();
-                        cache->put(idx, chunk);
-                        chunk_ref = cache->get(idx);
-                        cache->mutex.unlock();
-
-                        // Speculatively load neighbors for this new chunk
-                        bool should_speculate = false;
-                        speculative_mutex.lock();
-                        if (speculatively_loaded.find(idx) == speculatively_loaded.end()) {
-                            speculatively_loaded.insert(idx);
-                            should_speculate = true;
-                        }
-                        speculative_mutex.unlock();
-
-                        if (should_speculate) {
-                            // Launch speculative loading in a separate task
-                            #pragma omp task
-                            {
-                                speculativeLoadNeighbors(ds, cache, group_idx,
-                                                       ix, iy, iz);
-                            }
-                        }
-                    } else {
-                        chunk_ref = cache->get(idx);
-                        chunk = chunk_ref.get();
-                        cache->mutex.unlock();
-                    }
-                } else if (!chunk_ref) {
-                    // Re-acquire the chunk reference if we don't have it
-                    cache->mutex.lock();
-                    chunk_ref = cache->get(idx);
-                    chunk = chunk_ref.get();
-                    cache->mutex.unlock();
+                    chunk = chunks[idx].get();
                 }
 
-                if (chunk) {
-                    int lx = ox-ix*cw;
-                    int ly = oy-iy*ch;
-                    int lz = oz-iz*cd;
+                int lx = ox-ix*cw;
+                int ly = oy-iy*ch;
+                int lz = oz-iz*cd;
 
-                    float c000 = chunk->operator()(lx,ly,lz);
-                    float c100, c010, c110, c001, c101, c011, c111;
+                //valid - means zero!
+                if (!chunk)
+                    continue;
 
-                    // Handle edge cases for interpolation
-                    if (lx+1 >= cw || ly+1 >= ch || lz+1 >= cd) {
-                        if (lx+1>=cw)
-                            c100 = retrieve_single_value_cached(ox+1,oy,oz);
-                        else
-                            c100 = chunk->operator()(lx+1,ly,lz);
+                float c000 = chunk->operator()(lx,ly,lz);
+                float c100, c010, c110, c001, c101, c011, c111;
 
-                        if (ly+1 >= ch)
-                            c010 = retrieve_single_value_cached(ox,oy+1,oz);
-                        else
-                            c010 = chunk->operator()(lx,ly+1,lz);
-                        if (lz+1 >= cd)
-                            c001 = retrieve_single_value_cached(ox,oy,oz+1);
-                        else
-                            c001 = chunk->operator()(lx,ly,lz+1);
-
-                        c110 = retrieve_single_value_cached(ox+1,oy+1,oz);
-                        c101 = retrieve_single_value_cached(ox+1,oy,oz+1);
-                        c011 = retrieve_single_value_cached(ox,oy+1,oz+1);
-                        c111 = retrieve_single_value_cached(ox+1,oy+1,oz+1);
-                    } else {
+                // Handle edge cases for interpolation
+                if (lx+1 >= cw || ly+1 >= ch || lz+1 >= cd) {
+                    if (lx+1>=cw)
+                        c100 = retrieve_single_value_cached(ox+1,oy,oz);
+                    else
                         c100 = chunk->operator()(lx+1,ly,lz);
+
+                    if (ly+1 >= ch)
+                        c010 = retrieve_single_value_cached(ox,oy+1,oz);
+                    else
                         c010 = chunk->operator()(lx,ly+1,lz);
-                        c110 = chunk->operator()(lx+1,ly+1,lz);
+                    if (lz+1 >= cd)
+                        c001 = retrieve_single_value_cached(ox,oy,oz+1);
+                    else
                         c001 = chunk->operator()(lx,ly,lz+1);
-                        c101 = chunk->operator()(lx+1,ly,lz+1);
-                        c011 = chunk->operator()(lx,ly+1,lz+1);
-                        c111 = chunk->operator()(lx+1,ly+1,lz+1);
-                    }
 
-                    // Trilinear interpolation
-                    float fx = ox-int(ox);
-                    float fy = oy-int(oy);
-                    float fz = oz-int(oz);
-
-                    float c00 = (1-fz)*c000 + fz*c001;
-                    float c01 = (1-fz)*c010 + fz*c011;
-                    float c10 = (1-fz)*c100 + fz*c101;
-                    float c11 = (1-fz)*c110 + fz*c111;
-
-                    float c0 = (1-fy)*c00 + fy*c01;
-                    float c1 = (1-fy)*c10 + fy*c11;
-
-                    float c = (1-fx)*c0 + fx*c1;
-
-                    out(y,x) = c;
+                    c110 = retrieve_single_value_cached(ox+1,oy+1,oz);
+                    c101 = retrieve_single_value_cached(ox+1,oy,oz+1);
+                    c011 = retrieve_single_value_cached(ox,oy+1,oz+1);
+                    c111 = retrieve_single_value_cached(ox+1,oy+1,oz+1);
+                } else {
+                    c100 = chunk->operator()(lx+1,ly,lz);
+                    c010 = chunk->operator()(lx,ly+1,lz);
+                    c110 = chunk->operator()(lx+1,ly+1,lz);
+                    c001 = chunk->operator()(lx,ly,lz+1);
+                    c101 = chunk->operator()(lx+1,ly,lz+1);
+                    c011 = chunk->operator()(lx,ly+1,lz+1);
+                    c111 = chunk->operator()(lx+1,ly+1,lz+1);
                 }
+
+                // Trilinear interpolation
+                float fx = ox-int(ox);
+                float fy = oy-int(oy);
+                float fz = oz-int(oz);
+
+                float c00 = (1-fz)*c000 + fz*c001;
+                float c01 = (1-fz)*c010 + fz*c011;
+                float c10 = (1-fz)*c100 + fz*c101;
+                float c11 = (1-fz)*c110 + fz*c111;
+
+                float c0 = (1-fy)*c00 + fy*c01;
+                float c1 = (1-fy)*c10 + fy*c11;
+
+                float c = (1-fx)*c0 + fx*c1;
+
+                out(y,x) = c;
             }
         }
-        #pragma omp taskwait
     }
 }
-
-
 
 //somehow opencvs functions are pretty slow 
 static inline cv::Vec3f normed(const cv::Vec3f v)
