@@ -198,7 +198,7 @@ class S3SyncManager:
 
                 # Skip hidden files
                 filename = os.path.basename(relative_path)
-                if filename.startswith('.'):
+                if filename.startswith('.') or filename.endswith('.obj'):
                     continue
 
                 # Skip files in hidden directories or directories containing 'layers'
