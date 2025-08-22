@@ -117,6 +117,12 @@ target_link_libraries(vc_calc_surface_metrics
     Boost::program_options
 )
 
+add_executable(vc_render_bench src/ZarrExtract.cpp)
+target_link_libraries(vc_render_bench
+    VC::surface
+    VC::slicing
+)
+
 ## experiements for flattening ##
 # add_executable(vc_zarralphacomp src/ZarrAlphaComp.cpp)
 # target_link_libraries(vc_zarralphacomp
