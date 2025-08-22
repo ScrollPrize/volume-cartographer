@@ -332,6 +332,8 @@ int main(int argc, char *argv[])
             "Crop region height (0 = no crop)")
         ("affine-transform,a", po::value<std::string>(),
             "Path to affine transform file (JSON or text format)")
+        ("scale-segmentation", po::value<float>()->default_value(1.0),
+            "Scale segmentation to target scale")
         ("rotate", po::value<double>()->default_value(0.0),
             "Rotate output image by angle in degrees (counterclockwise)")
         ("flip", po::value<int>()->default_value(-1),
@@ -367,7 +369,7 @@ int main(int argc, char *argv[])
     float tgt_scale = parsed["scale"].as<float>();
     int group_idx = parsed["group-idx"].as<int>();
     int num_slices = parsed["num-slices"].as<int>();
-    
+    float scale_seg = parsed["scale-segmentation"].as<float>();
     // Transformation parameters
     double rotate_angle = parsed["rotate"].as<double>();
     int flip_axis = parsed["flip"].as<int>();
@@ -463,6 +465,8 @@ int main(int argc, char *argv[])
         orientationDetermined = true;
 
         applyNormalOrientation(normals, globalFlipDecision);
+
+        points *= scale_seg;
 
         if (hasAffine) {
             applyAffineTransform(points, normals, affineTransform);
