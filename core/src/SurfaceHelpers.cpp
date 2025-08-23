@@ -104,7 +104,7 @@ static float sdist(const cv::Vec3f &a, const cv::Vec3f &b)
     return d.dot(d);
 }
 
-static void min_loc(const cv::Mat_<cv::Vec3f> &points, cv::Vec2f &loc, cv::Vec3f &out, cv::Vec3f tgt, bool z_search = true)
+static void min_loc(const cv::Mat_<cv::Vec3f> &points, cv::Vec2f &loc, cv::Vec3f &out, const cv::Vec3f &tgt, bool z_search = true)
 {
     cv::Rect boundary(1,1,points.cols-2,points.rows-2);
     if (!boundary.contains(cv::Point(loc))) {
