@@ -59,55 +59,49 @@ static std::ostream& operator<< (std::ostream& out, const xt::svector<size_t> &v
     }
     return out;
 }
-
-namespace z5 {
-    namespace multiarray {
-
-        template<typename T>
-        inline xt::xarray<T> *readChunk(const Dataset & ds,
-                            types::ShapeType chunkId)
-        {
-            if (!ds.chunkExists(chunkId)) {
-                return nullptr;
-            }
-
-            if (!ds.isZarr())
-                throw std::runtime_error("only zarr datasets supported currently!");
-            if (ds.getDtype() != z5::types::Datatype::uint8 && ds.getDtype() != z5::types::Datatype::uint16)
-                throw std::runtime_error("only uint8_t/uint16 zarrs supported currently!");
-            
-            types::ShapeType chunkShape;
-            // size_t chunkSize;
-            ds.getChunkShape(chunkId, chunkShape);
-            // get the shape of the chunk (as stored it is stored)
-            //for ZARR also edge chunks are always full size!
-            const std::size_t maxChunkSize = ds.defaultChunkSize();
-            const auto & maxChunkShape = ds.defaultChunkShape();
-            
-            // chunkSize = std::accumulate(chunkShape.begin(), chunkShape.end(), 1, std::multiplies<std::size_t>());
-            
-            xt::xarray<T> *out = new xt::xarray<T>();
-            *out = xt::empty<T>(maxChunkShape);
-            
-            
-            // read/decompress & convert data
-            if (ds.getDtype() == z5::types::Datatype::uint8) {
-                ds.readChunk(chunkId, out->data());
-            }
-            else if (ds.getDtype() == z5::types::Datatype::uint16) {
-                xt::xarray<uint16_t> tmp = xt::empty<T>(maxChunkShape);
-                ds.readChunk(chunkId, tmp.data());
-
-                uint8_t *p8 = out->data();
-                uint16_t *p16 = tmp.data();
-                for(int i=0;i<maxChunkSize;i++)
-                    p8[i] = p16[i] / 257;
-            }
-            
-            return out;
-        }
+template<typename T>
+static xt::xarray<T> *readChunk(const z5::Dataset & ds, z5::types::ShapeType chunkId)
+{
+    if (!ds.chunkExists(chunkId)) {
+        return nullptr;
     }
+
+    if (!ds.isZarr())
+        throw std::runtime_error("only zarr datasets supported currently!");
+    if (ds.getDtype() != z5::types::Datatype::uint8 && ds.getDtype() != z5::types::Datatype::uint16)
+        throw std::runtime_error("only uint8_t/uint16 zarrs supported currently!");
+
+    z5::types::ShapeType chunkShape;
+    // size_t chunkSize;
+    ds.getChunkShape(chunkId, chunkShape);
+    // get the shape of the chunk (as stored it is stored)
+    //for ZARR also edge chunks are always full size!
+    const std::size_t maxChunkSize = ds.defaultChunkSize();
+    const auto & maxChunkShape = ds.defaultChunkShape();
+
+    // chunkSize = std::accumulate(chunkShape.begin(), chunkShape.end(), 1, std::multiplies<std::size_t>());
+
+    xt::xarray<T> *out = new xt::xarray<T>();
+    *out = xt::empty<T>(maxChunkShape);
+
+
+    // read/decompress & convert data
+    if (ds.getDtype() == z5::types::Datatype::uint8) {
+        ds.readChunk(chunkId, out->data());
+    }
+    else if (ds.getDtype() == z5::types::Datatype::uint16) {
+        xt::xarray<uint16_t> tmp = xt::empty<T>(maxChunkShape);
+        ds.readChunk(chunkId, tmp.data());
+
+        uint8_t *p8 = out->data();
+        uint16_t *p16 = tmp.data();
+        for(int i=0;i<maxChunkSize;i++)
+            p8[i] = p16[i] / 257;
+    }
+
+    return out;
 }
+
 
 int ChunkCache::groupIdx(std::string name)
 {
@@ -195,7 +189,7 @@ void readArea3D(xt::xtensor<uint8_t,3,xt::layout_type::column_major> &out, const
                         if (!cache->has(idx)) {
                             cache->mutex.unlock();
                             // std::cout << "reading chunk " << cv::Vec3i(ix,iy,iz) << " for " << cv::Vec3i(x,y,z) << chunksize << std::endl;
-                            chunk = z5::multiarray::readChunk<uint8_t>(*ds, {size_t(iz),size_t(iy),size_t(ix)});
+                            chunk = readChunk<uint8_t>(*ds, {size_t(iz),size_t(iy),size_t(ix)});
                             cache->mutex.lock();
                             cache->put(idx, chunk);
                             chunk_ref = cache->get(idx);
@@ -365,7 +359,7 @@ void readInterpolated3D(cv::Mat_<uint8_t> &out, z5::Dataset *ds,
         cache->mutex.lock();
         if (!cache->has(idx)) {
             cache->mutex.unlock();
-            chunk = z5::multiarray::readChunk<uint8_t>(*ds, {size_t(idx[1]),size_t(idx[2]),size_t(idx[3])});
+            chunk = readChunk<uint8_t>(*ds, {size_t(idx[1]),size_t(idx[2]),size_t(idx[3])});
             cache->mutex.lock();
             cache->put(idx, chunk);
             chunk_ref = cache->get(idx);
@@ -461,6 +455,97 @@ void readInterpolated3D(cv::Mat_<uint8_t> &out, z5::Dataset *ds,
                 float c = (1-fx)*c0 + fx*c1;
 
                 out(y,x) = c;
+            }
+        }
+    }
+}
+
+
+struct vec3i_hash {
+    size_t operator()(cv::Vec3i p) const {
+        size_t const hash1 = std::hash<int>{}(p[0]);
+        size_t const hash2 = std::hash<int>{}(p[1]);
+        size_t const hash3 = std::hash<int>{}(p[2]);
+
+        size_t const hash = hash1 ^ (hash2 + 0x9e3779b9 + (hash1 << 6) + (hash1 >> 2));
+        return hash ^ (hash3 + 0x9e3779b9 + (hash << 6) + (hash >> 2));
+    }
+};
+
+void readNearestNeighbor2D(cv::Mat_<uint8_t> &out, z5::Dataset *ds,
+                                  const cv::Mat_<cv::Vec3f> &coords, ChunkCache *cache) {
+    out = cv::Mat_<uint8_t>(coords.size(), 0);
+
+    int group_idx = cache->groupIdx(ds->path());
+
+    // Bit operations setup
+    const int chunk_size = ds->chunking().blockShape()[0];
+    const int chunk_shift = __builtin_ctz(chunk_size);
+    const int chunk_mask = chunk_size - 1;
+
+    int w = coords.cols;
+    int h = coords.rows;
+
+    cv::Vec4i last_idx = {-1,-1,-1,-1};
+    xt::xarray<uint8_t> *chunk = nullptr;
+    std::shared_ptr<xt::xarray<uint8_t>> chunk_ref;
+
+    // Process in tiles for better cache locality
+    const int TILE_SIZE = 32;
+
+    for(size_t tile_y = 0; tile_y < h; tile_y += TILE_SIZE) {
+        size_t y_end = std::min(tile_y + TILE_SIZE, (size_t)h);
+
+        for(size_t tile_x = 0; tile_x < w; tile_x += TILE_SIZE) {
+            size_t x_end = std::min(tile_x + TILE_SIZE, (size_t)w);
+
+            for(size_t y = tile_y; y < y_end; y++) {
+                // Prefetch next row
+                if (y + 1 < y_end) {
+                    __builtin_prefetch(&coords(y+1, tile_x), 0, 1);
+                }
+
+                for(size_t x = tile_x; x < x_end; x++) {
+                    // Use fast rounding (could use SIMD here)
+                    int ox = int(coords(y,x)[2] + 0.5f);
+                    int oy = int(coords(y,x)[1] + 0.5f);
+                    int oz = int(coords(y,x)[0] + 0.5f);
+
+                    // Branchless bounds check
+                    if ((ox | oy | oz) < 0)
+                        continue;
+
+                    // Bit operations for chunk index
+                    int ix = ox >> chunk_shift;
+                    int iy = oy >> chunk_shift;
+                    int iz = oz >> chunk_shift;
+
+                    cv::Vec4i idx = {group_idx, ix, iy, iz};
+
+                    // Only reload chunk if needed
+                    if (idx != last_idx) {
+                        last_idx = idx;
+
+                        if (!cache->has(idx)) {
+                            chunk = readChunk<uint8_t>(*ds, {size_t(ix), size_t(iy), size_t(iz)});
+                            cache->put(idx, chunk);
+                            chunk_ref = cache->get(idx);
+                        } else {
+                            chunk_ref = cache->get(idx);
+                        }
+                        chunk = chunk_ref.get();
+                    }
+
+                    if (!chunk)
+                        continue;
+
+                    // Bit mask for local coordinates
+                    int lx = ox & chunk_mask;
+                    int ly = oy & chunk_mask;
+                    int lz = oz & chunk_mask;
+
+                    out(y,x) = chunk->operator()(lx, ly, lz);
+                }
             }
         }
     }
