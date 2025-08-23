@@ -4,135 +4,89 @@
 
 #include "vc/core/util/xtensor_include.hpp"
 #include XTENSORINCLUDE(containers, xarray.hpp)
-#include XTENSORINCLUDE(views, xaxis_slice_iterator.hpp)
 #include XTENSORINCLUDE(io, xio.hpp)
 #include XTENSORINCLUDE(generators, xbuilder.hpp)
 #include XTENSORINCLUDE(views, xview.hpp)
 
-#include "z5/factory.hxx"
-#include "z5/filesystem/handle.hxx"
-#include "z5/filesystem/dataset.hxx"
 #include "z5/common.hxx"
 #include "z5/multiarray/xtensor_access.hxx"
 #include "z5/attributes.hxx"
 
-#include <opencv2/highgui.hpp>
 #include <opencv2/core.hpp>
 #include <opencv2/calib3d.hpp>
 #include <opencv2/imgproc.hpp>
 #include <shared_mutex>
 
 #include <algorithm>
-#include <random>
-
-using shape = z5::types::ShapeType;
-using namespace xt::placeholders;
 
 
-static std::ostream& operator<< (std::ostream& out, const std::vector<int> &v) {
-    if ( !v.empty() ) {
-        out << '[';
-        for(auto &v : v)
-            out << v << ",";
-        out << "\b]"; // use ANSI backspace character '\b' to overwrite final ", "
-    }
-    return out;
-}
-
-template <size_t N>
-static std::ostream& operator<< (std::ostream& out, const std::array<size_t,N> &v) {
-    if ( !v.empty() ) {
-        out << '[';
-        for(auto &v : v)
-            out << v << ",";
-        out << "\b]"; // use ANSI backspace character '\b' to overwrite final ", "
-    }
-    return out;
-}
-
-static std::ostream& operator<< (std::ostream& out, const xt::svector<size_t> &v) {
-    if ( !v.empty() ) {
-        out << '[';
-        for(auto &v : v)
-            out << v << ",";
-        out << "\b]"; // use ANSI backspace character '\b' to overwrite final ", "
-    }
-    return out;
-}
-
-namespace z5 {
-    namespace multiarray {
-
-        template<typename T>
-        inline xt::xarray<T> *readChunk(const Dataset & ds,
-                            types::ShapeType chunkId)
-        {
-            if (!ds.chunkExists(chunkId)) {
-                return nullptr;
-            }
-
-            if (!ds.isZarr())
-                throw std::runtime_error("only zarr datasets supported currently!");
-            if (ds.getDtype() != z5::types::Datatype::uint8 && ds.getDtype() != z5::types::Datatype::uint16)
-                throw std::runtime_error("only uint8_t/uint16 zarrs supported currently!");
-            
-            types::ShapeType chunkShape;
-            // size_t chunkSize;
-            ds.getChunkShape(chunkId, chunkShape);
-            // get the shape of the chunk (as stored it is stored)
-            //for ZARR also edge chunks are always full size!
-            const std::size_t maxChunkSize = ds.defaultChunkSize();
-            const auto & maxChunkShape = ds.defaultChunkShape();
-            
-            // chunkSize = std::accumulate(chunkShape.begin(), chunkShape.end(), 1, std::multiplies<std::size_t>());
-            
-            xt::xarray<T> *out = new xt::xarray<T>();
-            *out = xt::empty<T>(maxChunkShape);
-            
-            
-            // read/decompress & convert data
-            if (ds.getDtype() == z5::types::Datatype::uint8) {
-                ds.readChunk(chunkId, out->data());
-            }
-            else if (ds.getDtype() == z5::types::Datatype::uint16) {
-                xt::xarray<uint16_t> tmp = xt::empty<T>(maxChunkShape);
-                ds.readChunk(chunkId, tmp.data());
-
-                uint8_t *p8 = out->data();
-                uint16_t *p16 = tmp.data();
-                for(int i=0;i<maxChunkSize;i++)
-                    p8[i] = p16[i] / 257;
-            }
-            
-            return out;
-        }
-    }
-}
-
-int ChunkCache::groupIdx(std::string name)
+template<typename T>
+static  xt::xarray<T> *readChunk(const z5::Dataset & ds, const z5::types::ShapeType& chunkId)
 {
-    if (!_group_store.count(name))
+    if (!ds.chunkExists(chunkId)) {
+        return nullptr;
+    }
+
+    if (!ds.isZarr())
+        throw std::runtime_error("only zarr datasets supported currently!");
+    if (ds.getDtype() != z5::types::Datatype::uint8 && ds.getDtype() != z5::types::Datatype::uint16)
+        throw std::runtime_error("only uint8_t/uint16 zarrs supported currently!");
+
+    z5::types::ShapeType chunkShape;
+    // size_t chunkSize;
+    ds.getChunkShape(chunkId, chunkShape);
+    // get the shape of the chunk (as stored it is stored)
+    //for ZARR also edge chunks are always full size!
+    const std::size_t maxChunkSize = ds.defaultChunkSize();
+    const auto & maxChunkShape = ds.defaultChunkShape();
+
+    // chunkSize = std::accumulate(chunkShape.begin(), chunkShape.end(), 1, std::multiplies<std::size_t>());
+
+    auto *out = new xt::xarray<T>();
+    *out = xt::empty<T>(maxChunkShape);
+
+
+    // read/decompress & convert data
+    if (ds.getDtype() == z5::types::Datatype::uint8) {
+        ds.readChunk(chunkId, out->data());
+    }
+    else if (ds.getDtype() == z5::types::Datatype::uint16) {
+        xt::xarray<uint16_t> tmp = xt::empty<T>(maxChunkShape);
+        ds.readChunk(chunkId, tmp.data());
+
+        uint8_t *p8 = out->data();
+        uint16_t *p16 = tmp.data();
+        for(int i=0;i<maxChunkSize;i++)
+            p8[i] = p16[i] / 257;
+    }
+
+    return out;
+}
+
+int ChunkCache::groupIdx(const std::string& name)
+{
+    if (!_group_store.contains(name))
         _group_store[name] = _group_store.size()+1;
     
      return _group_store[name];
 }
     
-void ChunkCache::put(cv::Vec4i idx, xt::xarray<uint8_t> *ar)
+void ChunkCache::put(const cv::Vec4i& idx, xt::xarray<uint8_t> *ar)
 {
     if (_stored >= _size) {
         using KP = std::pair<cv::Vec4i, uint64_t>;
         std::vector<KP> gen_list(_gen_store.begin(), _gen_store.end());
-        std::sort(gen_list.begin(), gen_list.end(), [](KP &a, KP &b){ return a.second < b.second; });
-        for(auto it : gen_list) {
-            std::shared_ptr<xt::xarray<uint8_t>> ar = _store[it.first];
+        std::ranges::sort(gen_list, [](const KP &a, const KP &b){ return a.second < b.second; });
+        for(const auto &key: gen_list | std::views::keys) {
+            std::shared_ptr<xt::xarray<uint8_t>> ar = _store[key];
             //TODO we could remove this with lower probability so we dont store infiniteyl empty blocks but also keep more of them as they are cheap
-            if (ar.get()) {
+            if (ar != nullptr) {
                 size_t size = ar.get()->storage().size();
                 ar.reset();
                 _stored -= size;
             
-                _store.erase(it.first);
-                _gen_store.erase(it.first);
+                _store.erase(key);
+                _gen_store.erase(key);
             }
 
             //we delete 10% of cache content to amortize sorting costs
@@ -142,8 +96,8 @@ void ChunkCache::put(cv::Vec4i idx, xt::xarray<uint8_t> *ar)
         }
     }
 
-    if (ar) {
-        if (_store.count(idx)) {
+    if (ar != nullptr) {
+        if (_store.contains(idx)) {
             assert(_store[idx].get());
             _stored -= ar->size();
         }
@@ -155,7 +109,7 @@ void ChunkCache::put(cv::Vec4i idx, xt::xarray<uint8_t> *ar)
 }
 
 //algorithm 2: do interpolation on basis of individual chunks
-void readArea3D(xt::xtensor<uint8_t,3,xt::layout_type::column_major> &out, const cv::Vec3i offset, z5::Dataset *ds, ChunkCache *cache)
+void readArea3D(xt::xtensor<uint8_t,3,xt::layout_type::column_major> &out, const cv::Vec3i& offset, const z5::Dataset *ds, ChunkCache *cache)
 {
     //FIXME assert dims
     //FIXME based on key math we should check bounds here using volume and chunk size
@@ -195,10 +149,9 @@ void readArea3D(xt::xtensor<uint8_t,3,xt::layout_type::column_major> &out, const
                         if (!cache->has(idx)) {
                             cache->mutex.unlock();
                             // std::cout << "reading chunk " << cv::Vec3i(ix,iy,iz) << " for " << cv::Vec3i(x,y,z) << chunksize << std::endl;
-                            chunk = z5::multiarray::readChunk<uint8_t>(*ds, {size_t(iz),size_t(iy),size_t(ix)});
+                            chunk = readChunk<uint8_t>(*ds, {size_t(iz),size_t(iy),size_t(ix)});
                             cache->mutex.lock();
                             cache->put(idx, chunk);
-                            chunk_ref = cache->get(idx);
                         }
                         else {
                             chunk_ref = cache->get(idx);
@@ -207,7 +160,7 @@ void readArea3D(xt::xtensor<uint8_t,3,xt::layout_type::column_major> &out, const
                         cache->mutex.unlock();
                     }
 
-                    if (chunk) {
+                    if (chunk != nullptr) {
                         int lz = z-iz*chunksize[0];
                         int ly = y-iy*chunksize[1];
                         int lx = x-ix*chunksize[2];
@@ -220,8 +173,8 @@ void readArea3D(xt::xtensor<uint8_t,3,xt::layout_type::column_major> &out, const
 
 ChunkCache::~ChunkCache()
 {
-    for(auto &it : _store)
-        it.second.reset();
+    for(auto &val: _store | std::views::values)
+        val.reset();
 }
 
 void ChunkCache::reset()
@@ -234,7 +187,7 @@ void ChunkCache::reset()
     _stored = 0;
 }
 
-std::shared_ptr<xt::xarray<uint8_t>> ChunkCache::get(cv::Vec4i idx)
+std::shared_ptr<xt::xarray<uint8_t>> ChunkCache::get(const cv::Vec4i& idx)
 {
     auto res = _store.find(idx);
     if (res == _store.end())
@@ -246,16 +199,15 @@ std::shared_ptr<xt::xarray<uint8_t>> ChunkCache::get(cv::Vec4i idx)
     return res->second;
 }
 
-bool ChunkCache::has(cv::Vec4i idx)
-{
-    return _store.count(idx);
+bool ChunkCache::has(const cv::Vec4i& idx) const {
+    return _store.contains(idx);
 }
 
 void readInterpolated3D(cv::Mat_<uint8_t> &out, z5::Dataset *ds,
                                const cv::Mat_<cv::Vec3f> &coords, ChunkCache *cache) {
     out = cv::Mat_<uint8_t>(coords.size(), 0);
 
-    if (!cache) {
+    if (cache == nullptr) {
         std::cout << "ERROR should use a shared chunk cache!" << std::endl;
         abort();
     }
@@ -269,16 +221,15 @@ void readInterpolated3D(cv::Mat_<uint8_t> &out, z5::Dataset *ds,
     int w = coords.cols;
     int h = coords.rows;
 
-    std::shared_mutex mutex;
     std::unordered_map<cv::Vec4i,std::shared_ptr<xt::xarray<uint8_t>>,vec4i_hash> chunks;
 
     // Lambda for retrieving single values (unchanged)
     auto retrieve_single_value_cached = [&cw,&ch,&cd,&group_idx,&chunks](
         int ox, int oy, int oz) -> uint8_t {
 
-            int ix = int(ox)/cw;
-            int iy = int(oy)/ch;
-            int iz = int(oz)/cd;
+            int ix = ox/cw;
+            int iy = oy/ch;
+            int iz = oz/cd;
 
             cv::Vec4i idx = {group_idx,ix,iy,iz};
 
@@ -300,7 +251,6 @@ void readInterpolated3D(cv::Mat_<uint8_t> &out, z5::Dataset *ds,
         {
             cv::Vec4i last_idx = {-1,-1,-1,-1};
             std::shared_ptr<xt::xarray<uint8_t>> chunk_ref;
-            xt::xarray<uint8_t> *chunk = nullptr;
             std::unordered_map<cv::Vec4i,std::shared_ptr<xt::xarray<uint8_t>>,vec4i_hash> chunks_local;
 
             #pragma omp for collapse(2)
@@ -356,16 +306,16 @@ void readInterpolated3D(cv::Mat_<uint8_t> &out, z5::Dataset *ds,
         }
 
 #pragma omp paralle for schedule(dynamic)
-    for(auto &it : chunks) {
-        xt::xarray<uint8_t> *chunk = nullptr;
+    for(const auto &key: chunks | std::views::keys) {
         std::shared_ptr<xt::xarray<uint8_t>> chunk_ref;
 
-        cv::Vec4i idx = it.first;
+        const cv::Vec4i& idx = key;
 
         cache->mutex.lock();
         if (!cache->has(idx)) {
+            xt::xarray<uint8_t> *chunk = nullptr;
             cache->mutex.unlock();
-            chunk = z5::multiarray::readChunk<uint8_t>(*ds, {size_t(idx[1]),size_t(idx[2]),size_t(idx[3])});
+            chunk = readChunk<uint8_t>(*ds, {size_t(idx[1]),size_t(idx[2]),size_t(idx[3])});
             cache->mutex.lock();
             cache->put(idx, chunk);
             chunk_ref = cache->get(idx);
@@ -409,7 +359,7 @@ void readInterpolated3D(cv::Mat_<uint8_t> &out, z5::Dataset *ds,
                 int lz = oz-iz*cd;
 
                 //valid - means zero!
-                if (!chunk)
+                if (chunk == nullptr)
                     continue;
 
                 float c000 = chunk->operator()(lx,ly,lz);
@@ -467,7 +417,7 @@ void readInterpolated3D(cv::Mat_<uint8_t> &out, z5::Dataset *ds,
 }
 
 //somehow opencvs functions are pretty slow 
-static inline cv::Vec3f normed(const cv::Vec3f v)
+static inline cv::Vec3f normed(const cv::Vec3f& v)
 {
     return v/sqrt(v[0]*v[0]+v[1]*v[1]+v[2]*v[2]);
 }
@@ -479,10 +429,10 @@ static cv::Vec3f at_int(const cv::Mat_<cv::Vec3f> &points, cv::Vec2f p)
     float fx = p[0]-x;
     float fy = p[1]-y;
     
-    cv::Vec3f p00 = points(y,x);
-    cv::Vec3f p01 = points(y,x+1);
-    cv::Vec3f p10 = points(y+1,x);
-    cv::Vec3f p11 = points(y+1,x+1);
+    const cv::Vec3f& p00 = points(y,x);
+    const cv::Vec3f& p01 = points(y,x+1);
+    const cv::Vec3f& p10 = points(y+1,x);
+    const cv::Vec3f& p11 = points(y+1,x+1);
     
     cv::Vec3f p0 = (1-fx)*p00 + fx*p01;
     cv::Vec3f p1 = (1-fx)*p10 + fx*p11;
@@ -536,7 +486,7 @@ static float sdist(const cv::Vec3f &a, const cv::Vec3f &b)
     return d.dot(d);
 }
 
-static void min_loc(const cv::Mat_<cv::Vec3f> &points, cv::Vec2f &loc, cv::Vec3f &out, cv::Vec3f tgt, bool z_search = true)
+static void min_loc(const cv::Mat_<cv::Vec3f> &points, cv::Vec2f &loc, cv::Vec3f &out, const cv::Vec3f& tgt, bool z_search = true)
 {
     cv::Rect boundary(1,1,points.cols-2,points.rows-2);
     if (!boundary.contains(cv::Point(loc))) {
@@ -549,8 +499,7 @@ static void min_loc(const cv::Mat_<cv::Vec3f> &points, cv::Vec2f &loc, cv::Vec3f
     cv::Vec3f val = at_int(points, loc);
     out = val;
     float best = sdist(val, tgt);
-    float res;
-    
+
     std::vector<cv::Vec2f> search;
     if (z_search)
         search = {{0,-1},{0,1},{-1,0},{1,0}};
@@ -574,7 +523,7 @@ static void min_loc(const cv::Mat_<cv::Vec3f> &points, cv::Vec2f &loc, cv::Vec3f
             
             
             val = at_int(points, cand);
-            res = sdist(val,tgt);
+            float res = sdist(val, tgt);
             if (res < best) {
                 changed = true;
                 best = res;
@@ -590,24 +539,6 @@ static void min_loc(const cv::Mat_<cv::Vec3f> &points, cv::Vec2f &loc, cv::Vec3f
     }
 }
 
-static float tdist(const cv::Vec3f &a, const cv::Vec3f &b, float t_dist)
-{
-    cv::Vec3f d = a-b;
-    float l = sqrt(d.dot(d));
-    
-    return abs(l-t_dist);
-}
-
-static float tdist_sum(const cv::Vec3f &v, const std::vector<cv::Vec3f> &tgts, const std::vector<float> &tds)
-{
-    float sum = 0;
-    for(int i=0;i<tgts.size();i++) {
-        float d = tdist(v, tgts[i], tds[i]);
-        sum += d*d;
-    }
-    
-    return sum;
-}
 
 //this works surprisingly well, though some artifacts where original there was a lot of skew
 cv::Mat_<cv::Vec3f> smooth_vc_segmentation(const cv::Mat_<cv::Vec3f> &points)
@@ -631,7 +562,7 @@ cv::Mat_<cv::Vec3f> smooth_vc_segmentation(const cv::Mat_<cv::Vec3f> &points)
             min_loc(points, loc, out(j,i), blur(j,i), false);
         }
         
-        return out;
+    return out;
 }
 
 void vc_segmentation_scales(cv::Mat_<cv::Vec3f> points, double &sx, double &sy)
@@ -659,7 +590,6 @@ void vc_segmentation_scales(cv::Mat_<cv::Vec3f> points, double &sx, double &sy)
         double _sum_x = 0;
         double _sum_y = 0;
         int _count = 0;
-        cv::Vec3f *row = points.ptr<cv::Vec3f>(j);
         for(int i=imin;i<imax;i+=step) {
             cv::Vec3f v = points(j,i)-points(j,i-1);
             _sum_x += sqrt(v.dot(v));
@@ -696,7 +626,7 @@ cv::Mat_<cv::Vec3f> vc_segmentation_calc_normals(const cv::Mat_<cv::Vec3f> &poin
             normals(j,i) = n;
         }
         
-        cv::GaussianBlur(normals, normals, {21,21}, 0);
+    cv::GaussianBlur(normals, normals, {21,21}, 0);
         
 #pragma omp parallel for
         for(int j=n_step;j<points.rows-n_step;j++)
