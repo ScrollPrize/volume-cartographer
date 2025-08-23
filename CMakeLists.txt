@@ -151,14 +151,8 @@ if(VC_DEVELOPER_WARNINGS)
 endif()
 
 add_subdirectory(core)
-if (VC_BUILD_TESTS)
-    add_subdirectory(testing)
-endif()
 
-# App support library
-if(VC_BUILD_APPS OR VC_BUILD_UTILS)
-    add_subdirectory(app_support)
-endif()
+
 
 ## VC Core Apps ##
 if (VC_BUILD_APPS)
@@ -170,16 +164,6 @@ endif()
 ## VC Example Apps ##
 
 ## VC Documentation
-find_package(Doxygen OPTIONAL_COMPONENTS dot)
-CMAKE_DEPENDENT_OPTION(VC_BUILD_DOCS "Build VC Doxygen documentation" on "DOXYGEN_FOUND" off)
-CMAKE_DEPENDENT_OPTION(VC_INSTALL_DOCS "Install VC documentation" off "VC_BUILD_DOCS" off)
-if(VC_BUILD_DOCS)
-    add_subdirectory(docs)
-endif()
-
-if(VC_BUILD_PYTHON_BINDINGS)
-    add_subdirectory(python)
-endif()
 
 # Setup the config files #
 include(VCPackageConfig)
