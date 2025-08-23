@@ -45,6 +45,7 @@ public:
     std::shared_ptr<xt::xarray<uint8_t>> get(cv::Vec4i key);
     void reset();
     bool has(cv::Vec4i idx);
+
     std::shared_mutex mutex;
 private:
     uint64_t _generation = 0;

@@ -850,7 +850,7 @@ cv::Mat CVolumeViewer::render_area(const cv::Rect &roi)
             _surf->gen(&coords, nullptr, roi.size(), _ptr, _scale, {-roi.width/2, -roi.height/2, _z_off});
         }
 
-        readInterpolated3D(img, volume->zarrDataset(_ds_sd_idx), coords*_ds_scale, cache);
+        readNearestNeighbor2D(img, volume->zarrDataset(_ds_sd_idx), coords*_ds_scale, cache);
         return img;
     }
 }

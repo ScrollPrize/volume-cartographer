@@ -349,7 +349,7 @@ void readInterpolated3D(cv::Mat_<uint8_t> &out, z5::Dataset *ds,
 
         }
 
-#pragma omp paralle for schedule(dynamic)
+#pragma omp parallel for schedule(dynamic)
     for(auto &it : chunks) {
         xt::xarray<uint8_t> *chunk = nullptr;
         std::shared_ptr<xt::xarray<uint8_t>> chunk_ref;
@@ -471,6 +471,7 @@ struct vec3i_hash {
         return hash ^ (hash3 + 0x9e3779b9 + (hash << 6) + (hash >> 2));
     }
 };
+
 
 void readNearestNeighbor2D(cv::Mat_<uint8_t> &out, z5::Dataset *ds,
                                   const cv::Mat_<cv::Vec3f> &coords, ChunkCache *cache) {
