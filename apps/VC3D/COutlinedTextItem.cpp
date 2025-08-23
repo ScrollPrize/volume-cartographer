@@ -1,7 +1,6 @@
 #include "COutlinedTextItem.hpp"
 #include <QPainterPath>
 #include <QPen>
-#include <QBrush>
 
 namespace ChaoVis {
 
