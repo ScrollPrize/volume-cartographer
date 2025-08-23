@@ -26,6 +26,7 @@ extern float sliding_w_scale;
 extern float z_loc_loss_w;
 extern float dist_loss_2d_w;
 extern float dist_loss_3d_w;
+extern float planarity_weight_3D;
 
 class ALifeTime
 {
@@ -646,6 +647,97 @@ uint8_t max_d_ign(uint8_t a, uint8_t b)
     return std::max(a,b);
 }
 
+// Penalize non-planarity of a 2x2 quad: (p00, p01; p10, p11).
+// We take point-to-plane distances on the two opposite triangles to avoid bias.
+struct QuadPlanarityLoss {
+  explicit QuadPlanarityLoss(double w) : sqrt_w_(std::sqrt(w)) {}
+
+  template <typename T>
+  bool operator()(const T* p00, const T* p01, const T* p10, const T* p11, T* r) const {
+    // n0 for (p00,p01,p10), distance of p11 to that plane
+    T v01x = p01[0]-p00[0], v01y = p01[1]-p00[1], v01z = p01[2]-p00[2];
+    T v10x = p10[0]-p00[0], v10y = p10[1]-p00[1], v10z = p10[2]-p00[2];
+    T n0x = v01y*v10z - v01z*v10y;
+    T n0y = v01z*v10x - v01x*v10z;
+    T n0z = v01x*v10y - v01y*v10x;
+    T r11x = p11[0]-p00[0], r11y = p11[1]-p00[1], r11z = p11[2]-p00[2];
+    T num0 = n0x*r11x + n0y*r11y + n0z*r11z;
+    T den0 = n0x*n0x + n0y*n0y + n0z*n0z + T(1e-12);
+    T d0  = num0 / ceres::sqrt(den0); // signed distance
+
+    // n1 for (p11,p01,p10), distance of p00 to that plane
+    T u01x = p01[0]-p11[0], u01y = p01[1]-p11[1], u01z = p01[2]-p11[2];
+    T u10x = p10[0]-p11[0], u10y = p10[1]-p11[1], u10z = p10[2]-p11[2];
+    T n1x = u01y*u10z - u01z*u10y;
+    T n1y = u01z*u10x - u01x*u10z;
+    T n1z = u01x*u10y - u01y*u10x;
+    T r00x = p00[0]-p11[0], r00y = p00[1]-p11[1], r00z = p00[2]-p11[2];
+    T num1 = n1x*r00x + n1y*r00y + n1z*r00z;
+    T den1 = n1x*n1x + n1y*n1y + n1z*n1z + T(1e-12);
+    T d1  = num1 / ceres::sqrt(den1);
+
+    r[0] = T(sqrt_w_) * d0;
+    r[1] = T(sqrt_w_) * d1;
+    return true;
+  }
+
+  static ceres::CostFunction* Create(double w) {
+    return new ceres::AutoDiffCostFunction<QuadPlanarityLoss, 2 /*res*/, 3,3,3,3>(
+      new QuadPlanarityLoss(w));
+  }
+
+private:
+  double sqrt_w_;
+};
+
+// Add planarity residual for the quad anchored at p: (p, p+{0,1}, p+{1,0}, p+{1,1})
+int add_quad_planarity_loss_3D(const cv::Mat_<uint8_t> &state,
+                               cv::Mat_<cv::Vec3d> &points,
+                               const cv::Vec2i &p,
+                               ceres::Problem &problem,
+                               int flags = 0,
+                               ceres::ResidualBlockId *res = nullptr,
+                               float w = 0.1f)
+{
+    // bounds check
+    if (p[0] < 0 || p[1] < 0 ||
+        p[0] + 1 >= state.rows || p[1] + 1 >= state.cols)
+        return 0;
+
+    auto ok = [&](const cv::Vec2i &q) {
+        return (state(q) & (STATE_COORD_VALID | STATE_LOC_VALID)) != 0;
+    };
+
+    cv::Vec2i p00 = p;
+    cv::Vec2i p01 = {p[0],     p[1] + 1};
+    cv::Vec2i p10 = {p[0] + 1, p[1]};
+    cv::Vec2i p11 = {p[0] + 1, p[1] + 1};
+
+    if (!ok(p00) || !ok(p01) || !ok(p10) || !ok(p11))
+        return 0;
+
+    const double weight = static_cast<double>(w);
+
+    ceres::ResidualBlockId tmp =
+        problem.AddResidualBlock(
+            QuadPlanarityLoss::Create(weight),          // 2 residuals, 4x 3D blocks
+            new ceres::HuberLoss(1.0),                  // robustify (optional but helpful)
+            &points(p00)[0], &points(p01)[0],
+            &points(p10)[0], &points(p11)[0]);
+
+    if (res) *res = tmp;
+
+    // Freeze neighbors in local solves to avoid dragging the whole mesh
+    if ((flags & OPTIMIZE_ALL) == 0) {
+        problem.SetParameterBlockConstant(&points(p01)[0]);
+        problem.SetParameterBlockConstant(&points(p10)[0]);
+        problem.SetParameterBlockConstant(&points(p11)[0]);
+    }
+
+    return 1;
+}
+
+
 template <typename T, typename C>
 int gen_space_loss(ceres::Problem &problem, const cv::Vec2i &p, cv::Mat_<uint8_t> &state, cv::Mat_<cv::Vec3d> &loc, Chunked3d<T,C> &t, float w = 0.1)
 {
@@ -708,6 +800,9 @@ int emptytrace_create_centered_losses(ceres::Problem &problem, const cv::Vec2i &
     count += gen_dist_loss(problem, p, {1,1}, state, loc, unit, flags & OPTIMIZE_ALL, nullptr, space_trace_dist_w);
     count += gen_dist_loss(problem, p, {-1,-1}, state, loc, unit, flags & OPTIMIZE_ALL, nullptr, space_trace_dist_w);
 
+    // Planarity prior on the 2x2 quad anchored at p
+    count += add_quad_planarity_loss_3D(state, loc, p, problem, flags, nullptr, planarity_weight_3D);
+
     if (flags & SPACE_LOSS) {
         count += gen_space_loss(problem, p, state, loc, t);
 
@@ -729,6 +824,23 @@ int conditional_spaceline_loss(int bit, const cv::Vec2i &p, const cv::Vec2i &off
         set = set_loss_mask(bit, p, off, loss_status, gen_space_line_loss(problem, p, off, state, loc, t, steps));
     return set;
 };
+
+// deduped planarity for emptytrace "global" graphs
+int conditional_planarity_loss(int bit,
+                               const cv::Vec2i &p,
+                               cv::Mat_<uint16_t> &loss_status,
+                               ceres::Problem &problem,
+                               const cv::Mat_<uint8_t> &state,
+                               cv::Mat_<cv::Vec3d> &loc,
+                               int flags,
+                               float w = planarity_weight_3D)
+{
+    if (!loss_mask(bit, p, {0,0}, loss_status)) {
+        int added = add_quad_planarity_loss_3D(state, loc, p, problem, flags, nullptr, w);
+        return set_loss_mask(bit, p, {0,0}, loss_status, added);
+    }
+    return 0;
+}
 
 //create only missing losses so we can optimize the whole problem
 template <typename I, typename T, typename C>
@@ -765,6 +877,8 @@ int emptytrace_create_missing_centered_losses(ceres::Problem &problem, cv::Mat_<
 
     count += conditional_dist_loss(5, p, {1,1}, loss_status, problem, state, loc, unit, flags, space_trace_dist_w);
     count += conditional_dist_loss(5, p, {-1,-1}, loss_status, problem, state, loc, unit, flags, space_trace_dist_w);
+
+    count += conditional_planarity_loss(12, p, loss_status, problem, state, loc, flags, planarity_weight_3D);
 
     if (flags & SPACE_LOSS) {
         if (!loss_mask(6, p, {0,0}, loss_status))
@@ -1933,6 +2047,25 @@ int cond_surftrack_surfloss(int type, SurfaceMeta *sm, const cv::Vec2i p, SurfTr
     return count;
 }
 
+int cond_surftrack_planarity_3D(int type,
+                                SurfaceMeta *sm,
+                                const cv::Vec2i &p,
+                                cv::Mat_<cv::Vec3d> &points,
+                                SurfTrackerData &data,
+                                ceres::Problem &problem,
+                                const cv::Mat_<uint8_t> &state,
+                                int flags = 0)
+{
+    resId_t id(type, sm, p);
+    if (data.hasResId(id))
+        return 0;
+
+    ceres::ResidualBlockId res;
+    int count = add_quad_planarity_loss_3D(state, points, p, problem, flags, &res, planarity_weight_3D);
+    if (count) data.resId(id) = res;
+    return count;
+}
+
 //will optimize only the center point
 int surftrack_add_local(SurfaceMeta *sm, const cv::Vec2i p, SurfTrackerData &data, ceres::Problem &problem, 
     const cv::Mat_<uint8_t> &state, cv::Mat_<cv::Vec3d> &points, float step, float src_step, int flags = 0, int *straigh_count_ptr = nullptr)
@@ -1952,6 +2085,9 @@ int surftrack_add_local(SurfaceMeta *sm, const cv::Vec2i p, SurfTrackerData &dat
         count += add_surftrack_distloss_3D(points, p, {1,-1}, problem, state, step*src_step, flags);
         count += add_surftrack_distloss_3D(points, p, {-1,1}, problem, state, step*src_step, flags);
         count += add_surftrack_distloss_3D(points, p, {-1,-1}, problem, state, step*src_step, flags);
+
+        // planarity (developability) prior on the 2x2 quad anchored at p
+        count += add_quad_planarity_loss_3D(state, points, p, problem, flags, nullptr, planarity_weight_3D);
 
         //horizontal
         count_straight += add_surftrack_straightloss_3D(p, {0,-2},{0,-1},{0,0}, points, problem, state);
@@ -2023,6 +2159,10 @@ int surftrack_add_global(SurfaceMeta *sm, const cv::Vec2i p, SurfTrackerData &da
         count += cond_surftrack_distloss_3D(2, sm, points, p, {1,-1}, data, problem, state, step, flags);
         count += cond_surftrack_distloss_3D(3, sm, points, p, {-1,1}, data, problem, state, step, flags);
         count += cond_surftrack_distloss_3D(3, sm, points, p, {-1,-1}, data, problem, state, step, flags);
+
+        // planarity (developability) prior on the 2x2 quad anchored at p
+        // pick a unique type ID unused elsewhere (e.g., 20)
+        count += cond_surftrack_planarity_3D(20, sm, p, points, data, problem, state, flags);
 
         //horizontal
         count += cond_surftrack_straightloss_3D(4, sm, p, {0,-2},{0,-1},{0,0}, points, data, problem, state, flags);
@@ -2233,6 +2373,7 @@ float sliding_w_scale = 1.0f;       // Scale factor for sliding window
 float z_loc_loss_w = 0.1f;          // Weight for Z location loss constraints
 float dist_loss_2d_w = 1.0f;        // Weight for 2D distance constraints
 float dist_loss_3d_w = 2.0f;        // Weight for 3D distance constraints
+float planarity_weight_3D = 0.1f;   // Weight for 3D quad planarity (developability) prior
 float straight_min_count = 1.0f;    // Minimum number of straight constraints
 int inlier_base_threshold = 20;     // Starting threshold for inliers
 
@@ -2596,6 +2737,7 @@ QuadSurface *grow_surf_from_surfs(SurfaceMeta *seed, const std::vector<SurfaceMe
     z_loc_loss_w = params.value("z_loc_loss_w", 0.1f);                  // Weight for Z location loss constraints
     dist_loss_2d_w = params.value("dist_loss_2d_w", 1.0f);              // Weight for 2D distance constraints
     dist_loss_3d_w = params.value("dist_loss_3d_w", 2.0f);              // Weight for 3D distance constraints
+    planarity_weight_3D = params.value("planarity_weight_3D", 0.1f);
     straight_min_count = params.value("straight_min_count", 1.0f);      // Minimum number of straight constraints
     inlier_base_threshold = params.value("inlier_base_threshold", 20);  // Starting threshold for inliers
 
@@ -2609,6 +2751,7 @@ QuadSurface *grow_surf_from_surfs(SurfaceMeta *seed, const std::vector<SurfaceMe
     std::cout << "  z_loc_loss_w: " << z_loc_loss_w << std::endl;
     std::cout << "  dist_loss_2d_w: " << dist_loss_2d_w << std::endl;
     std::cout << "  dist_loss_3d_w: " << dist_loss_3d_w << std::endl;
+    std::cout << "  planarity_weight_3D: " << planarity_weight_3D << std::endl;
 
     std::cout << "total surface count: " << surfs_v.size() << std::endl;
 
