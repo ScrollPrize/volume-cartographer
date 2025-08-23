@@ -40,16 +40,7 @@ void COutlinedTextItem::paint(QPainter *painter, const QStyleOptionGraphicsItem 
 
 QRectF COutlinedTextItem::boundingRect() const
 {
-    return shape().controlPointRect();
-}
-
-QPainterPath COutlinedTextItem::shape() const
-{
-    QPainterPath path;
-    path.addText(0, 0, font(), toPlainText());
-    QPainterPathStroker stroker;
-    stroker.setWidth(10);
-    return stroker.createStroke(path).united(path);
+    return QGraphicsTextItem::boundingRect().adjusted(-5,-5,5,5);
 }
 
 } // namespace ChaoVis
