@@ -113,7 +113,6 @@ add_executable(vc_calc_surface_metrics src/vc_calc_surface_metrics.cpp)
 target_link_libraries(vc_calc_surface_metrics
     VC::metrics
     VC::surface
-    VC::app_support
     Boost::program_options
 )
 
