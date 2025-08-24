@@ -5,15 +5,25 @@ import click
 import cc3d
 import fastremap
 import numpy as np
-import scipy.interpolate
-import scipy.ndimage
+# import scipy.interpolate
 from tqdm import tqdm
 from collections import deque
+import networkx as nx
+# import kimimaro
+from torch_geometric.nn.unpool import knn_interpolate
 
 
-def downsample(array, factor):
-    """Simple downsampling by taking every nth element along each axis."""
-    return array[::factor, ::factor, ::factor]
+def max_downsample(x, factor):
+    # Downsample a 3D array by a factor, using max-pooling
+    assert x.ndim == 3
+    if factor == 1:
+        return x
+    x = np.pad(x, ((0, factor - x.shape[0] % factor), (0, factor - x.shape[1] % factor), (0, factor - x.shape[2] % factor)), mode='constant', constant_values=x.min())
+    x = x.reshape(x.shape[0] // factor, factor, x.shape[1] // factor, factor, x.shape[2] // factor, factor)
+    x = np.max(x, axis=5)
+    x = np.max(x, axis=3)
+    x = np.max(x, axis=1)
+    return x
 
 
 class StructureTensor:
@@ -79,100 +89,52 @@ class StructureTensor:
 def comb_fiber(directions, mask):
     """
     Consistently orient 3D vectors using flood-fill propagation.
+    This modifies directions in-place.
     
     Args:
         directions: (Z, Y, X, 3) array of 3D vectors
         mask: (Z, Y, X) boolean mask indicating valid positions
-    
-    Returns:
-        consistently oriented directions array
     """
-    # Copy directions to avoid modifying input
-    oriented_directions = directions.copy()
-    
     # Get valid indices
     valid_coords = np.stack(np.where(mask), axis=-1)
     if len(valid_coords) == 0:
-        return oriented_directions
+        return
     
-    # Track visited points globally
-    visited = np.zeros_like(mask, dtype=bool)
-    
-    # 6-connectivity neighbors (face-adjacent) as numpy array for efficiency
+    oriented = np.zeros_like(mask, dtype=bool)
+    queued = np.zeros_like(mask, dtype=bool)
+    mask = mask > 0
+
     neighbors_offsets = np.array([[-1,0,0], [1,0,0], [0,-1,0], [0,1,0], [0,0,-1], [0,0,1]])
+    def enqueue_unoriented_neighbors(coord):
+        neighbors = np.array(coord) + neighbors_offsets
+        neighbors = neighbors[((neighbors >= 0) & (neighbors < np.array(mask.shape))).all(axis=1)]
+        neighbors = neighbors[mask[*neighbors.T] & ~oriented[*neighbors.T] & ~queued[*neighbors.T]]
+        queued[*neighbors.T] = True
+        queue.extend(neighbors)
     
-    # Process all connected components
-    for start_idx in range(len(valid_coords)):
-        start_coord = tuple(valid_coords[start_idx])
-        
-        # Skip if already processed
-        if visited[start_coord]:
-            continue
-            
-        # BFS for this connected component
-        queue = deque([start_coord])
-        visited[start_coord] = True
-        
-        while queue:
-            current = queue.popleft()
-            current_vec = oriented_directions[current]
-            
-            # Compute all neighbor coordinates at once
-            neighbors = np.array(current) + neighbors_offsets
-            
-            # Check bounds for all neighbors
-            valid_bounds = ((neighbors >= 0) & (neighbors < np.array(mask.shape))).all(axis=1)
-            
-            # Collect valid neighboring vectors for consensus
-            neighbor_vecs = []
-            neighbor_coords = []
-            
-            for i, neighbor_coord in enumerate(neighbors):
-                if not valid_bounds[i]:
-                    continue
-                    
-                neighbor = tuple(neighbor_coord)
-                
-                if mask[neighbor]:
-                    if visited[neighbor]:
-                        # Use already oriented neighbors for consensus
-                        neighbor_vecs.append(oriented_directions[neighbor])
-                        neighbor_coords.append(neighbor)
-                    elif not visited[neighbor]:
-                        # This is a new neighbor to process
-                        neighbor_coords.append(neighbor)
-                        neighbor_vecs.append(oriented_directions[neighbor])
-            
-            # Process unvisited neighbors
-            for j, neighbor in enumerate(neighbor_coords):
-                if not visited[neighbor]:
-                    neighbor_vec = oriented_directions[neighbor]
-                    
-                    # Use consensus of already processed neighbors if available
-                    if len([v for k, v in enumerate(neighbor_vecs) if visited[neighbor_coords[k]]]) > 0:
-                        consensus_vecs = [oriented_directions[neighbor_coords[k]] 
-                                        for k in range(len(neighbor_coords)) 
-                                        if visited[neighbor_coords[k]]]
-                        
-                        # Vote based on multiple neighbors
-                        votes_normal = sum(np.dot(ref_vec, neighbor_vec) for ref_vec in consensus_vecs)
-                        votes_flipped = sum(np.dot(ref_vec, -neighbor_vec) for ref_vec in consensus_vecs)
-                        
-                        if votes_flipped > votes_normal:
-                            oriented_directions[neighbor] = -neighbor_vec
-                    else:
-                        # Fall back to single neighbor comparison
-                        dot_normal = np.dot(current_vec, neighbor_vec)
-                        dot_flipped = np.dot(current_vec, -neighbor_vec)
-                        
-                        if abs(dot_flipped) > abs(dot_normal):
-                            oriented_directions[neighbor] = -neighbor_vec
-                    
-                    # Add to queue and mark as visited
-                    queue.append(neighbor)
-                    visited[neighbor] = True
+    # Start with the first valid coordinate, add its neighbors to queue
+    start_coord = tuple(valid_coords[0])
+    oriented[start_coord] = queued[start_coord] = True
+    queue = deque()
+    enqueue_unoriented_neighbors(start_coord)
     
-    return oriented_directions
+    while queue:
+        current = queue.popleft()
+        current_vec = directions[*current]
+        
+        # Find all oriented neighbors...
+        neighbors = np.array(current) + neighbors_offsets
+        neighbors = neighbors[((neighbors >= 0) & (neighbors < np.array(mask.shape))).all(axis=1)]
+        oriented_neighbors = neighbors[mask[*neighbors.T] & oriented[*neighbors.T]]
+        neighbor_vecs = directions[*oriented_neighbors.T]
+        
+        # ...and collect their votes on whether we should flip current
+        votes_to_flip = np.sum(np.dot(neighbor_vecs, current_vec) < 0)
+        if votes_to_flip > len(neighbor_vecs) / 2:
+            directions[*current] = -current_vec
+        oriented[*current] = True
+        
+        enqueue_unoriented_neighbors(current)
 
 
 def comb_global(fiber_points, fiber_directions, subsample_factor=10):
@@ -196,14 +158,14 @@ def comb_global(fiber_points, fiber_directions, subsample_factor=10):
     
     # Precompute all pairwise fiber distances for efficiency
     fiber_distances = np.zeros((n_fibers, n_fibers))
+    fiber_points_pth = [torch.from_numpy(points[::subsample_factor].astype(np.float32)).cuda() for points in fiber_points]
     for i in tqdm(range(n_fibers), desc="computing distances", leave=False):
-        points_i = fiber_points[i][::subsample_factor]
+        points_i = fiber_points_pth[i]
         for j in range(i + 1, n_fibers):
-            points_j = fiber_points[j][::subsample_factor]
-            diff = points_i[:, None, :] - points_j[None, :, :]
-            distances = np.linalg.norm(diff, axis=2)
-            dist = np.percentile(distances, 25)
-            fiber_distances[i, j] = fiber_distances[j, i] = dist
+            points_j = fiber_points_pth[j]
+            distances = torch.cdist(points_i, points_j)
+            dist = torch.quantile(distances, 0.25)
+            fiber_distances[i, j] = fiber_distances[j, i] = dist.item()
     
     def find_nearest_unvisited_fiber(visited_set):
         """Find the nearest unvisited fiber to any fiber in the visited set."""
@@ -297,7 +259,7 @@ def comb_global(fiber_points, fiber_directions, subsample_factor=10):
 
 def get_directions(cc_mask, structure_tensor: StructureTensor):
     fiber_directions = structure_tensor.compute_structure_tensor(cc_mask)
-    fiber_directions = comb_fiber(fiber_directions, cc_mask)
+    comb_fiber(fiber_directions, cc_mask)
     if False:  # debug: plot as arrows
         import matplotlib.pyplot as plt
         zyx = np.stack(np.meshgrid(np.arange(fiber_directions.shape[0]), np.arange(fiber_directions.shape[1]), np.arange(fiber_directions.shape[2]), indexing='ij'), axis=-1)
@@ -386,14 +348,26 @@ def main(
                 if num_ccs == 0:
                     continue
 
-                chunk_points_zyx = []
-                chunk_directions_zyx = []
+                cc_to_points_zyx = {}
+                cc_to_directions_zyx = {}
 
                 cc_stats = cc3d.statistics(chunk_ccs, no_slice_conversion=True)
                 for cc_idx, cc_mask in tqdm(cc3d.each(chunk_ccs, binary=False, in_place=True), total=num_ccs):
                     cc_z_min, cc_z_max, cc_y_min, cc_y_max, cc_x_min, cc_x_max = cc_stats['bounding_boxes'][cc_idx]
-                    cc_mask_cropped = cc_mask[cc_z_min:cc_z_max, cc_y_min:cc_y_max, cc_x_min:cc_x_max]
+                    cc_mask_cropped = cc_mask[cc_z_min : cc_z_max + 1, cc_y_min : cc_y_max + 1, cc_x_min : cc_x_max + 1]
                     directions_zyx = get_directions(cc_mask_cropped, structure_tensor)
+
+                    # # Downsample and skeletonize, to obtain a sparse but full-coverage set of points to use in dense interpolation
+                    # skeleton_downsampling = 2
+                    # cc_mask_cropped_ds = max_downsample(cc_mask_cropped, skeleton_downsampling)
+                    # skeletons = kimimaro.skeletonize(cc_mask_cropped_ds, teasar_params={'scale': 1.5, 'const': 8}, dust_threshold=0, progress=False)
+                    # assert len(skeletons) == 1
+                    # skeleton_point_zyxs_in_crop = next(iter(skeletons.values())).vertices.astype(np.int32) * skeleton_downsampling
+                    # skeleton_point_zyxs_in_chunk = skeleton_point_zyxs_in_crop + np.array([cc_z_min, cc_y_min, cc_x_min])
+                    # skeleton_directions = directions_zyx[*skeleton_point_zyxs_in_crop.T]
+                    # chunk_points_zyx.append(skeleton_point_zyxs_in_chunk)
+                    # chunk_directions_zyx.append(skeleton_directions)
+
                     points_zyx = np.stack(np.where(cc_mask_cropped), axis=-1)
                     directions_zyx = directions_zyx[*points_zyx.T]
                     points_zyx = points_zyx + np.array([cc_z_min, cc_y_min, cc_x_min])
@@ -405,8 +379,10 @@ def main(
                     #  In that case have to strictly alternate between points and directions
                     # TODO: write the globally-combed version to sparse file also?
                     sparse_out_fp.write(points_and_directions.tobytes())
-                    chunk_points_zyx.append(points_zyx)
-                    chunk_directions_zyx.append(directions_zyx)
+
+                    cc_to_points_zyx[cc_idx] = points_zyx
+                    cc_to_directions_zyx[cc_idx] = directions_zyx
+
                     total_points += len(points_zyx)
                     if False:
                         import matplotlib.pyplot as plt
@@ -417,7 +393,38 @@ def main(
 
                 print('  combing...')
                 # FIXME: should comb across chunks too! maintain a cache of recent-z-chunk fibers
-                chunk_directions_zyx = comb_global(chunk_points_zyx, chunk_directions_zyx)
+                cc_to_directions_zyx = {
+                    cc_idx: combed
+                    for cc_idx, combed in zip(cc_to_points_zyx.keys(), comb_global(list(cc_to_points_zyx.values()), list(cc_to_directions_zyx.values())))
+                }
+
+                # Create a random subsample of points from which to interpolate into inter-fiber regions
+                subsampling = 5
+                sparse_points_zyx = []
+                sparse_directions_zyx = []
+                for cc_idx in range(1, num_ccs + 1):
+                    points_zyx = cc_to_points_zyx[cc_idx]
+                    directions_zyx = cc_to_directions_zyx[cc_idx]
+                    mask = np.random.choice(len(points_zyx), size=len(points_zyx) // subsampling, replace=False)
+                    sparse_points_zyx.append(points_zyx[mask])
+                    sparse_directions_zyx.append(directions_zyx[mask])
+                sparse_points_zyx = np.concatenate(sparse_points_zyx, axis=0)
+                sparse_directions_zyx = np.concatenate(sparse_directions_zyx, axis=0)
+
+                # # Skeletonize then subsample, to obtain a sparse but full-coverage set of points to use in dense interpolation
+                # print('  skeletonizing...')
+                # subsampling = 2
+                # skeletons = kimimaro.skeletonize(chunk_ccs, teasar_params={'scale': 1.5, 'const': 8}, dust_threshold=0, fix_branching=False, fix_borders=False, progress=True)
+                # sparse_points_zyx = []
+                # sparse_directions_zyx = []
+                # for cc_idx, skeleton in skeletons.items():
+                #     skeleton_points_zyx = skeleton.vertices.astype(np.int32)
+                #     point_to_direction = dict(zip(map(tuple, cc_to_points_zyx[cc_idx]), cc_to_directions_zyx[cc_idx]))
+                #     skeleton_directions_zyx = np.array([point_to_direction[tuple(p)] for p in skeleton_points_zyx])
+                #     sparse_points_zyx.append(skeleton_points_zyx[::subsampling])
+                #     sparse_directions_zyx.append(skeleton_directions_zyx[::subsampling])
+                # sparse_points_zyx = np.concatenate(sparse_points_zyx, axis=0)
+                # sparse_directions_zyx = np.concatenate(sparse_directions_zyx, axis=0)
 
                 print('  interpolating...')
                 xi = np.stack(np.meshgrid(
@@ -426,23 +433,47 @@ def main(
                     np.arange(0, x_end - x_start, dense_output_downsample),
                     indexing='ij'
                 ), axis=-1)
-                # TODO: could make this more efficient by ignoring interior points
-                # TODO: could retain original high-resolution points where valid instead of re-interpolating (though, sparse)
-                dense_directions_linear = scipy.interpolate.griddata(
-                    points=np.concatenate(chunk_points_zyx, axis=0),
-                    values=np.concatenate(chunk_directions_zyx, axis=0),
-                    xi=xi.reshape(-1, 3),
-                    method='linear'
-                ).reshape(xi.shape)
-                dense_directions_nearest = scipy.interpolate.griddata(
-                    points=np.concatenate(chunk_points_zyx, axis=0),
-                    values=np.concatenate(chunk_directions_zyx, axis=0),
-                    xi=xi.reshape(-1, 3),
-                    method='nearest'
-                ).reshape(xi.shape)
-                dense_directions = np.where(np.isnan(dense_directions_linear), dense_directions_nearest, dense_directions_linear)
+                dense_directions = knn_interpolate(
+                    x=torch.from_numpy(sparse_directions_zyx).cuda(),
+                    pos_x=torch.from_numpy(sparse_points_zyx).cuda().to(torch.float32),
+                    pos_y=torch.from_numpy(xi.reshape(-1, 3)).cuda().to(torch.float32),
+                    k=5,
+                ).reshape(xi.shape).cpu().numpy()
+                # Where we have dense directions already, use them instead
+                for cc_idx in range(1, num_ccs + 1):
+                    points_zyx = cc_to_points_zyx[cc_idx] // dense_output_downsample
+                    directions_zyx = cc_to_directions_zyx[cc_idx]
+                    dense_directions[*points_zyx.T] = directions_zyx                # Interpolate from sparse points
+                # dense_directions = scipy.interpolate.griddata(
+                #     points=sparse_points_zyx,
+                #     values=sparse_directions_zyx,
+                #     xi=xi.reshape(-1, 3),
+                #     method='linear'
+                # ).reshape(xi.shape)
+                # if False:  # debug! useful for seeing the actual fiber directions
+                #     dense_directions = np.zeros(xi.shape)
+                # # Where we have dense directions already, use them instead
+                # for cc_idx in range(1, num_ccs + 1):
+                #     points_zyx = cc_to_points_zyx[cc_idx] // dense_output_downsample
+                #     directions_zyx = cc_to_directions_zyx[cc_idx]
+                #     dense_directions[*points_zyx.T] = directions_zyx
+                # # Fill in gaps (outside hull) using nearest neighbor
+                # gaps = np.where(np.any(np.isnan(dense_directions), axis=-1))
+                # gap_values = scipy.interpolate.griddata(
+                #     points=sparse_points_zyx,
+                #     values=sparse_directions_zyx,
+                #     xi=gaps,
+                #     method='nearest'
+                # )
+                # dense_directions[gaps] = gap_values
                 dense_directions /= np.linalg.norm(dense_directions, axis=-1, keepdims=True)
                 dense_out_ds[z_start // dense_output_downsample : z_end // dense_output_downsample, y_start // dense_output_downsample : y_end // dense_output_downsample, x_start // dense_output_downsample : x_end // dense_output_downsample] = dense_directions.astype(np.float16)
+                if False:
+                    import matplotlib.pyplot as plt
+                    plt.imsave('wibl.png', chunk_ccs[150:170].max(0)[::dense_output_downsample, ::dense_output_downsample])
+                    plt.imsave('wibl.png', dense_directions[0, :, : , 2], vmin=-1, vmax=1)
+                    plt.imsave('wibl.png', chunk_ccs[::dense_output_downsample, ::dense_output_downsample, ::dense_output_downsample][64])
+                    plt.imsave('wibl.png', np.arctan2(*np.moveaxis(np.nan_to_num(dense_directions[64, :, : , 1:], nan=0), -1, 0)), cmap='hsv')
 
     sparse_out_fp.close()
     print(f'extracted {total_points} fiber-points in total')
