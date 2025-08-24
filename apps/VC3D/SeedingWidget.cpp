@@ -488,64 +488,47 @@ void SeedingWidget::findPeaksAlongRay(
         return;
     }
     
-    std::vector<cv::Vec3f> new_peaks;
-    
-    // Enhanced local maxima detection with configurable window
-    for (size_t i = window; i < intensities.size() - window; i++) {
-        bool isLocalMax = true;
-        
-        // Check if this point is a local maximum within the window
-        for (int j = -window; j <= window; j++) {
-            if (j == 0) continue; // Skip comparing with self
-            
-            if (intensities[i] <= intensities[i + j]) {
-                isLocalMax = false;
-                break;
+    // Place a single point at the center of each above-threshold segment
+    const int thr = thresholdSpinBox->value();
+    bool inside = false;
+    size_t seg_start = 0;
+
+    auto sampleDistAt = [&](const cv::Vec3f& p) -> float {
+        if (distanceTransform.empty()) return 0.0f;
+        int x = std::max(0, std::min(distanceTransform.cols - 1, int(std::round(p[0]))));
+        int y = std::max(0, std::min(distanceTransform.rows - 1, int(std::round(p[1]))));
+        return distanceTransform.at<float>(y, x);
+    };
+
+    auto addCenterOfSegment = [&](size_t s, size_t e) {
+        if (e < s || s >= positions.size() || e >= positions.size()) return;
+        // Prefer the position with the largest distance-transform value within the segment (center of band)
+        size_t best_idx = s;
+        float best_dt = sampleDistAt(positions[s]);
+        for (size_t k = s; k <= e; ++k) {
+            float dt = sampleDistAt(positions[k]);
+            if (dt > best_dt) {
+                best_dt = dt;
+                best_idx = k;
             }
         }
-        
-        if (isLocalMax) {
-            // Apply threshold
-            if (intensities[i] > thresholdSpinBox->value()) {
-                new_peaks.push_back(positions[i]);
-            }
+        _point_collection->addPoint("seeding_peaks", positions[best_idx]);
+    };
+
+    for (size_t i = 0; i < intensities.size(); ++i) {
+        bool curr_inside = intensities[i] >= thr;
+        if (curr_inside && !inside) {
+            inside = true;
+            seg_start = i;
         }
-    }
-    
-    // Also check for sharp gradient changes (edge detection)
-    for (size_t i = window; i < intensities.size() - window; i++) {
-        // Skip if we're too close to already detected peaks
-        bool tooClose = false;
-        for (const auto& existingPoint : new_peaks) {
-            float dist = cv::norm(existingPoint - positions[i]);
-            if (dist < window) {
-                tooClose = true;
-                break;
-            }
+        // If leaving a segment or at the end, close it and add center point
+        bool at_end = (i + 1 == intensities.size());
+        bool next_inside = at_end ? false : (intensities[i + 1] >= thr);
+        if (inside && (!next_inside || at_end)) {
+            size_t seg_end = i;
+            addCenterOfSegment(seg_start, seg_end);
+            inside = false;
         }
-        
-        if (tooClose) continue;
-        
-        // Check for significant gradient changes
-        float leftAvg = 0, rightAvg = 0;
-        for (int j = 1; j <= window; j++) {
-            if (i - j >= 0) leftAvg += intensities[i - j];
-            if (i + j < intensities.size()) rightAvg += intensities[i + j];
-        }
-        leftAvg /= window;
-        rightAvg /= window;
-        
-        // If there's a significant gradient difference and the point is over threshold
-        float gradientDiff = std::abs(leftAvg - rightAvg);
-        if (gradientDiff > thresholdSpinBox->value() * 0.5 &&
-            intensities[i] > thresholdSpinBox->value()) {
-            
-            new_peaks.push_back(positions[i]);
-        }
-    }
-    
-    if (!new_peaks.empty()) {
-        _point_collection->addPoints("seeding_peaks", new_peaks);
     }
 }
 
@@ -924,64 +907,46 @@ void SeedingWidget::findPeaksAlongPath(const PathData& path)
         return;
     }
     
-    // Get the window size from the spinbox
-    const int window = windowSizeSpinBox->value();
-    
-    // Find peaks along the path
-    for (size_t i = window; i < intensities.size() - window; i++) {
-        bool isLocalMax = true;
-        
-        // Check if this point is a local maximum within the window
-        for (int j = -window; j <= window; j++) {
-            if (j == 0) continue; // Skip comparing with self
-            
-            if (intensities[i] <= intensities[i + j]) {
-                isLocalMax = false;
-                break;
+    // Place a single point at the center of each above-threshold segment along the path
+    const int thr = thresholdSpinBox->value();
+    bool inside = false;
+    size_t seg_start = 0;
+
+    auto sampleDistAt = [&](const cv::Vec3f& p) -> float {
+        if (distanceTransform.empty()) return 0.0f;
+        int x = std::max(0, std::min(distanceTransform.cols - 1, int(std::round(p[0]))));
+        int y = std::max(0, std::min(distanceTransform.rows - 1, int(std::round(p[1]))));
+        return distanceTransform.at<float>(y, x);
+    };
+
+    auto addCenterOfSegment = [&](size_t s, size_t e) {
+        if (e < s || s >= positions.size() || e >= positions.size()) return;
+        // Prefer the position with the largest distance-transform value within the segment (center of band)
+        size_t best_idx = s;
+        float best_dt = sampleDistAt(positions[s]);
+        for (size_t k = s; k <= e; ++k) {
+            float dt = sampleDistAt(positions[k]);
+            if (dt > best_dt) {
+                best_dt = dt;
+                best_idx = k;
             }
         }
-        
-        if (isLocalMax) {
-            // Apply threshold
-            if (intensities[i] > thresholdSpinBox->value()) {
-                ColPoint p;
-                p.p = positions[i];
-                _point_collection->addPoint("seeding_peaks", p.p);
-            }
+        _point_collection->addPoint("seeding_peaks", positions[best_idx]);
+    };
+
+    for (size_t i = 0; i < intensities.size(); ++i) {
+        bool curr_inside = intensities[i] >= thr;
+        if (curr_inside && !inside) {
+            inside = true;
+            seg_start = i;
         }
-    }
-    
-    // Also check for sharp gradient changes (edge detection)
-    for (size_t i = window; i < intensities.size() - window; i++) {
-        // Skip if we're too close to already detected peaks
-        bool tooClose = false;
-        for (const auto& existingPoint : _point_collection->getPoints("seeding_peaks")) {
-            float dist = cv::norm(existingPoint.p - positions[i]);
-            if (dist < window) {
-                tooClose = true;
-                break;
-            }
-        }
-        
-        if (tooClose) continue;
-        
-        // Check for significant gradient changes
-        float leftAvg = 0, rightAvg = 0;
-        for (int j = 1; j <= window; j++) {
-            if (i - j >= 0) leftAvg += intensities[i - j];
-            if (i + j < intensities.size()) rightAvg += intensities[i + j];
-        }
-        leftAvg /= window;
-        rightAvg /= window;
-        
-        // If there's a significant gradient difference and the point is over threshold
-        float gradientDiff = std::abs(leftAvg - rightAvg);
-        if (gradientDiff > thresholdSpinBox->value() * 0.5 && 
-            intensities[i] > thresholdSpinBox->value()) {
-            
-            ColPoint p;
-            p.p = positions[i];
-            _point_collection->addPoint("seeding_peaks", p.p);
+        // If leaving a segment or at the end, close it and add center point
+        bool at_end = (i + 1 == intensities.size());
+        bool next_inside = at_end ? false : (intensities[i + 1] >= thr);
+        if (inside && (!next_inside || at_end)) {
+            size_t seg_end = i;
+            addCenterOfSegment(seg_start, seg_end);
+            inside = false;
         }
     }
 }
