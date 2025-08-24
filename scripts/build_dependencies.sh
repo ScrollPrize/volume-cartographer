@@ -19,7 +19,7 @@ elif [[ "$(uname)" == "Linux" ]]; then
     sudo apt-get update
     #todo: determine the complete list
     sudo apt-get install -y libgmp-dev libmpfr-dev ccache ninja-build lld \
-        libcurl4-openssl-dev libboost-system-dev libboost-program-options-dev qt6-base-dev
+        libcurl4-openssl-dev libboost-system-dev libboost-program-options-dev qt6-base-dev clang llvm
 fi
 
 
