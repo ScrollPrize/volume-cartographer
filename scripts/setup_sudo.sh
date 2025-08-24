@@ -9,10 +9,13 @@ sudo apt -y update
 sudo apt -y upgrade
 sudo apt -y full-upgrade
 sudo apt -y install build-essential git qt6-base-dev libboost-system-dev \
-    libboost-program-options-dev libceres-dev xtensor-dev libopencv-dev \
-    libxsimd-dev libblosc-dev libspdlog-dev libgsl-dev libsdl2-dev \
+    libboost-program-options-dev libgsl-dev libsdl2-dev \
     libcurl4-openssl-dev file curl unzip ca-certificates bzip2 wget \
-    fuse jq gimp desktop-file-utils ninja-build
+    fuse jq gimp desktop-file-utils ninja-build libomp-dev libgomp1 \
+    ccache lld clang llvm libgmp-dev libmpfr-dev libsuitesparse-dev \
+    libeigen3-dev zlib1g-dev liblapack-dev libblas-dev libmetis-dev \
+    libavcodec-dev libavformat-dev libswscale-dev libavutil-dev \
+    libv4l-dev v4l-utils libtbb-dev
 
 # Install CMake from official release
 ARCH=$(uname -m)
