@@ -5,11 +5,8 @@ import click
 import cc3d
 import fastremap
 import numpy as np
-# import scipy.interpolate
 from tqdm import tqdm
 from collections import deque
-import networkx as nx
-# import kimimaro
 from torch_geometric.nn.unpool import knn_interpolate
 
 
@@ -357,17 +354,6 @@ def main(
                     cc_mask_cropped = cc_mask[cc_z_min : cc_z_max + 1, cc_y_min : cc_y_max + 1, cc_x_min : cc_x_max + 1]
                     directions_zyx = get_directions(cc_mask_cropped, structure_tensor)
 
-                    # # Downsample and skeletonize, to obtain a sparse but full-coverage set of points to use in dense interpolation
-                    # skeleton_downsampling = 2
-                    # cc_mask_cropped_ds = max_downsample(cc_mask_cropped, skeleton_downsampling)
-                    # skeletons = kimimaro.skeletonize(cc_mask_cropped_ds, teasar_params={'scale': 1.5, 'const': 8}, dust_threshold=0, progress=False)
-                    # assert len(skeletons) == 1
-                    # skeleton_point_zyxs_in_crop = next(iter(skeletons.values())).vertices.astype(np.int32) * skeleton_downsampling
-                    # skeleton_point_zyxs_in_chunk = skeleton_point_zyxs_in_crop + np.array([cc_z_min, cc_y_min, cc_x_min])
-                    # skeleton_directions = directions_zyx[*skeleton_point_zyxs_in_crop.T]
-                    # chunk_points_zyx.append(skeleton_point_zyxs_in_chunk)
-                    # chunk_directions_zyx.append(skeleton_directions)
-
                     points_zyx = np.stack(np.where(cc_mask_cropped), axis=-1)
                     directions_zyx = directions_zyx[*points_zyx.T]
                     points_zyx = points_zyx + np.array([cc_z_min, cc_y_min, cc_x_min])
@@ -411,21 +397,6 @@ def main(
                 sparse_points_zyx = np.concatenate(sparse_points_zyx, axis=0)
                 sparse_directions_zyx = np.concatenate(sparse_directions_zyx, axis=0)
 
-                # # Skeletonize then subsample, to obtain a sparse but full-coverage set of points to use in dense interpolation
-                # print('  skeletonizing...')
-                # subsampling = 2
-                # skeletons = kimimaro.skeletonize(chunk_ccs, teasar_params={'scale': 1.5, 'const': 8}, dust_threshold=0, fix_branching=False, fix_borders=False, progress=True)
-                # sparse_points_zyx = []
-                # sparse_directions_zyx = []
-                # for cc_idx, skeleton in skeletons.items():
-                #     skeleton_points_zyx = skeleton.vertices.astype(np.int32)
-                #     point_to_direction = dict(zip(map(tuple, cc_to_points_zyx[cc_idx]), cc_to_directions_zyx[cc_idx]))
-                #     skeleton_directions_zyx = np.array([point_to_direction[tuple(p)] for p in skeleton_points_zyx])
-                #     sparse_points_zyx.append(skeleton_points_zyx[::subsampling])
-                #     sparse_directions_zyx.append(skeleton_directions_zyx[::subsampling])
-                # sparse_points_zyx = np.concatenate(sparse_points_zyx, axis=0)
-                # sparse_directions_zyx = np.concatenate(sparse_directions_zyx, axis=0)
-
                 print('  interpolating...')
                 xi = np.stack(np.meshgrid(
                     np.arange(0, z_end - z_start, dense_output_downsample),
@@ -444,28 +415,6 @@ def main(
                     points_zyx = cc_to_points_zyx[cc_idx] // dense_output_downsample
                     directions_zyx = cc_to_directions_zyx[cc_idx]
                     dense_directions[*points_zyx.T] = directions_zyx                # Interpolate from sparse points
-                # dense_directions = scipy.interpolate.griddata(
-                #     points=sparse_points_zyx,
-                #     values=sparse_directions_zyx,
-                #     xi=xi.reshape(-1, 3),
-                #     method='linear'
-                # ).reshape(xi.shape)
-                # if False:  # debug! useful for seeing the actual fiber directions
-                #     dense_directions = np.zeros(xi.shape)
-                # # Where we have dense directions already, use them instead
-                # for cc_idx in range(1, num_ccs + 1):
-                #     points_zyx = cc_to_points_zyx[cc_idx] // dense_output_downsample
-                #     directions_zyx = cc_to_directions_zyx[cc_idx]
-                #     dense_directions[*points_zyx.T] = directions_zyx
-                # # Fill in gaps (outside hull) using nearest neighbor
-                # gaps = np.where(np.any(np.isnan(dense_directions), axis=-1))
-                # gap_values = scipy.interpolate.griddata(
-                #     points=sparse_points_zyx,
-                #     values=sparse_directions_zyx,
-                #     xi=gaps,
-                #     method='nearest'
-                # )
-                # dense_directions[gaps] = gap_values
                 dense_directions /= np.linalg.norm(dense_directions, axis=-1, keepdims=True)
                 dense_out_ds[z_start // dense_output_downsample : z_end // dense_output_downsample, y_start // dense_output_downsample : y_end // dense_output_downsample, x_start // dense_output_downsample : x_end // dense_output_downsample] = dense_directions.astype(np.float16)
                 if False:
