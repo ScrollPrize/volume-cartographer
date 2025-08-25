@@ -182,6 +182,11 @@ void SeedingWidget::setupUI()
     resetPointsButton = new QPushButton("Reset Points", this);
     resetPointsButton->setEnabled(false);
     mainLayout->addWidget(resetPointsButton);
+
+    // Label Wraps mode toggle
+    labelWrapsButton = new QPushButton("Start Label Wraps", this);
+    labelWrapsButton->setToolTip("Enable 'Label Wraps' mode: draw a line to auto-create a new collection with winding labels. Hold Shift for decreasing order.");
+    mainLayout->addWidget(labelWrapsButton);
     
     // Cancel button (only visible when jobs are running)
     cancelButton = new QPushButton("Cancel", this);
@@ -206,6 +211,11 @@ void SeedingWidget::setupUI()
             currentMode = Mode::PointMode;
             modeButton->setText("Switch to Draw Mode");
             infoLabel->setText("Point Mode: Set a focus point to begin");
+            // Turning off Draw Mode should also disable Label Wraps
+            if (labelWrapsMode) {
+                labelWrapsMode = false;
+                if (labelWrapsButton) labelWrapsButton->setText("Start Label Wraps");
+            }
         }
         updateModeUI();
         displayPaths();
@@ -218,6 +228,9 @@ void SeedingWidget::setupUI()
     connect(expandSeedsButton, &QPushButton::clicked, this, &SeedingWidget::onExpandSeedsClicked);
     connect(resetPointsButton, &QPushButton::clicked, this, &SeedingWidget::onResetPointsClicked);
     connect(cancelButton, &QPushButton::clicked, this, &SeedingWidget::onCancelClicked);
+    connect(labelWrapsButton, &QPushButton::clicked, [this]() {
+        setLabelWrapsMode(!labelWrapsMode);
+    });
     
     // Connect parameter changes to preview update
     connect(maxRadiusSpinBox, QOverload<int>::of(&QSpinBox::valueChanged), 
@@ -1010,6 +1023,129 @@ void SeedingWidget::finalizePath()
     infoLabel->setText(QString("Draw Mode: %1 path(s)").arg(paths.size()));
 }
 
+void SeedingWidget::finalizePathLabelWraps(bool shiftHeld)
+{
+    if (!isDrawing || currentPath.points.size() < 2 || !currentVolume) {
+        isDrawing = false;
+        currentPath.points.clear();
+        displayPaths();
+        return;
+    }
+
+    // Ensure distance transform available for center-of-band selection
+    computeDistanceTransform();
+
+    // Create a new target collection
+    std::string newColName = _point_collection->generateNewCollectionName("wraps");
+    uint64_t newColId = _point_collection->addCollection(newColName);
+
+    // Analyze the just-drawn path and add peaks to the new collection
+    findPeaksAlongPathToCollection(currentPath, newColName);
+
+    // Auto fill winding annotations in chosen direction
+    _point_collection->autoFillWindingNumbers(
+        newColId,
+        shiftHeld ? VCCollection::WindingFillMode::Decremental : VCCollection::WindingFillMode::Incremental
+    );
+
+    // Reset drawing path and refresh view
+    isDrawing = false;
+    currentPath.points.clear();
+    displayPaths();
+
+    infoLabel->setText(QString("Label Wraps: added points to '%1' (%2)")
+                           .arg(QString::fromStdString(newColName))
+                           .arg(shiftHeld ? "decreasing" : "increasing"));
+    updateButtonStates();
+}
+
+void SeedingWidget::findPeaksAlongPathToCollection(const PathData& path, const std::string& collectionName)
+{
+    if (!currentVolume || path.points.empty()) {
+        return;
+    }
+
+    PathData densifiedPath = path.densify(0.5f);
+
+    const int width = currentVolume->sliceWidth();
+    const int height = currentVolume->sliceHeight();
+    const int depth = currentVolume->numSlices();
+
+    std::vector<float> intensities;
+    std::vector<cv::Vec3f> positions;
+
+    for (const auto& pt : densifiedPath.points) {
+        if (pt[0] >= 0 && pt[0] < width &&
+            pt[1] >= 0 && pt[1] < height &&
+            pt[2] >= 0 && pt[2] < depth) {
+            cv::Mat_<cv::Vec3f> coord(1, 1);
+            coord(0, 0) = pt;
+            cv::Mat_<uint8_t> intensity(1, 1);
+            readInterpolated3D(intensity, currentVolume->zarrDataset(0), coord, chunkCache);
+            intensities.push_back(intensity(0, 0));
+            positions.push_back(pt);
+        }
+    }
+
+    if (intensities.empty()) return;
+
+    const int thr = thresholdSpinBox->value();
+    bool inside = false;
+    size_t seg_start = 0;
+
+    auto sampleDistAt = [&](const cv::Vec3f& p) -> float {
+        if (distanceTransform.empty()) return 0.0f;
+        int x = std::max(0, std::min(distanceTransform.cols - 1, int(std::round(p[0]))));
+        int y = std::max(0, std::min(distanceTransform.rows - 1, int(std::round(p[1]))));
+        return distanceTransform.at<float>(y, x);
+    };
+
+    auto addCenterOfSegmentToCollection = [&](size_t s, size_t e) {
+        if (e < s || s >= positions.size() || e >= positions.size()) return;
+        size_t best_idx = s;
+        float best_dt = sampleDistAt(positions[s]);
+        for (size_t k = s; k <= e; ++k) {
+            float dt = sampleDistAt(positions[k]);
+            if (dt > best_dt) {
+                best_dt = dt;
+                best_idx = k;
+            }
+        }
+        _point_collection->addPoint(collectionName, positions[best_idx]);
+    };
+
+    for (size_t i = 0; i < intensities.size(); ++i) {
+        bool curr_inside = intensities[i] >= thr;
+        if (curr_inside && !inside) {
+            inside = true;
+            seg_start = i;
+        }
+        bool at_end = (i + 1 == intensities.size());
+        bool next_inside = at_end ? false : (intensities[i + 1] >= thr);
+        if (inside && (!next_inside || at_end)) {
+            size_t seg_end = i;
+            addCenterOfSegmentToCollection(seg_start, seg_end);
+            inside = false;
+        }
+    }
+}
+
+void SeedingWidget::setLabelWrapsMode(bool active)
+{
+    labelWrapsMode = active;
+    if (labelWrapsMode) {
+        currentMode = Mode::DrawMode;
+        infoLabel->setText("Label Wraps: draw a path; release to create a labeled collection. Hold Shift for decreasing order.");
+        labelWrapsButton->setText("Stop Label Wraps");
+    } else {
+        // Revert to default UI language; keep currentMode as-is
+        infoLabel->setText("Point Mode: Set a focus point to begin");
+        labelWrapsButton->setText("Start Label Wraps");
+    }
+    updateModeUI();
+    displayPaths();
+}
+
 QColor SeedingWidget::generatePathColor()
 {
     // Generate distinct colors for paths
@@ -1118,8 +1254,13 @@ void SeedingWidget::onMouseRelease(cv::Vec3f vol_point, Qt::MouseButton button, 
     if (currentMode != Mode::DrawMode || button != Qt::LeftButton || !isDrawing) {
         return;
     }
-    
-    finalizePath();
+
+    if (labelWrapsMode) {
+        bool shiftHeld = modifiers.testFlag(Qt::ShiftModifier);
+        finalizePathLabelWraps(shiftHeld);
+    } else {
+        finalizePath();
+    }
 }
 
 void SeedingWidget::onExpandSeedsClicked()
