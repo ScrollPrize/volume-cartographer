@@ -271,9 +271,8 @@ def get_directions(cc_mask, structure_tensor: StructureTensor):
 @click.command()
 @click.option('--predictions-zarr-path', required=True, help='Path/URL to predictions OME-Zarr')
 @click.option('--predictions-ome-scale', type=int, required=True, help='OME scaling level to read from predictions')
-@click.option('--sparse-output-path', required=True, help='File to write fiber points and directions to')
-@click.option('--dense-output-path', required=True, help='File to write dense direction field to')
-@click.option('--dense-output-ome-scale', type=int, required=True, help='OME scaling level for dense direction field (equal or greater than predictions-ome-scale)')
+@click.option('--output-path', required=True, help='File to write dense direction field to')
+@click.option('--output-ome-scale', type=int, required=True, help='OME scaling level for direction field (equal or greater than predictions-ome-scale)')
 @click.option('--z-min', type=int, default=0, help='First slice (wrt original scan)')
 @click.option('--z-max', type=int, default=None, help='Last slice (wrt original scan)')
 @click.option('--dust-threshold', type=int, default=2000, help='Minimum voxel count to keep a component (default: 2000)')
@@ -281,9 +280,8 @@ def get_directions(cc_mask, structure_tensor: StructureTensor):
 def main(
     predictions_zarr_path,
     predictions_ome_scale,
-    sparse_output_path,
-    dense_output_path,
-    dense_output_ome_scale,
+    output_path,
+    output_ome_scale,
     z_min,
     z_max,
     dust_threshold,
@@ -300,25 +298,27 @@ def main(
 
     assert z_min >= 0 and z_min < predictions_zarr_array.shape[0], f'z_min must be in [0, {predictions_zarr_array.shape[0] * 2 ** predictions_ome_scale})'
     assert z_max > z_min and z_max <= predictions_zarr_array.shape[0], f'z_max must be in ({z_min}, {predictions_zarr_array.shape[0] * 2 ** predictions_ome_scale})'
-    assert dense_output_ome_scale >= predictions_ome_scale, f'output-dense-ome-scale must be greater than or equal to predictions-ome-scale'
+    assert output_ome_scale >= predictions_ome_scale, f'output-ome-scale must be greater than or equal to predictions-ome-scale'
 
-    dense_output_downsample = 2 ** (dense_output_ome_scale - predictions_ome_scale)
+    output_downsample = 2 ** (output_ome_scale - predictions_ome_scale)
 
     chunk_z, chunk_y, chunk_x = chunk_size_zyx
 
     structure_tensor = StructureTensor()
 
-    total_points = 0
-    sparse_out_fp = open(sparse_output_path, 'wb')
-    dense_out_zarr = zarr.open(dense_output_path, mode='w')
-    dense_out_ds = dense_out_zarr.create_dataset(
-        'directions',
-        dtype=np.float16,
-        shape=(predictions_zarr_array.shape[0] // dense_output_downsample, predictions_zarr_array.shape[1] // dense_output_downsample, predictions_zarr_array.shape[2] // dense_output_downsample, 3),
-        chunks=(128, 128, 128, 3),
-        compressor=zarr.Blosc(cname='zstd', clevel=1, shuffle=True),
-        write_empty_chunks=False,
-    )
+    out_zarr = zarr.open(output_path, mode='w')
+    horizontal_group = out_zarr.create_group('horizontal')
+    def make_dim_ds(dim):
+        dim_group = horizontal_group.create_group(dim)
+        return dim_group.create_dataset(
+            f'{output_ome_scale}',
+            dtype=np.float32,  # TODO: float16 should be sufficient, but z5 doesn't support it
+            shape=(predictions_zarr_array.shape[0] // output_downsample, predictions_zarr_array.shape[1] // output_downsample, predictions_zarr_array.shape[2] // output_downsample),
+            chunks=(128, 128, 128),
+            compressor=zarr.Blosc(cname='zstd', clevel=1, shuffle=True),
+            write_empty_chunks=False,
+        )
+    out_ds_by_dim = [make_dim_ds(dim) for dim in 'zyx']  # order here must match final-dim indexing of directions below
     
     for z_start in range(z_min, z_max, chunk_z):
         for y_start in range(0, predictions_zarr_array.shape[1], chunk_y):
@@ -357,19 +357,8 @@ def main(
                     points_zyx = np.stack(np.where(cc_mask_cropped), axis=-1)
                     directions_zyx = directions_zyx[*points_zyx.T]
                     points_zyx = points_zyx + np.array([cc_z_min, cc_y_min, cc_x_min])
-                    points_zyx_orig = (points_zyx + np.array([z_start, y_start, x_start])) * 2 ** predictions_ome_scale
-                    # TODO: consider trimming off the last/first fraction of the fiber since the directions there tend to be less reliable
-                    #  That is non-trivial since it requires figuring where in the point-cloud the ends are!
-                    points_and_directions = np.stack([points_zyx_orig, directions_zyx], axis=1).astype(np.float32)
-                    # TODO: consider using uint16 for indices, and float16 for directions
-                    #  In that case have to strictly alternate between points and directions
-                    # TODO: write the globally-combed version to sparse file also?
-                    sparse_out_fp.write(points_and_directions.tobytes())
-
                     cc_to_points_zyx[cc_idx] = points_zyx
                     cc_to_directions_zyx[cc_idx] = directions_zyx
-
-                    total_points += len(points_zyx)
                     if False:
                         import matplotlib.pyplot as plt
                         ax = plt.figure().add_subplot(projection='3d')
@@ -399,12 +388,12 @@ def main(
 
                 print('  interpolating...')
                 xi = np.stack(np.meshgrid(
-                    np.arange(0, z_end - z_start, dense_output_downsample),
-                    np.arange(0, y_end - y_start, dense_output_downsample),
-                    np.arange(0, x_end - x_start, dense_output_downsample),
+                    np.arange(0, z_end - z_start, output_downsample),
+                    np.arange(0, y_end - y_start, output_downsample),
+                    np.arange(0, x_end - x_start, output_downsample),
                     indexing='ij'
                 ), axis=-1)
-                dense_directions = knn_interpolate(
+                directions = knn_interpolate(
                     x=torch.from_numpy(sparse_directions_zyx).cuda(),
                     pos_x=torch.from_numpy(sparse_points_zyx).cuda().to(torch.float32),
                     pos_y=torch.from_numpy(xi.reshape(-1, 3)).cuda().to(torch.float32),
@@ -412,20 +401,18 @@ def main(
                 ).reshape(xi.shape).cpu().numpy()
                 # Where we have dense directions already, use them instead
                 for cc_idx in range(1, num_ccs + 1):
-                    points_zyx = cc_to_points_zyx[cc_idx] // dense_output_downsample
+                    points_zyx = cc_to_points_zyx[cc_idx] // output_downsample
                     directions_zyx = cc_to_directions_zyx[cc_idx]
-                    dense_directions[*points_zyx.T] = directions_zyx                # Interpolate from sparse points
-                dense_directions /= np.linalg.norm(dense_directions, axis=-1, keepdims=True)
-                dense_out_ds[z_start // dense_output_downsample : z_end // dense_output_downsample, y_start // dense_output_downsample : y_end // dense_output_downsample, x_start // dense_output_downsample : x_end // dense_output_downsample] = dense_directions.astype(np.float16)
+                    directions[*points_zyx.T] = directions_zyx
+                directions /= np.linalg.norm(directions, axis=-1, keepdims=True)
+                for dim_idx in range(3):
+                    out_ds_by_dim[dim_idx][z_start // output_downsample : z_end // output_downsample, y_start // output_downsample : y_end // output_downsample, x_start // output_downsample : x_end // output_downsample] = directions[..., dim_idx]
                 if False:
                     import matplotlib.pyplot as plt
-                    plt.imsave('wibl.png', chunk_ccs[150:170].max(0)[::dense_output_downsample, ::dense_output_downsample])
-                    plt.imsave('wibl.png', dense_directions[0, :, : , 2], vmin=-1, vmax=1)
-                    plt.imsave('wibl.png', chunk_ccs[::dense_output_downsample, ::dense_output_downsample, ::dense_output_downsample][64])
-                    plt.imsave('wibl.png', np.arctan2(*np.moveaxis(np.nan_to_num(dense_directions[64, :, : , 1:], nan=0), -1, 0)), cmap='hsv')
-
-    sparse_out_fp.close()
-    print(f'extracted {total_points} fiber-points in total')
+                    plt.imsave('wibl.png', chunk_ccs[150:170].max(0)[::output_downsample, ::output_downsample])
+                    plt.imsave('wibl.png', directions[0, :, : , 2], vmin=-1, vmax=1)
+                    plt.imsave('wibl.png', chunk_ccs[::output_downsample, ::output_downsample, ::output_downsample][64])
+                    plt.imsave('wibl.png', np.arctan2(*np.moveaxis(np.nan_to_num(directions[64, :, : , 1:], nan=0), -1, 0)), cmap='hsv')
 
 
 if __name__ == '__main__':
