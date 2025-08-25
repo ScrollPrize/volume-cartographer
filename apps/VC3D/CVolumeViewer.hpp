@@ -77,6 +77,7 @@ public:
     
     // Direction hints for vc_grow_seg_from_segments flip_x visualization
     void renderDirectionHints();
+    void renderDirectionStepMarkers();
 
     // Generic overlay group management (ad-hoc helper for reuse)
     void setOverlayGroup(const std::string& key, const std::vector<QGraphicsItem*>& items);

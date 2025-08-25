@@ -30,6 +30,18 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent)
     if (findChild<QCheckBox*>("chkShowDirectionHints")) {
         findChild<QCheckBox*>("chkShowDirectionHints")->setChecked(settings.value("viewer/show_direction_hints", true).toInt() != 0);
     }
+    // Direction step size default
+    if (auto* spin = findChild<QDoubleSpinBox*>("spinDirectionStep")) {
+        spin->setValue(settings.value("viewer/direction_step", 10.0).toDouble());
+    }
+    // Use segmentation step for hints
+    if (auto* chk = findChild<QCheckBox*>("chkUseSegStepForHints")) {
+        chk->setChecked(settings.value("viewer/use_seg_step_for_hints", true).toInt() != 0);
+    }
+    // Number of step points per direction
+    if (auto* spin = findChild<QSpinBox*>("spinDirectionStepPoints")) {
+        spin->setValue(settings.value("viewer/direction_step_points", 5).toInt());
+    }
 
     spinPreloadedSlices->setValue(settings.value("perf/preloaded_slices", 200).toInt());
     chkSkipImageFormatConvExp->setChecked(settings.value("perf/chkSkipImageFormatConvExp", false).toBool());
@@ -75,6 +87,15 @@ void SettingsDialog::accept()
     settings.setValue("viewer/reset_view_on_surface_change", chkResetViewOnSurfaceChange->isChecked() ? "1" : "0");
     if (findChild<QCheckBox*>("chkShowDirectionHints")) {
         settings.setValue("viewer/show_direction_hints", findChild<QCheckBox*>("chkShowDirectionHints")->isChecked() ? "1" : "0");
+    }
+    if (auto* spin = findChild<QDoubleSpinBox*>("spinDirectionStep")) {
+        settings.setValue("viewer/direction_step", spin->value());
+    }
+    if (auto* chk = findChild<QCheckBox*>("chkUseSegStepForHints")) {
+        settings.setValue("viewer/use_seg_step_for_hints", chk->isChecked() ? "1" : "0");
+    }
+    if (auto* spin = findChild<QSpinBox*>("spinDirectionStepPoints")) {
+        settings.setValue("viewer/direction_step_points", spin->value());
     }
 
     settings.setValue("perf/preloaded_slices", spinPreloadedSlices->value());

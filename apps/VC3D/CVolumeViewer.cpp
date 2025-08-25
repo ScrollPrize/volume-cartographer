@@ -1800,6 +1800,7 @@ void CVolumeViewer::updateAllOverlays()
     invalidateIntersect();
     renderIntersections();
     renderDirectionHints();
+    renderDirectionStepMarkers();
     renderPaths();
     refreshPointPositions();
 }
@@ -1809,6 +1810,100 @@ void CVolumeViewer::setOverlayGroup(const std::string& key, const std::vector<QG
     // Remove and delete existing items in the group
     clearOverlayGroup(key);
     _overlay_groups[key] = items;
+}
+
+// Visualize the 'step' parameter used by vc_grow_seg_from_segments by placing
+// three small markers in either direction along the same direction arrows.
+void CVolumeViewer::renderDirectionStepMarkers()
+{
+    if (!_showDirectionHints) {
+        clearOverlayGroup("step_markers");
+        return;
+    }
+
+    clearOverlayGroup("step_markers");
+
+    auto* seg = dynamic_cast<QuadSurface*>(_surf_name == "segmentation" ? _surf : _surf_col->surface("segmentation"));
+    if (!seg) return;
+
+    // Determine step value and number of points
+    QSettings settings("VC.ini", QSettings::IniFormat);
+    bool use_seg_step = settings.value("viewer/use_seg_step_for_hints", true).toBool();
+    int num_points = std::max(0, std::min(100, settings.value("viewer/direction_step_points", 5).toInt()));
+    float step_val = settings.value("viewer/direction_step", 10.0).toFloat();
+    if (use_seg_step && seg->meta) {
+        try {
+            if (seg->meta->contains("vc_grow_seg_from_segments_params")) {
+                auto& p = seg->meta->at("vc_grow_seg_from_segments_params");
+                if (p.contains("step")) step_val = p.at("step").get<float>();
+            }
+        } catch (...) {
+            // keep settings default
+        }
+    }
+    if (step_val <= 0) step_val = settings.value("viewer/direction_step", 10.0).toFloat();
+
+    // Anchor at focus POI if possible
+    cv::Vec3f target_wp;
+    bool have_focus = false;
+    if (auto* poi = _surf_col->poi("focus")) { target_wp = poi->p; have_focus = true; }
+
+    std::vector<QGraphicsItem*> items;
+
+    auto addDot = [&](const QPointF& center, const QColor& color, float radius = 3.0f) {
+        auto* dot = new QGraphicsEllipseItem(center.x() - radius, center.y() - radius, 2*radius, 2*radius);
+        dot->setPen(QPen(Qt::black, 1));
+        dot->setBrush(QBrush(color));
+        dot->setZValue(32);
+        fScene->addItem(dot);
+        items.push_back(dot);
+    };
+
+    if (_surf_name == "segmentation") {
+        // Work in segmentation nominal coordinates converted to scene
+        auto ptr = seg->pointer();
+        if (have_focus) seg->pointTo(ptr, target_wp, 4.0, 100);
+        cv::Vec3f nom = seg->loc(ptr) * _scale;
+        // Center point
+        addDot(QPointF(nom[0], nom[1]), QColor(255, 255, 0), 4.0f); // yellow center
+        // Red side (+X)
+        for (int n = 1; n <= num_points; ++n) {
+            cv::Vec3f p = seg->loc(ptr, {n * step_val, 0, 0}) * _scale;
+            addDot(QPointF(p[0], p[1]), Qt::red);
+        }
+        // Green side (−X)
+        for (int n = 1; n <= num_points; ++n) {
+            cv::Vec3f p = seg->loc(ptr, {-n * step_val, 0, 0}) * _scale;
+            addDot(QPointF(p[0], p[1]), Qt::green);
+        }
+        setOverlayGroup("step_markers", items);
+        return;
+    }
+
+    if (auto* plane = dynamic_cast<PlaneSurface*>(_surf)) {
+        // Project segmentation step samples into plane view
+        auto ptr = seg->pointer();
+        if (have_focus) seg->pointTo(ptr, target_wp, 4.0, 100);
+        cv::Vec3f p0 = seg->coord(ptr, {0,0,0});
+        if (p0[0] == -1) return;
+        cv::Vec3f s0 = plane->project(p0, 1.0f, _scale);
+        addDot(QPointF(s0[0], s0[1]), QColor(255, 255, 0), 4.0f);
+
+        for (int n = 1; n <= num_points; ++n) {
+            cv::Vec3f p_pos = seg->coord(ptr, {n * step_val, 0, 0});
+            cv::Vec3f p_neg = seg->coord(ptr, {-n * step_val, 0, 0});
+            if (p_pos[0] != -1) {
+                cv::Vec3f s = plane->project(p_pos, 1.0f, _scale);
+                addDot(QPointF(s[0], s[1]), Qt::red);
+            }
+            if (p_neg[0] != -1) {
+                cv::Vec3f s = plane->project(p_neg, 1.0f, _scale);
+                addDot(QPointF(s[0], s[1]), Qt::green);
+            }
+        }
+        setOverlayGroup("step_markers", items);
+        return;
+    }
 }
 
 void CVolumeViewer::clearOverlayGroup(const std::string& key)
