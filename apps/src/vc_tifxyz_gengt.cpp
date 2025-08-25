@@ -84,33 +84,34 @@ using IntersectVec = std::vector<std::pair<float,cv::Vec2f>>;
 IntersectVec getIntersects(const cv::Vec2i &seed, const cv::Mat_<cv::Vec3f> &points, const cv::Vec2f &step)
 {
     cv::Vec3f o = points(seed[1],seed[0]);
-    cv::Vec3f n = grid_normal(points, {float(seed[0]),float(seed[1]),0});
+    cv::Vec3f n = grid_normal(points, {seed[0],seed[1],0});
     if (std::isnan(n[0]))
         return {};
-    std::vector<cv::Vec2f> locs;
-    
-    for(int y = 0; y < points.rows; ++y) {
-        for (int x = 0; x < points.cols; ++x) {
-            cv::Vec2f loc = {float(x), float(y)};
-            cv::Vec3f res;
-            float dist = search_min_line(points, loc, res, o, n, step, 0.01);
-            
-            if (dist > 0.5 || dist < 0)
-                continue;
-            
-            if (!loc_valid_xy(points,loc))
-                continue;
-            
-            bool found = false;
-            for(auto l : locs) {
-                if (cv::norm(loc, l) <= 4) {
-                    found = true;
-                    break;
-                }
+    std::vector<cv::Vec2f> locs = {seed};
+    uint32_t sr = seed[1];
+    for(int i=0;i<1000;i++)
+    {
+        cv::Vec2f loc = {rand_r(&sr) % points.cols, seed[1] - 50 + (rand_r(&sr) % 100)};
+        cv::Vec3f res;
+        float dist = search_min_line(points, loc, res, o, n, step, 0.01);
+
+        if (dist > 0.5 || dist < 0)
+            continue;
+
+        if (!loc_valid_xy(points,loc))
+            continue;
+
+        // std::cout << dist << res << loc << std::endl;
+
+        bool found = false;
+        for(auto l : locs) {
+            if (cv::norm(loc, l) <= 4) {
+                found = true;
+                break;
             }
-            if (!found)
-                locs.push_back(loc);
         }
+        if (!found)
+            locs.push_back(loc);
     }
 
     IntersectVec dist_locs;
@@ -129,7 +130,7 @@ int main(int argc, char** argv) {
         ("input", po::value<std::string>(), "Input surface file (.tiffxyz)")
         ("winding", po::value<std::string>(), "Input winding file (.tif)")
         ("output", po::value<std::string>(), "Output VCCollection file (.json)")
-        ("seed-winding", po::value<float>(), "Seed winding number");
+        ("num-collections", po::value<int>()->default_value(10), "Number of random collections to generate");
 
     po::variables_map vm;
     po::store(po::parse_command_line(argc, argv, desc), vm);
@@ -140,15 +141,15 @@ int main(int argc, char** argv) {
         return 0;
     }
 
-    if (!vm.count("input") || !vm.count("winding") || !vm.count("output") || !vm.count("seed-winding")) {
-        std::cerr << "Error: --input, --winding, --output, and --seed-winding are required." << std::endl;
+    if (!vm.count("input") || !vm.count("winding") || !vm.count("output")) {
+        std::cerr << "Error: --input, --winding, and --output are required." << std::endl;
         return 1;
     }
 
     std::string input_path = vm["input"].as<std::string>();
     std::string winding_path = vm["winding"].as<std::string>();
     std::string output_path = vm["output"].as<std::string>();
-    float seed_winding = vm["seed-winding"].as<float>();
+    int num_collections = vm["num-collections"].as<int>();
 
     QuadSurface* surface = load_quad_from_tifxyz(input_path);
     if (!surface) {
@@ -164,32 +165,47 @@ int main(int argc, char** argv) {
 
     cv::Mat_<cv::Vec3f> points = surface->rawPoints();
     
-    cv::Point seed_loc;
-    double min_dist;
-    cv::minMaxLoc(cv::abs(winding - seed_winding), &min_dist, nullptr, &seed_loc, nullptr);
-
-    IntersectVec intersects = getIntersects({seed_loc.x, seed_loc.y}, points, surface->scale());
-
     ChaoVis::VCCollection collection;
-    std::string collection_name = collection.generateNewCollectionName("col");
-    collection.addCollection(collection_name);
 
-    float last_winding = -1e9;
+    std::cout << "wtf "  << std::endl;
+    for (int i = 0; i < num_collections; ++i) {
+        cv::Point seed_loc(rand() % points.cols, rand() % points.rows);
 
-    for (const auto& intersect : intersects) {
-        cv::Vec2f loc = intersect.second;
-        float w = at_int(winding, loc);
+        std::cout << "try " << seed_loc << std::endl;
 
-        if (std::abs(w - round(w)) > 0.1) {
+        if (points(seed_loc.y, seed_loc.x)[0] == -1) {
+            i--; // Try again with a new random point
             continue;
         }
 
-        int current_winding_int = round(w);
-        if (current_winding_int != round(last_winding)) {
-             ChaoVis::ColPoint pt = collection.addPoint(collection_name, at_int(points, loc));
-             pt.winding_annotation = w;
-             collection.updatePoint(pt);
-             last_winding = w;
+        IntersectVec intersects = getIntersects({seed_loc.x, seed_loc.y}, points, surface->scale());
+
+        std::cout << "got " << intersects.size() << std::endl;
+
+        if (intersects.empty()) {
+            continue;
+        }
+
+        std::string collection_name = collection.generateNewCollectionName("col");
+        collection.addCollection(collection_name);
+
+        float last_winding = -1e9;
+
+        for (const auto& intersect : intersects) {
+            cv::Vec2f loc = intersect.second;
+            float w = at_int(winding, loc);
+
+            if (std::abs(w - round(w)) > 0.1) {
+                continue;
+            }
+
+            int current_winding_int = round(w);
+            if (current_winding_int != round(last_winding)) {
+                 ChaoVis::ColPoint pt = collection.addPoint(collection_name, at_int(points, loc));
+                 pt.winding_annotation = w;
+                 collection.updatePoint(pt);
+                 last_winding = w;
+            }
         }
     }
     
