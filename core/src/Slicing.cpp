@@ -245,8 +245,92 @@ bool ChunkCache::has(const cv::Vec4i &idx)
     return _store.count(idx);
 }
 
+
+void readNearestNeighbor(cv::Mat_<uint8_t> &out, const z5::Dataset *ds, const cv::Mat_<cv::Vec3f> &coords, ChunkCache *cache) {
+    out = cv::Mat_<uint8_t>(coords.size(), 0);
+    int group_idx = cache->groupIdx(ds->path());
+
+    const int chunk_size = ds->chunking().blockShape()[0];
+    const int chunk_shift = __builtin_ctz(chunk_size);
+    const int chunk_mask = chunk_size - 1;
+
+    if ((chunk_size & (chunk_size - 1)) != 0 || chunk_size == 0) {
+        throw std::runtime_error("Chunk size must be a power of 2, got: " + std::to_string(chunk_size));
+    }
+
+    int w = coords.cols;
+    int h = coords.rows;
+
+    constexpr int TILE_SIZE = 32;
+
+    #pragma omp parallel
+    {
+        // Thread-local variables
+        cv::Vec4i last_idx = {-1,-1,-1,-1};
+        xt::xarray<uint8_t> *chunk = nullptr;
+        std::shared_ptr<xt::xarray<uint8_t>> chunk_ref;
+
+        #pragma omp for schedule(static, 1) collapse(2)
+        for(size_t tile_y = 0; tile_y < h; tile_y += TILE_SIZE) {
+            for(size_t tile_x = 0; tile_x < w; tile_x += TILE_SIZE) {
+                size_t y_end = std::min(tile_y + TILE_SIZE, (size_t)h);
+                size_t x_end = std::min(tile_x + TILE_SIZE, (size_t)w);
+
+                for(size_t y = tile_y; y < y_end; y++) {
+                    if (y + 1 < y_end) {
+                        __builtin_prefetch(&coords(y+1, tile_x), 0, 1);
+                    }
+
+                    for(size_t x = tile_x; x < x_end; x++) {
+                        int ox = int(coords(y,x)[2] + 0.5f);
+                        int oy = int(coords(y,x)[1] + 0.5f);
+                        int oz = int(coords(y,x)[0] + 0.5f);
+
+                        if ((ox | oy | oz) < 0)
+                            continue;
+
+                        int ix = ox >> chunk_shift;
+                        int iy = oy >> chunk_shift;
+                        int iz = oz >> chunk_shift;
+
+                        cv::Vec4i idx = {group_idx, ix, iy, iz};
+
+                        if (idx != last_idx) {
+                            last_idx = idx;
+
+                            #pragma omp critical(cache_access)
+                            {
+                                if (!cache->has(idx)) {
+                                    auto* new_chunk = readChunk<uint8_t>(*ds, {size_t(ix), size_t(iy), size_t(iz)});
+                                    cache->put(idx, new_chunk);
+                                    chunk_ref = cache->get(idx);
+                                } else {
+                                    chunk_ref = cache->get(idx);
+                                }
+                            }
+                            chunk = chunk_ref.get();
+                        }
+
+                        if (!chunk)
+                            continue;
+
+                        int lx = ox & chunk_mask;
+                        int ly = oy & chunk_mask;
+                        int lz = oz & chunk_mask;
+
+                        out(y,x) = chunk->operator()(lx, ly, lz);
+                    }
+                }
+            }
+        }
+    }
+}
+
 void readInterpolated3D(cv::Mat_<uint8_t> &out, z5::Dataset *ds,
-                               const cv::Mat_<cv::Vec3f> &coords, ChunkCache *cache) {
+                               const cv::Mat_<cv::Vec3f> &coords, ChunkCache *cache, bool nearest_neighbor) {
+    if (nearest_neighbor) {
+        return readNearestNeighbor(out,ds,coords,cache);
+    }
     out = cv::Mat_<uint8_t>(coords.size(), 0);
 
     if (!cache) {
@@ -459,82 +543,6 @@ void readInterpolated3D(cv::Mat_<uint8_t> &out, z5::Dataset *ds,
     }
 }
 
-void readNearestNeighbor(cv::Mat_<uint8_t> &out, const z5::Dataset *ds, const cv::Mat_<cv::Vec3f> &coords, ChunkCache *cache) {
-    out = cv::Mat_<uint8_t>(coords.size(), 0);
-
-    int group_idx = cache->groupIdx(ds->path());
-
-    const int chunk_size = ds->chunking().blockShape()[0];
-    const int chunk_shift = __builtin_ctz(chunk_size);
-    const int chunk_mask = chunk_size - 1;
-
-    int w = coords.cols;
-    int h = coords.rows;
-
-    constexpr int TILE_SIZE = 32;
-
-    #pragma omp parallel
-    {
-        // Thread-local variables
-        cv::Vec4i last_idx = {-1,-1,-1,-1};
-        xt::xarray<uint8_t> *chunk = nullptr;
-        std::shared_ptr<xt::xarray<uint8_t>> chunk_ref;
-
-        #pragma omp for schedule(static, 1) collapse(2)
-        for(size_t tile_y = 0; tile_y < h; tile_y += TILE_SIZE) {
-            for(size_t tile_x = 0; tile_x < w; tile_x += TILE_SIZE) {
-                size_t y_end = std::min(tile_y + TILE_SIZE, (size_t)h);
-                size_t x_end = std::min(tile_x + TILE_SIZE, (size_t)w);
-
-                for(size_t y = tile_y; y < y_end; y++) {
-                    if (y + 1 < y_end) {
-                        __builtin_prefetch(&coords(y+1, tile_x), 0, 1);
-                    }
-
-                    for(size_t x = tile_x; x < x_end; x++) {
-                        int ox = int(coords(y,x)[2] + 0.5f);
-                        int oy = int(coords(y,x)[1] + 0.5f);
-                        int oz = int(coords(y,x)[0] + 0.5f);
-
-                        if ((ox | oy | oz) < 0)
-                            continue;
-
-                        int ix = ox >> chunk_shift;
-                        int iy = oy >> chunk_shift;
-                        int iz = oz >> chunk_shift;
-
-                        cv::Vec4i idx = {group_idx, ix, iy, iz};
-
-                        if (idx != last_idx) {
-                            last_idx = idx;
-
-                            #pragma omp critical(cache_access)
-                            {
-                                if (!cache->has(idx)) {
-                                    auto* new_chunk = readChunk<uint8_t>(*ds, {size_t(ix), size_t(iy), size_t(iz)});
-                                    cache->put(idx, new_chunk);
-                                    chunk_ref = cache->get(idx);
-                                } else {
-                                    chunk_ref = cache->get(idx);
-                                }
-                            }
-                            chunk = chunk_ref.get();
-                        }
-
-                        if (!chunk)
-                            continue;
-
-                        int lx = ox & chunk_mask;
-                        int ly = oy & chunk_mask;
-                        int lz = oz & chunk_mask;
-
-                        out(y,x) = chunk->operator()(lx, ly, lz);
-                    }
-                }
-            }
-        }
-    }
-}
 
 //somehow opencvs functions are pretty slow 
 static inline cv::Vec3f normed(const cv::Vec3f v)
