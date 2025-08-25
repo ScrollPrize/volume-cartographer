@@ -579,6 +579,11 @@ void CWindow::CreateWidgets(void)
 #endif
 
     connect(ui.btnEditMask, &QPushButton::pressed, this, &CWindow::onEditMaskPressed);
+
+    // Connect global Tools -> Stop All button
+    if (ui.btnStopAll) {
+        connect(ui.btnStopAll, &QPushButton::clicked, this, &CWindow::onStopAllTools);
+    }
     
     // Connect composite view controls
     connect(ui.chkCompositeEnabled, &QCheckBox::toggled, this, [this](bool checked) {
@@ -1090,6 +1095,22 @@ void CWindow::OpenRecent()
     auto action = qobject_cast<QAction*>(sender());
     if (action)
         Open(action->data().toString());
+}
+
+void CWindow::onStopAllTools()
+{
+    bool stopped = false;
+    // Stop command line runner if active
+    if (_cmdRunner && _cmdRunner->isRunning()) {
+        _cmdRunner->cancel();
+        stopped = true;
+    }
+    // Stop any seeding-related jobs
+    if (_seedingWidget) {
+        _seedingWidget->cancelAllJobs();
+        stopped = true;
+    }
+    statusBar()->showMessage(stopped ? tr("Stopping all running tools…") : tr("No running tools to stop"), 3000);
 }
 
 void CWindow::LoadSurfaces(bool reload)

@@ -85,6 +85,7 @@ public slots:
     void onVoxelizePaths();
    void onFocusPOIChanged(std::string name, POI* poi);
     void onPointDoubleClicked(uint64_t pointId);
+    void onStopAllTools();
 
 public:
     CWindow();

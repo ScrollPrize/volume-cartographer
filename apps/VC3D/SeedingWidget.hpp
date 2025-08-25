@@ -40,6 +40,8 @@ public:
     void setVolumePkg(std::shared_ptr<volcart::VolumePkg> vpkg);
     void setCurrentVolume(std::shared_ptr<volcart::Volume> volume);
     void setCache(ChunkCache* cache);
+    // Cancel any running external jobs (public entry point for global stop)
+    void cancelAllJobs();
     
 signals:
     void sendPathsChanged(const QList<PathData>& paths);

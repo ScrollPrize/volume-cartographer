@@ -1353,6 +1353,12 @@ void SeedingWidget::onCancelClicked()
     emit sendStatusMessageAvailable("Jobs cancelled by user", 3000);
 }
 
+// Public helper to cancel running jobs from outside this widget
+void SeedingWidget::cancelAllJobs()
+{
+    onCancelClicked();
+}
+
 void SeedingWidget::onSurfacesLoaded()
 {
     // Update button states when surfaces are loaded/reloaded
