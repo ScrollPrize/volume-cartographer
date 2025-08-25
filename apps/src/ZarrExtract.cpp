@@ -98,7 +98,7 @@ void timed_plane_slice(Surface &plane, z5::Dataset *ds, int size, ChunkCache *ca
     start = std::chrono::high_resolution_clock::now();
     readInterpolated3D(img, ds, coords, cache, nearest_neighbor);
     end = std::chrono::high_resolution_clock::now();
-    std::cout << std::chrono::duration<double>(end-start).count() << "s slicing 3d trilinear interpolation / " << size*size/1024.0/1024.0/std::chrono::duration<double>(end-start).count() << "MiB/s " << msg << std::endl;
+    std::cout << std::chrono::duration<double>(end-start).count() << "s slicing  " << size*size/1024.0/1024.0/std::chrono::duration<double>(end-start).count() << "MiB/s " << msg << std::endl;
 }
 
 
@@ -161,7 +161,7 @@ int main(int argc, char *argv[])
 
   const int size = 1024;
 
-  std::cout << "testing different slice directions / caching w/ trilinear interpolation" << std::endl;
+  std::cout << "testing different slice directions / caching" << std::endl;
   for(int r=0;r<3;r++) {
       timed_plane_slice(plane_x, ds.get(), size, &chunk_cache, "yz cold", nearest_neighbor);
       timed_plane_slice(plane_x, ds.get(), size, &chunk_cache, "yz", nearest_neighbor);
