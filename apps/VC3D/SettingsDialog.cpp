@@ -48,6 +48,7 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent)
     spinParallelProcesses->setValue(settings.value("perf/parallel_processes", 8).toInt());
     spinIterationCount->setValue(settings.value("perf/iteration_count", 1000).toInt());
     cmbDownscaleOverride->setCurrentIndex(settings.value("perf/downscale_override", 0).toInt());
+    chkFastInterpolation->setChecked(settings.value("perf/fast_interpolation", false).toBool());
 
 
     // Load rendering settings
@@ -66,6 +67,7 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent)
     connect(btnHelpScrollSpeed, &QPushButton::clicked, this, [this]{ QToolTip::showText(QCursor::pos(), btnHelpScrollSpeed->toolTip()); });
     connect(btnHelpDisplayOpacity, &QPushButton::clicked, this, [this]{ QToolTip::showText(QCursor::pos(), btnHelpDisplayOpacity->toolTip()); });
     connect(btnHelpPreloadedSlices, &QPushButton::clicked, this, [this]{ QToolTip::showText(QCursor::pos(), btnHelpPreloadedSlices->toolTip()); });
+    connect(btnHelpFastInterpolation, &QPushButton::clicked, this, [this]{ QToolTip::showText(QCursor::pos(), btnHelpFastInterpolation->toolTip()); });
 }
 
 void SettingsDialog::accept()
@@ -103,6 +105,7 @@ void SettingsDialog::accept()
     settings.setValue("perf/parallel_processes", spinParallelProcesses->value());
     settings.setValue("perf/iteration_count", spinIterationCount->value());
     settings.setValue("perf/downscale_override", cmbDownscaleOverride->currentIndex());
+    settings.setValue("perf/fast_interpolation", chkFastInterpolation->isChecked() ? "1" : "0");
 
     // Store rendering settings
     settings.setValue("rendering/default_volume", cmbDefaultVolume->currentText());

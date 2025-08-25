@@ -228,6 +228,8 @@ protected:
     int _downscale_override = 0;  // 0=auto, 1=2x, 2=4x, 3=8x, 4=16x, 5=32x
     QTimer* _overlayUpdateTimer;
 
+    bool _useFastInterpolation;
+
 };  // class CVolumeViewer
 
 }  // namespace ChaoVis
