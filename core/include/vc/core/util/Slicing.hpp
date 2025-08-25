@@ -12,7 +12,7 @@ namespace z5
 }
 
 struct vec4i_hash {
-    size_t operator()(cv::Vec4i p) const
+    static inline size_t operator()(cv::Vec4i p)
     {
         size_t hash1 = std::hash<int>{}(p[0]);
         size_t hash2 = std::hash<int>{}(p[1]);
@@ -38,13 +38,13 @@ public:
     
     //get key for a subvolume - should be uniqueley identified between all groups and volumes that use this cache.
     //for example by using path + group name
-    int groupIdx(std::string name);
+    int groupIdx(const std::string &name);
     
     //key should be unique for chunk and contain groupkey (groupkey sets highest 16bits of uint64_t)
-    void put(cv::Vec4i key, xt::xarray<uint8_t> *ar);
-    std::shared_ptr<xt::xarray<uint8_t>> get(cv::Vec4i key);
+    void put(const cv::Vec4i &key, xt::xarray<uint8_t> *ar);
+    std::shared_ptr<xt::xarray<uint8_t>> get(const cv::Vec4i &key);
     void reset();
-    bool has(cv::Vec4i idx);
+    bool has(const cv::Vec4i &idx);
 
     std::shared_mutex mutex;
 private:
@@ -63,7 +63,7 @@ private:
 //NOTE depending on request this might load a lot (the whole array) into RAM
 // void readInterpolated3D(xt::xarray<uint8_t> &out, z5::Dataset *ds, const xt::xarray<float> &coords, ChunkCache *cache = nullptr);
 void readInterpolated3D(cv::Mat_<uint8_t> &out, z5::Dataset *ds, const cv::Mat_<cv::Vec3f> &coords, ChunkCache *cache = nullptr);
-void readNearestNeighbor2D(cv::Mat_<uint8_t> &out, z5::Dataset *ds, const cv::Mat_<cv::Vec3f> &coords, ChunkCache *cache);
+void readNearestNeighbor(cv::Mat_<uint8_t> &out, const z5::Dataset *ds, const cv::Mat_<cv::Vec3f> &coords, ChunkCache *cache);
 template <typename T>
 void readArea3D(xt::xtensor<T,3,xt::layout_type::column_major> &out, const cv::Vec3i offset, z5::Dataset *ds, ChunkCache *cache) { throw std::runtime_error("missing implementation"); }
 void readArea3D(xt::xtensor<uint8_t,3,xt::layout_type::column_major> &out, const cv::Vec3i offset, z5::Dataset *ds, ChunkCache *cache);

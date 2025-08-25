@@ -112,7 +112,7 @@ void timed_plane_slice_nearest_neighbor(Surface &plane, z5::Dataset *ds, int siz
     auto end = std::chrono::high_resolution_clock::now();
     std::cout << std::chrono::duration<double>(end-start).count() << "s gen_coords() " << msg << std::endl;
     start = std::chrono::high_resolution_clock::now();
-    readNearestNeighbor2D(img, ds, coords, cache);
+    readNearestNeighbor(img, ds, coords, cache);
     end = std::chrono::high_resolution_clock::now();
     std::cout << std::chrono::duration<double>(end-start).count() << "s slicing 2d nearest neighbor / " << size*size/1024.0/1024.0/std::chrono::duration<double>(end-start).count() << "MiB/s " << msg << std::endl;
 }
