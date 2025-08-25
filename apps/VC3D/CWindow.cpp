@@ -188,6 +188,19 @@ CWindow::CWindow() :
         }
     });
 
+    // Toggle direction hints overlay (Ctrl+T)
+    fDirectionHintsShortcut = new QShortcut(QKeySequence("Ctrl+T"), this);
+    fDirectionHintsShortcut->setContext(Qt::ApplicationShortcut);
+    connect(fDirectionHintsShortcut, &QShortcut::activated, [this]() {
+        QSettings settings("VC.ini", QSettings::IniFormat);
+        bool current = settings.value("viewer/show_direction_hints", true).toBool();
+        bool next = !current;
+        settings.setValue("viewer/show_direction_hints", next ? "1" : "0");
+        for (auto& viewer : _viewers) {
+            viewer->setShowDirectionHints(next);
+        }
+    });
+
     appInitComplete = true;
 }
 
@@ -218,6 +231,13 @@ CVolumeViewer *CWindow::newConnectedCVolumeViewer(std::string surfaceName, QStri
     connect(_surf_col, &CSurfaceCollection::sendPOIChanged, volView, &CVolumeViewer::onPOIChanged);
     connect(_surf_col, &CSurfaceCollection::sendPOIChanged, this, &CWindow::onFocusPOIChanged);
     connect(_surf_col, &CSurfaceCollection::sendIntersectionChanged, volView, &CVolumeViewer::onIntersectionChanged);
+
+    // Initialize viewer settings from persisted configuration
+    {
+        QSettings settings("VC.ini", QSettings::IniFormat);
+        bool showDirHints = settings.value("viewer/show_direction_hints", true).toBool();
+        volView->setShowDirectionHints(showDirHints);
+    }
     connect(volView, &CVolumeViewer::sendVolumeClicked, this, &CWindow::onVolumeClicked);
     connect(this, &CWindow::sendVolumeClosing, volView, &CVolumeViewer::onVolumeClosing);
 
@@ -1207,6 +1227,7 @@ void CWindow::Keybindings(void)
         "7,8: Slice down/up by 50 \n"
         "9,0: Slice down/up by 100 \n"
         "Ctrl+G: Go to slice (opens dialog to insert slice index) \n"
+        "Ctrl+T: Toggle direction hints (flip_x arrows) \n"
         "T: Segmentation Tool \n"
         "P: Pen Tool \n"
         "Space: Toggle Curve Visibility \n"
@@ -1259,6 +1280,14 @@ void CWindow::ShowSettings()
     }
     
     pDlg->exec();
+    // Apply updated settings immediately to viewers
+    {
+        QSettings settings("VC.ini", QSettings::IniFormat);
+        bool showDirHints = settings.value("viewer/show_direction_hints", true).toBool();
+        for (auto &viewer : _viewers) {
+            viewer->setShowDirectionHints(showDirHints);
+        }
+    }
     delete pDlg;
 }
 

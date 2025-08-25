@@ -331,6 +331,7 @@ void readInterpolated3D(cv::Mat_<uint8_t> &out, z5::Dataset *ds,
     if (nearest_neighbor) {
         return readNearestNeighbor(out,ds,coords,cache);
     }
+  
     out = cv::Mat_<uint8_t>(coords.size(), 0);
 
     if (!cache) {
@@ -433,26 +434,39 @@ void readInterpolated3D(cv::Mat_<uint8_t> &out, z5::Dataset *ds,
 
         }
 
+    std::vector<std::pair<cv::Vec4i,xt::xarray<uint8_t>*>> needs_io;
+
+    cache->mutex.lock();
     for(auto &it : chunks) {
         xt::xarray<uint8_t> *chunk = nullptr;
         std::shared_ptr<xt::xarray<uint8_t>> chunk_ref;
 
         cv::Vec4i idx = it.first;
 
-        cache->mutex.lock();
         if (!cache->has(idx)) {
-            cache->mutex.unlock();
-            chunk = readChunk<uint8_t>(*ds, {size_t(idx[1]),size_t(idx[2]),size_t(idx[3])});
-            cache->mutex.lock();
-            cache->put(idx, chunk);
-            chunk_ref = cache->get(idx);
+            needs_io.push_back({idx,nullptr});
         } else {
             chunk_ref = cache->get(idx);
-            // chunk = chunk_ref.get();
+            chunks[idx] = chunk_ref;
         }
-        chunks[idx] = chunk_ref;
-        cache->mutex.unlock();
     }
+    cache->mutex.unlock();
+
+    #pragma omp parallel for schedule(dynamic, 1)
+    for(auto &it : needs_io) {
+        cv::Vec4i idx = it.first;
+        std::shared_ptr<xt::xarray<uint8_t>> chunk_ref;
+        it.second = z5::multiarray::readChunk<uint8_t>(*ds, {size_t(idx[1]),size_t(idx[2]),size_t(idx[3])});
+    }
+
+    cache->mutex.lock();
+    for(auto &it : needs_io) {
+        cv::Vec4i idx = it.first;
+        cache->put(idx, it.second);
+        chunks[idx] = cache->get(idx);
+    }
+    cache->mutex.unlock();
+
 
     #pragma omp parallel
     {
@@ -542,7 +556,6 @@ void readInterpolated3D(cv::Mat_<uint8_t> &out, z5::Dataset *ds,
         }
     }
 }
-
 
 //somehow opencvs functions are pretty slow 
 static inline cv::Vec3f normed(const cv::Vec3f v)
