@@ -320,7 +320,7 @@ int main(int argc, char *argv[])
             if (points_lr(p)[0] == -1)
                 continue;
             
-            SurfacePointer *ptr = surfs[i]->pointer();
+            auto ptr = surfs[i]->pointer();
             float res = surfs[i]->pointTo(ptr, points_lr(p), 2.0);
             
             if (res < 0 || res >= 2)

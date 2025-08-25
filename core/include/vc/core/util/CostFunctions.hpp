@@ -356,39 +356,6 @@ struct SpaceLossAcc {
 
 };
 
-template <typename E, typename C>
-struct AnchorLoss {
-    AnchorLoss(Chunked3d<E,C> &t, float w) : _interp(new CachedChunked3dInterpolator<E,C>(t)), _w(w) {};
-    template <typename T>
-    bool operator()(const T* const p, const T* const anchor, T* residual) const {
-        T v;
-        T sum = T(0);
-
-        _interp->template Evaluate<T>(anchor[0], anchor[1], anchor[2], &v);
-
-        T d[3] = {p[0]-anchor[0], p[1]-anchor[1], p[2]-anchor[2]};
-
-        v = v - T(1);
-
-        if (v < T(0))
-            v = T(0);
-
-        residual[0] = T(_w)*v*v;
-        residual[1] = T(_w)*sqrt(d[0]*d[0]+d[1]*d[1]+d[2]*d[2]);
-
-        return true;
-    }
-
-    std::unique_ptr<CachedChunked3dInterpolator<E,C>> _interp;
-    float _w;
-
-    static ceres::CostFunction* Create(Chunked3d<E,C> &t, float w = 1.0)
-    {
-        return new ceres::AutoDiffCostFunction<AnchorLoss, 2, 3, 3>(new AnchorLoss({t, w}));
-    }
-
-};
-
 template <typename T, typename C>
 struct SpaceLineLossAcc {
     SpaceLineLossAcc(Chunked3d<T,C> &t, int steps, float w) : _steps(steps), _w(w)

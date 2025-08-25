@@ -92,7 +92,11 @@ std::vector<std::string> CSurfaceCollection::poiNames()
 
 void CSurfaceCollection::setIntersection(const std::string &a, const std::string &b, Intersection *intersect)
 {
-    _intersections[{a,b}] = intersect;
+    auto key = std::make_pair(a, b);
+    if (_intersections.count(key)) {
+        delete _intersections[key];  // Delete old before overwriting
+    }
+    _intersections[key] = intersect;
     sendIntersectionChanged(a, b, intersect);
 }
 

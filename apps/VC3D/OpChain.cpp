@@ -8,49 +8,49 @@ void OpChain::append(DeltaSurface *op)
     _ops.push_back(op);
 }
 
-SurfacePointer *OpChain::pointer()
+cv::Vec3f OpChain::pointer()
 {
     return _src->pointer();
 }
 
-void OpChain::move(SurfacePointer *ptr, const cv::Vec3f &offset)
+void OpChain::move(cv::Vec3f &ptr, const cv::Vec3f &offset)
 {
     _src->move(ptr, offset);
 }
 
-bool OpChain::valid(SurfacePointer *ptr, const cv::Vec3f &offset)
+bool OpChain::valid(const cv::Vec3f &ptr, const cv::Vec3f &offset)
 {
     return _src->valid(ptr, offset);
 }
 
-cv::Vec3f OpChain::loc(SurfacePointer *ptr, const cv::Vec3f &offset)
+cv::Vec3f OpChain::loc(const cv::Vec3f &ptr, const cv::Vec3f &offset)
 {
     return _src->loc(ptr, offset);
 }
 
-cv::Vec3f OpChain::coord(SurfacePointer *ptr, const cv::Vec3f &offset)
+cv::Vec3f OpChain::coord(const cv::Vec3f &ptr, const cv::Vec3f &offset)
 {
     //FIXME use cached surface? Or regen
     return _src->coord(ptr, offset);
 }
 
-cv::Vec3f OpChain::normal(SurfacePointer *ptr, const cv::Vec3f &offset)
+cv::Vec3f OpChain::normal(const cv::Vec3f &ptr, const cv::Vec3f &offset)
 {
     //FIXME use cached surface? Or regen
     return _src->normal(ptr, offset);
 }
 
-float OpChain::pointTo(SurfacePointer *ptr, const cv::Vec3f &coord, float th, int max_iters)
+float OpChain::pointTo(cv::Vec3f &ptr, const cv::Vec3f &coord, float th, int max_iters)
 {
     //FIXME use cached surf? Or use src surface?
     return _src->pointTo(ptr, coord, th, max_iters);
 }
 
-void OpChain::gen(cv::Mat_<cv::Vec3f> *coords, cv::Mat_<cv::Vec3f> *normals, cv::Size size, SurfacePointer *ptr, float scale, const cv::Vec3f &offset)
+void OpChain::gen(cv::Mat_<cv::Vec3f> *coords, cv::Mat_<cv::Vec3f> *normals, cv::Size size, const cv::Vec3f &ptr, float scale, const cv::Vec3f &offset)
 {
     Surface *last = nullptr;
-    SurfacePointer *ptr_center = ptr;
-    if (!ptr_center)
+    cv::Vec3f ptr_center = ptr;
+    if (ptr_center[0] == 0 && ptr_center[1] == 0 && ptr_center[2] == 0)
         ptr_center = _src->pointer();
 
     if (_crop) {
@@ -64,7 +64,7 @@ void OpChain::gen(cv::Mat_<cv::Vec3f> *coords, cv::Mat_<cv::Vec3f> *normals, cv:
     else if (_src_mode == OpChainSourceMode::BLUR) {
         if (!_src_blur)
             _src_blur = smooth_vc_segmentation(_src);
-        
+
         last = _src_blur;
     }
 
@@ -80,7 +80,7 @@ void OpChain::gen(cv::Mat_<cv::Vec3f> *coords, cv::Mat_<cv::Vec3f> *normals, cv:
         last->gen(coords, normals, size, ptr, scale, offset);
     }
     else
-        last->gen(coords, normals, size, nullptr, scale, {-size.width/2, -size.height/2, ((TrivialSurfacePointer*)ptr_center)->loc[2]+offset[2]});
+        last->gen(coords, normals, size, cv::Vec3f(0,0,0), scale, {-size.width/2, -size.height/2, ptr_center[2]+offset[2]});
 }
 
 const char *op_name(Surface *op)
@@ -94,7 +94,6 @@ const char *op_name(Surface *op)
         return "refineAlphaComp";
     return "FIXME unknown op name";
 }
-
 
 void OpChain::setEnabled(DeltaSurface *surf, bool enabled)
 {

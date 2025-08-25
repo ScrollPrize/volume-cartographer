@@ -719,9 +719,15 @@ void CWindow::CreateMenus(void)
     fViewMenu->addAction(ui.dockWidgetSegmentation->toggleViewAction());
     fViewMenu->addAction(ui.dockWidgetDistanceTransform->toggleViewAction());
     fViewMenu->addAction(ui.dockWidgetOpList->toggleViewAction());
+    fViewMenu->addAction(ui.dockWidgetDrawing->toggleViewAction());
     fViewMenu->addAction(ui.dockWidgetOpSettings->toggleViewAction());
     fViewMenu->addAction(ui.dockWidgetComposite->toggleViewAction());
     fViewMenu->addAction(ui.dockWidgetLocation->toggleViewAction());
+
+    if (_point_collection_widget) {
+        fViewMenu->addAction(_point_collection_widget->toggleViewAction());
+    }
+
     fViewMenu->addSeparator();
     fViewMenu->addAction(fResetMdiView);
     fViewMenu->addSeparator();
@@ -1321,7 +1327,7 @@ void CWindow::onVolumeClicked(cv::Vec3f vol_loc, cv::Vec3f normal, Surface *surf
                 segYZ = new PlaneSurface();
 
             //FIXME actually properly use ptr
-            SurfacePointer *ptr = segment->pointer();
+            auto ptr = segment->pointer();
             segment->pointTo(ptr, vol_loc, 1.0);
             
             cv::Vec3f p2;
@@ -1981,7 +1987,13 @@ void CWindow::onSurfaceContextMenuRequested(const QPoint& pos)
     connect(renderAction, &QAction::triggered, [this, segmentId]() {
         onRenderSegment(segmentId);
     });
-    
+
+    // SLIM-flatten and render (calls slot implemented in CWindowContextMenu.cpp)
+    QAction* slimFlattenAction = new QAction(tr("SLIM-flatten and render"), this);
+    connect(slimFlattenAction, &QAction::triggered, [this, segmentId]() {
+        onSlimFlattenAndRender(segmentId);
+    });
+
     // Grow segment from segment action
     QAction* growSegmentAction = new QAction(tr("Run Trace"), this);
     connect(growSegmentAction, &QAction::triggered, [this, segmentId]() {
@@ -2002,30 +2014,23 @@ void CWindow::onSurfaceContextMenuRequested(const QPoint& pos)
     
     // Seed submenu with options
     QMenu* seedMenu = new QMenu(tr("Run Seed"), &contextMenu);
-    
-    // Seed with Seed.json action
     QAction* seedWithSeedAction = new QAction(tr("Seed from Focus Point"), seedMenu);
     connect(seedWithSeedAction, &QAction::triggered, [this, segmentId]() {
         onGrowSeeds(segmentId, false, false);
     });
-    
-    // Random Seed with Seed.json action
     QAction* seedWithRandomAction = new QAction(tr("Random Seed"), seedMenu);
     connect(seedWithRandomAction, &QAction::triggered, [this, segmentId]() {
         onGrowSeeds(segmentId, false, true);
     });
-    
-    // Seed with Expand.json action
     QAction* seedWithExpandAction = new QAction(tr("Expand Seed"), seedMenu);
     connect(seedWithExpandAction, &QAction::triggered, [this, segmentId]() {
         onGrowSeeds(segmentId, true, false);
     });
-    
     seedMenu->addAction(seedWithSeedAction);
     seedMenu->addAction(seedWithRandomAction);
     seedMenu->addAction(seedWithExpandAction);
     
-    // Add all actions to the context menu
+    // Build menu
     contextMenu.addAction(copyPathAction);
     contextMenu.addSeparator();
     contextMenu.addMenu(seedMenu);
@@ -2033,12 +2038,11 @@ void CWindow::onSurfaceContextMenuRequested(const QPoint& pos)
     contextMenu.addAction(addOverlapAction);
     contextMenu.addSeparator();
     contextMenu.addAction(renderAction);
-    contextMenu.addSeparator();
     contextMenu.addAction(convertToObjAction);
+    contextMenu.addAction(slimFlattenAction);
     contextMenu.addSeparator();
     contextMenu.addAction(deleteAction);
     
-    // show the context menu at the position of the right-click
     contextMenu.exec(treeWidgetSurfaces->mapToGlobal(pos));
 }
 
@@ -2627,7 +2631,7 @@ void CWindow::onPointDoubleClicked(uint64_t pointId)
         // Find the closest normal on the segmentation surface
         Surface* seg_surface = _surf_col->surface("segmentation");
         if (auto* quad_surface = dynamic_cast<QuadSurface*>(seg_surface)) {
-            SurfacePointer* ptr = quad_surface->pointer();
+            auto ptr = quad_surface->pointer();
             quad_surface->pointTo(ptr, point_opt->p, 4.0, 100);
             poi->n = quad_surface->normal(ptr, quad_surface->loc(ptr));
         } else {

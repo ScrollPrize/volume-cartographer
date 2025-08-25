@@ -110,6 +110,9 @@ private:
     int _iterationCount;     // iterations for xargs
     
     Tool _currentTool;
+
+    QFile* _logFile;
+    QTextStream* _logStream;
 };
 
 } // namespace ChaoVis

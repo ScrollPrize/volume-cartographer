@@ -18,6 +18,7 @@
 #include <opencv2/core.hpp>
 
 #include "vc/core/util/Slicing.hpp"
+#include "vc/core/util/Surface.hpp"
 
 #include <unordered_map>
 
@@ -84,19 +85,20 @@ shape idCoord(const std::unique_ptr<z5::Dataset> &ds, shape id)
     return coord;
 }
 
-void timed_plane_slice(PlaneCoords &plane, z5::Dataset *ds, size_t size, ChunkCache *cache, std::string msg)
+void timed_plane_slice(Surface &plane, z5::Dataset *ds, int size, ChunkCache *cache, std::string msg)
 {
-    xt::xarray<float> coords;
-    xt::xarray<uint8_t> img;
-    
+    cv::Mat_<cv::Vec3f> coords;
+    cv::Mat_<cv::Vec3f> normals;
+    cv::Mat_<uint8_t> img;
+
     auto start = std::chrono::high_resolution_clock::now();
-    plane.gen_coords(coords, size, size);
-    auto end = std::chrono::high_resolution_clock::now();
+    plane.gen(&coords, &normals, {size, size}, plane.pointer(), 1.0, {0,0,0});
+    // auto end = std::chrono::high_resolution_clock::now();
     // std::cout << std::chrono::duration<double>(end-start).count() << "s gen_coords() " << msg << std::endl;
-    start = std::chrono::high_resolution_clock::now();
+    // start = std::chrono::high_resolution_clock::now();
     readInterpolated3D(img, ds, coords, cache);
-    end = std::chrono::high_resolution_clock::now();
-    std::cout << std::chrono::duration<double>(end-start).count() << "s slicing " << msg << std::endl; 
+    auto end = std::chrono::high_resolution_clock::now();
+    std::cout << std::chrono::duration<double>(end-start).count() << "s slicing / " << size*size/1024.0/1024.0/std::chrono::duration<double>(end-start).count() << "MiB/s " << msg << std::endl;
 }
 
 int main(int argc, char *argv[])
@@ -111,57 +113,99 @@ int main(int argc, char *argv[])
   std::cout << "ds shape via chunk " << ds->chunking().shape() << std::endl;
   std::cout << "chunk shape shape " << ds->chunking().blockShape() << std::endl;
 
-  xt::xarray<float> coords = xt::zeros<float>({500,500,3});
-  xt::xarray<uint8_t> img;
+  cv::Mat_<cv::Vec3f> coords;
+  cv::Mat_<cv::Vec3f> normals;
+  cv::Mat_<uint8_t> img;
   
-  std::vector<cv::Mat> chs;
-  cv::imreadmulti("../grid_slice_coords.tif", chs, cv::IMREAD_UNCHANGED);
-  cv::Mat_<cv::Vec3f> points;
-  cv::merge(chs, points);
+//   std::vector<cv::Mat> chs;
+//   cv::imreadmulti("../grid_slice_coords.tif", chs, cv::IMREAD_UNCHANGED);
+//   cv::Mat_<cv::Vec3f> points;
+//   cv::merge(chs, points);
+//
+//   QuadSurface gen_grid(points, {1,1});
   
-  GridCoords gen_grid(&points);
+  PlaneSurface gen_plane({2000,2000,2000},{0.5,0.5,0.5});
+  // PlaneSurface gen_plane({2000,2000,2000},{0.0,0.0,1.0});
+  // PlaneSurface gen_plane({0,0,0},{0.0,0.0,1.0});
+  // PlaneSurface gen_plane({2000,2000,0},{0.0,0.0,1.0});
   
-  PlaneCoords gen_plane({2000,2000,2000},{0.5,0.5,0.5});
-  // PlaneCoords gen_plane({2000,2000,2000},{0.0,0.0,1.0});
-  // PlaneCoords gen_plane({0,0,0},{0.0,0.0,1.0});
-  // PlaneCoords gen_plane({2000,2000,0},{0.0,0.0,1.0});
-  
-  PlaneCoords plane_x({2000,2000,2000},{1.0,0.0,0.0});
-  PlaneCoords plane_y({2000,2000,2000},{0.0,1.0,0.0});
-  PlaneCoords plane_z({2000,2000,2000},{0.0,0.0,1.0});
+  PlaneSurface plane_x({2000,2000,2000},{1.0,0.0,0.0});
+  PlaneSurface plane_y({2000,2000,2000},{0.0,1.0,0.0});
+  PlaneSurface plane_z({2000,2000,2000},{0.0,0.0,1.0});
   
   // gen_plane.gen_coords(coords, 1000, 1000);
-  gen_grid.gen_coords(coords, 0, 0, 1000, 1000, 1.0, 0.5);
+  // gen_grid.gen(&coords, &normals, {1000, 1000}, gen_grid.pointer(), 1.0, {0,0,0});
 
-  ChunkCache chunk_cache(10e9);
+  ChunkCache chunk_cache(10*10e9);
   
-  auto start = std::chrono::high_resolution_clock::now();
-  readInterpolated3D(img,ds.get(),coords, &chunk_cache);
-  auto end = std::chrono::high_resolution_clock::now();
-  std::cout << std::chrono::duration<double>(end-start).count() << "s cold" << std::endl;
+  // auto start = std::chrono::high_resolution_clock::now();
+  // readInterpolated3D(img,ds.get(),coords, &chunk_cache);
+  // auto end = std::chrono::high_resolution_clock::now();
+  // std::cout << std::chrono::duration<double>(end-start).count() << "s cold" << std::endl;
   
-  cv::Mat m = cv::Mat(img.shape(0), img.shape(1), CV_8U, img.data());
-  cv::imwrite("plane.tif", m);
+  // cv::imwrite("plane.tif", img);
   
-  for(int r=0;r<10;r++) {
-    start = std::chrono::high_resolution_clock::now();
-    readInterpolated3D(img,ds.get(),coords, &chunk_cache);
-    end = std::chrono::high_resolution_clock::now();
-    std::cout << std::chrono::duration<double>(end-start).count() << "s cached" << std::endl;
-  }
-  
+//   for(int r=0;r<10;r++) {
+//     start = std::chrono::high_resolution_clock::now();
+//     readInterpolated3D(img,ds.get(),coords, &chunk_cache);
+//     end = std::chrono::high_resolution_clock::now();
+//     std::cout << std::chrono::duration<double>(end-start).count() << "s cached" << std::endl;
+//   }
+//
+
+  const int size = 1024;
+
   std::cout << "testing different slice directions / caching" << std::endl;
   for(int r=0;r<3;r++) {
-      timed_plane_slice(plane_x, ds.get(), 4000, &chunk_cache, "yz cold");
-      timed_plane_slice(plane_x, ds.get(), 4000, &chunk_cache, "yz");
-      timed_plane_slice(plane_y, ds.get(), 4000, &chunk_cache, "xz cold");
-      timed_plane_slice(plane_y, ds.get(), 4000, &chunk_cache, "xz");
-      timed_plane_slice(plane_z, ds.get(), 4000, &chunk_cache, "xy cold");
-      timed_plane_slice(plane_z, ds.get(), 4000, &chunk_cache, "xy");
-      timed_plane_slice(gen_plane, ds.get(), 4000, &chunk_cache, "diag cold");
-      timed_plane_slice(gen_plane, ds.get(), 4000, &chunk_cache, "diag");
+      timed_plane_slice(plane_x, ds.get(), size, &chunk_cache, "yz cold");
+      timed_plane_slice(plane_x, ds.get(), size, &chunk_cache, "yz");
+      timed_plane_slice(plane_y, ds.get(), size, &chunk_cache, "xz cold");
+      timed_plane_slice(plane_y, ds.get(), size, &chunk_cache, "xz");
+      timed_plane_slice(plane_z, ds.get(), size, &chunk_cache, "xy cold");
+      timed_plane_slice(plane_z, ds.get(), size, &chunk_cache, "xy");
+      timed_plane_slice(gen_plane, ds.get(), size, &chunk_cache, "diag cold");
+      timed_plane_slice(gen_plane, ds.get(), size, &chunk_cache, "diag");
   }
-  
+
+  {
+    auto start = std::chrono::high_resolution_clock::now();
+
+    for(float shift = -50;shift<50;shift++) {
+        PlaneSurface plane_s({2000,2000,2000+shift},{0.0,0.0,1.0});
+
+        cv::Mat_<cv::Vec3f> coords;
+        cv::Mat_<cv::Vec3f> normals;
+        cv::Mat_<uint8_t> img;
+
+        plane_s.gen(&coords, &normals, {size, size}, plane_s.pointer(), 1.0, {0,0,0});
+
+        readInterpolated3D(img, ds.get(), coords, &chunk_cache);
+    }
+
+    auto end = std::chrono::high_resolution_clock::now();
+    std::cout << std::chrono::duration<double>(end-start).count() << "s slicing / " << 100*size*size/1024.0/1024.0/std::chrono::duration<double>(end-start).count() << "MiB/s " << " shift (cold)"  << std::endl;
+  }
+
+  {
+      auto start = std::chrono::high_resolution_clock::now();
+
+      for(float shift = -50;shift<50;shift++) {
+          PlaneSurface plane_s({2000,2000,2000+shift},{0.0,0.0,1.0});
+
+          cv::Mat_<cv::Vec3f> coords;
+          cv::Mat_<cv::Vec3f> normals;
+          cv::Mat_<uint8_t> img;
+
+          plane_s.gen(&coords, &normals, {size, size}, plane_s.pointer(), 1.0, {0,0,0});
+
+          readInterpolated3D(img, ds.get(), coords, &chunk_cache);
+      }
+
+      auto end = std::chrono::high_resolution_clock::now();
+      std::cout << std::chrono::duration<double>(end-start).count() << "s slicing / " << 100*size*size/1024.0/1024.0/std::chrono::duration<double>(end-start).count() << "MiB/s " << " shift (warm)"  << std::endl;
+  }
+
+
   
   // readInterpolated3D(img,ds.get(),coords);
   // m = cv::Mat(img.shape(0), img.shape(1), CV_8U, img.data());

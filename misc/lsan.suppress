@@ -1,0 +1,12 @@
+# Font/GTK library leaks
+leak:libfontconfig
+leak:libpango
+leak:libgtk-3
+leak:libglib-2.0
+leak:libgobject-2.0
+leak:libharfbuzz
+leak:libqgtk3
+
+leak:FcFont*
+leak:pango_*
+leak:g_type_*

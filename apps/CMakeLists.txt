@@ -81,6 +81,13 @@ target_link_libraries(vc_obj2tifxyz
     VC::surface
 )
 
+add_executable(vc_obj2tifxyz_legacy src/vc_obj2tifxyz_legacy.cpp)
+target_link_libraries(vc_obj2tifxyz_legacy
+    opencv_highgui
+    VC::slicing
+    VC::surface
+)
+
 add_executable(vc_tifxyz_inp_mask src/vc_tifxyz_inp_mask.cpp)
 target_link_libraries(vc_tifxyz_inp_mask
     opencv_highgui
@@ -115,8 +122,13 @@ add_executable(vc_calc_surface_metrics src/vc_calc_surface_metrics.cpp)
 target_link_libraries(vc_calc_surface_metrics
     VC::metrics
     VC::surface
-    VC::app_support
     Boost::program_options
+)
+
+add_executable(vc_render_bench src/ZarrExtract.cpp)
+target_link_libraries(vc_render_bench
+    VC::surface
+    VC::slicing
 )
 
 ## experiements for flattening ##

@@ -78,7 +78,7 @@ float alphacomp_offset(DSReader &reader, cv::Vec3f point, cv::Vec3f normal, floa
 
     cv::Mat_<cv::Vec3f> coords;
     PlaneSurface plane(point, normal);
-    plane.gen(&coords, nullptr, size, nullptr, reader.scale, {0,0,0});
+    plane.gen(&coords, nullptr, size, cv::Vec3f(0,0,0), reader.scale, {0,0,0});
 
     coords *= reader.scale;
     float s = copysignf(1.0,step);

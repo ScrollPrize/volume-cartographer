@@ -43,9 +43,9 @@ std::set<std::string> read_overlapping_json(const fs::path& seg_path) {
 
 namespace fs = std::filesystem;
 
-cv::Vec2f offsetPoint2d(TrivialSurfacePointer *ptr, const cv::Vec3f &offset)
+cv::Vec2f offsetPoint2d(const cv::Vec3f &ptr, const cv::Vec3f &offset)
 {
-    cv::Vec3f p = ptr->loc + offset;
+    cv::Vec3f p = ptr + offset;
     return {p[0], p[1]};
 }
 
@@ -188,17 +188,12 @@ float PlaneSurface::scalarp(cv::Vec3f point) const
     return point.dot(_normal) - _origin.dot(_normal);
 }
 
-void PlaneSurface::gen(cv::Mat_<cv::Vec3f> *coords, cv::Mat_<cv::Vec3f> *normals, cv::Size size, SurfacePointer *ptr, float scale, const cv::Vec3f &offset)
+
+
+void PlaneSurface::gen(cv::Mat_<cv::Vec3f> *coords, cv::Mat_<cv::Vec3f> *normals, cv::Size size, const cv::Vec3f &ptr, float scale, const cv::Vec3f &offset)
 {
-    TrivialSurfacePointer _ptr({0,0,0});
-    if (!ptr)
-        ptr = &_ptr;
-    TrivialSurfacePointer *ptr_inst = dynamic_cast<TrivialSurfacePointer*>(ptr);
-
-    bool create_normals = normals || offset[2] || ptr_inst->loc[2];
-
-    cv::Vec3f total_offset = internal_loc(offset/scale, ptr_inst->loc, {1,1});
-    // std::cout << "PlaneCoords::gen upper left" << upper_left_actual /*<< ptr_inst->loc*/ << origin << offset << scale << std::endl;
+    bool create_normals = normals || offset[2] || ptr[2];
+    cv::Vec3f total_offset = internal_loc(offset/scale, ptr, {1,1});
 
     int w = size.width;
     int h = size.height;
@@ -220,7 +215,6 @@ void PlaneSurface::gen(cv::Mat_<cv::Vec3f> *coords, cv::Mat_<cv::Vec3f> *normals
     vxy_from_normal(_origin,_normal,vx,vy);
 
     float m = 1/scale;
-
     cv::Vec3f use_origin = _origin + _normal*total_offset[2];
 
 #pragma omp parallel for
@@ -230,37 +224,29 @@ void PlaneSurface::gen(cv::Mat_<cv::Vec3f> *coords, cv::Mat_<cv::Vec3f> *normals
         }
 }
 
-TrivialSurfacePointer *PlaneSurface::pointer()
+cv::Vec3f PlaneSurface::pointer()
 {
-    return new TrivialSurfacePointer({0,0,0});
+    return cv::Vec3f(0, 0, 0);
 }
 
-void PlaneSurface::move(SurfacePointer *ptr, const cv::Vec3f &offset)
+void PlaneSurface::move(cv::Vec3f &ptr, const cv::Vec3f &offset)
 {
-    TrivialSurfacePointer *ptr_inst = dynamic_cast<TrivialSurfacePointer*>(ptr);
-    assert(ptr_inst);
-
-    ptr_inst->loc += offset;
+    ptr += offset;
 }
 
-cv::Vec3f PlaneSurface::loc(SurfacePointer *ptr, const cv::Vec3f &offset)
+cv::Vec3f PlaneSurface::loc(const cv::Vec3f &ptr, const cv::Vec3f &offset)
 {
-    TrivialSurfacePointer *ptr_inst = dynamic_cast<TrivialSurfacePointer*>(ptr);
-    assert(ptr_inst);
-
-    return ptr_inst->loc+offset;
+    return ptr + offset;
 }
 
-cv::Vec3f PlaneSurface::coord(SurfacePointer *ptr, const cv::Vec3f &offset)
+cv::Vec3f PlaneSurface::coord(const cv::Vec3f &ptr, const cv::Vec3f &offset)
 {
     cv::Mat_<cv::Vec3f> coords;
-
     gen(&coords, nullptr, {1,1}, ptr, 1.0, offset);
-
     return coords(0,0);
 }
 
-cv::Vec3f PlaneSurface::normal(SurfacePointer *ptr, const cv::Vec3f &offset)
+cv::Vec3f PlaneSurface::normal(const cv::Vec3f &ptr, const cv::Vec3f &offset)
 {
     return _normal;
 }
@@ -296,33 +282,26 @@ QuadSurface *smooth_vc_segmentation(QuadSurface *src)
     return new QuadSurface(points, {sx,sy});
 }
 
-TrivialSurfacePointer *QuadSurface::pointer()
+cv::Vec3f QuadSurface::pointer()
 {
-    return new TrivialSurfacePointer({0,0,0});
+    return cv::Vec3f(0, 0, 0);
 }
 
-void QuadSurface::move(SurfacePointer *ptr, const cv::Vec3f &offset)
+void QuadSurface::move(cv::Vec3f &ptr, const cv::Vec3f &offset)
 {
-    TrivialSurfacePointer *ptr_inst = dynamic_cast<TrivialSurfacePointer*>(ptr);
-    assert(ptr_inst);
-    
-    ptr_inst->loc += cv::Vec3f(offset[0]*_scale[0],offset[1]*_scale[1],offset[2]);
+    ptr += cv::Vec3f(offset[0]*_scale[0], offset[1]*_scale[1], offset[2]);
 }
 
-bool QuadSurface::valid(SurfacePointer *ptr, const cv::Vec3f &offset)
+bool QuadSurface::valid(const cv::Vec3f &ptr, const cv::Vec3f &offset)
 {
-    TrivialSurfacePointer *ptr_inst = dynamic_cast<TrivialSurfacePointer*>(ptr);
-    assert(ptr_inst);
-    cv::Vec3f p = internal_loc(offset+_center, ptr_inst->loc, _scale);
-    
+    cv::Vec3f p = internal_loc(offset+_center, ptr, _scale);
     return loc_valid_xy(*_points, {p[0], p[1]});
 }
 
-cv::Vec3f QuadSurface::coord(SurfacePointer *ptr, const cv::Vec3f &offset)
+
+cv::Vec3f QuadSurface::coord(const cv::Vec3f &ptr, const cv::Vec3f &offset)
 {
-    TrivialSurfacePointer *ptr_inst = dynamic_cast<TrivialSurfacePointer*>(ptr);
-    assert(ptr_inst);
-    cv::Vec3f p = internal_loc(offset+_center, ptr_inst->loc, _scale);
+    cv::Vec3f p = internal_loc(offset+_center, ptr, _scale);
 
     cv::Rect bounds = {0,0,_points->cols-2,_points->rows-2};
     if (!bounds.contains(cv::Point(p[0],p[1])))
@@ -331,20 +310,14 @@ cv::Vec3f QuadSurface::coord(SurfacePointer *ptr, const cv::Vec3f &offset)
     return at_int((*_points), {p[0],p[1]});
 }
 
-cv::Vec3f QuadSurface::loc(SurfacePointer *ptr, const cv::Vec3f &offset)
+cv::Vec3f QuadSurface::loc(const cv::Vec3f &ptr, const cv::Vec3f &offset)
 {
-    TrivialSurfacePointer *ptr_inst = dynamic_cast<TrivialSurfacePointer*>(ptr);
-    assert(ptr_inst);
-    
-    return nominal_loc(offset, ptr_inst->loc, _scale);
+    return nominal_loc(offset, ptr, _scale);
 }
 
-cv::Vec3f QuadSurface::loc_raw(SurfacePointer *ptr)
+cv::Vec3f QuadSurface::loc_raw(const cv::Vec3f &ptr)
 {
-    TrivialSurfacePointer *ptr_inst = dynamic_cast<TrivialSurfacePointer*>(ptr);
-    assert(ptr_inst);
-
-    return internal_loc(_center, ptr_inst->loc, _scale);
+    return internal_loc(_center, ptr, _scale);
 }
 
 cv::Size QuadSurface::size()
@@ -357,13 +330,50 @@ cv::Vec2f QuadSurface::scale() const
     return _scale;
 }
 
-cv::Vec3f QuadSurface::normal(SurfacePointer *ptr, const cv::Vec3f &offset)
+cv::Vec3f QuadSurface::normal(const cv::Vec3f &ptr, const cv::Vec3f &offset)
 {
-    TrivialSurfacePointer *ptr_inst = dynamic_cast<TrivialSurfacePointer*>(ptr);
-    assert(ptr_inst);
-    cv::Vec3f p = internal_loc(offset+_center, ptr_inst->loc, _scale);
-    
+    cv::Vec3f p = internal_loc(offset+_center, ptr, _scale);
     return grid_normal((*_points), p);
+}
+
+void QuadSurface::gen(cv::Mat_<cv::Vec3f> *coords, cv::Mat_<cv::Vec3f> *normals, cv::Size size, const cv::Vec3f &ptr, float scale, const cv::Vec3f &offset)
+{
+    bool create_normals = normals || offset[2] || ptr[2];
+    cv::Vec3f upper_left_actual = internal_loc(offset/scale+_center, ptr, _scale);
+
+    int w = size.width;
+    int h = size.height;
+
+    cv::Mat_<cv::Vec3f> _coords_header;
+    cv::Mat_<cv::Vec3f> _normals_header;
+
+    if (!coords)
+        coords = &_coords_header;
+    if (!normals)
+        normals = &_normals_header;
+
+    coords->create(size+cv::Size(8,8));
+
+    std::vector<cv::Vec2f> dst = {{0,0},{w+8,0},{0,h+8}};
+    cv::Vec2f off2d = {upper_left_actual[0]-4*_scale[0]/scale, upper_left_actual[1]-4*_scale[1]/scale};
+    std::vector<cv::Vec2f> src = {off2d, off2d+cv::Vec2f((w+8)*_scale[0]/scale,0), off2d+cv::Vec2f(0,(h+8)*_scale[1]/scale)};
+
+    cv::Mat affine = cv::getAffineTransform(src, dst);
+    cv::warpAffine(*_points, *coords, affine, size+cv::Size(8,8));
+
+    if (create_normals) {
+        normals->create(size);
+        for(int j=0;j<h;j++)
+            for(int i=0;i<w;i++)
+                (*normals)(j, i) = grid_normal(*coords, {i+4,j+4});
+
+        *coords = (*coords)(cv::Rect(4,4,size.width,size.height)).clone();
+
+        if (upper_left_actual[2])
+            *coords += (*normals)*upper_left_actual[2];
+    }
+    else
+        *coords = (*coords)(cv::Rect(4,4,size.width,size.height)).clone();
 }
 
 static inline float sdist(const cv::Vec3f &a, const cv::Vec3f &b)
@@ -644,52 +654,49 @@ float pointTo(cv::Vec2f &loc, const cv::Mat_<cv::Vec3f> &points, const cv::Vec3f
 }
 
 //search the surface point that is closest to th tgt coord
-float QuadSurface::pointTo(SurfacePointer *ptr, const cv::Vec3f &tgt, float th, int max_iters)
+float QuadSurface::pointTo(cv::Vec3f &ptr, const cv::Vec3f &tgt, float th, int max_iters)
 {
-    TrivialSurfacePointer *tgt_ptr = dynamic_cast<TrivialSurfacePointer*>(ptr);
-    assert(tgt_ptr);
-
-    cv::Vec2f loc = cv::Vec2f(tgt_ptr->loc[0],tgt_ptr->loc[1]) + cv::Vec2f(_center[0]*_scale[0],_center[1]*_scale[1]);
+    cv::Vec2f loc = cv::Vec2f(ptr[0], ptr[1]) + cv::Vec2f(_center[0]*_scale[0], _center[1]*_scale[1]);
     cv::Vec3f _out;
-    
-    cv::Vec2f step_small = {std::max(1.0f,_scale[0]),std::max(1.0f,_scale[1])};
-    float min_mul = std::min(0.1*_points->cols/_scale[0],0.1*_points->rows/_scale[1]);
-    cv::Vec2f step_large = {min_mul*_scale[0],min_mul*_scale[1]};
+
+    cv::Vec2f step_small = {std::max(1.0f,_scale[0]), std::max(1.0f,_scale[1])};
+    float min_mul = std::min(0.1*_points->cols/_scale[0], 0.1*_points->rows/_scale[1]);
+    cv::Vec2f step_large = {min_mul*_scale[0], min_mul*_scale[1]};
 
     float dist = search_min_loc(*_points, loc, _out, tgt, step_small, _scale[0]*0.1);
-    
+
     if (dist < th && dist >= 0) {
-        tgt_ptr->loc = cv::Vec3f(loc[0],loc[1],0) - cv::Vec3f(_center[0]*_scale[0],_center[1]*_scale[1],0);
+        ptr = cv::Vec3f(loc[0], loc[1], 0) - cv::Vec3f(_center[0]*_scale[0], _center[1]*_scale[1], 0);
         return dist;
     }
-    
+
     cv::Vec2f min_loc = loc;
     float min_dist = dist;
     if (min_dist < 0)
         min_dist = 10*(_points->cols/_scale[0]+_points->rows/_scale[1]);
-    
+
     int r_full = 0;
-    for(int r=0;r<10*max_iters && r_full < max_iters;r++) {
+    for(int r=0; r<10*max_iters && r_full<max_iters; r++) {
         loc = {1 + (rand() % (_points->cols-3)), 1 + (rand() % (_points->rows-3))};
-        
+
         if ((*_points)(loc[1],loc[0])[0] == -1)
             continue;
-        
+
         r_full++;
 
         float dist = search_min_loc(*_points, loc, _out, tgt, step_large, _scale[0]*0.1);
-        
+
         if (dist < th && dist >= 0) {
             dist = search_min_loc((*_points), loc, _out, tgt, step_small, _scale[0]*0.1);
-            tgt_ptr->loc = cv::Vec3f(loc[0],loc[1],0) - cv::Vec3f(_center[0]*_scale[0],_center[1]*_scale[1],0);
+            ptr = cv::Vec3f(loc[0], loc[1], 0) - cv::Vec3f(_center[0]*_scale[0], _center[1]*_scale[1], 0);
             return dist;
         } else if (dist >= 0 && dist < min_dist) {
             min_loc = loc;
             min_dist = dist;
         }
     }
-    
-    tgt_ptr->loc = cv::Vec3f(min_loc[0],min_loc[1],0) - cv::Vec3f(_center[0]*_scale[0],_center[1]*_scale[1],0);
+
+    ptr = cv::Vec3f(min_loc[0], min_loc[1], 0) - cv::Vec3f(_center[0]*_scale[0], _center[1]*_scale[1], 0);
     return min_dist;
 }
 
@@ -929,56 +936,10 @@ QuadSurface *load_quad_from_obj(const std::string &path)
     return new QuadSurface(points, {static_cast<float>(sx), static_cast<float>(sy)});
 }
 
-void QuadSurface::gen(cv::Mat_<cv::Vec3f> *coords, cv::Mat_<cv::Vec3f> *normals, cv::Size size, SurfacePointer *ptr, float scale, const cv::Vec3f &offset)
+
+SurfaceControlPoint::SurfaceControlPoint(Surface *base, const cv::Vec3f &ptr_, const cv::Vec3f &control)
 {
-    TrivialSurfacePointer _ptr({0,0,0});
-    if (!ptr)
-        ptr = &_ptr;
-    TrivialSurfacePointer *ptr_inst = dynamic_cast<TrivialSurfacePointer*>(ptr);
-    
-    bool create_normals = normals || offset[2] || ptr_inst->loc[2];
-    
-    cv::Vec3f upper_left_actual = internal_loc(offset/scale+_center, ptr_inst->loc, _scale);
-    
-    int w = size.width;
-    int h = size.height;
-
-    cv::Mat_<cv::Vec3f> _coords_header;
-    cv::Mat_<cv::Vec3f> _normals_header;
-    
-    if (!coords)
-        coords = &_coords_header;
-    if (!normals)
-        normals = &_normals_header;
-
-    coords->create(size+cv::Size(8,8));
-    
-    std::vector<cv::Vec2f> dst = {{0,0},{w+8,0},{0,h+8}};
-    cv::Vec2f off2d = {upper_left_actual[0]-4*_scale[0]/scale,upper_left_actual[1]-4*_scale[1]/scale};
-    std::vector<cv::Vec2f> src = {off2d,off2d+cv::Vec2f((w+8)*_scale[0]/scale,0),off2d+cv::Vec2f(0,(h+8)*_scale[1]/scale)};
-    
-    cv::Mat affine = cv::getAffineTransform(src, dst);
-    cv::warpAffine(*_points, *coords, affine, size+cv::Size(8,8));
-    
-    //TODO create normals directly from input points instead off on sampled output ...
-    if (create_normals) {
-        normals->create(size);
-        for(int j=0;j<h;j++)
-            for(int i=0;i<w;i++)
-                (*normals)(j, i) = grid_normal(*coords, {i+4,j+4});
-
-        *coords = (*coords)(cv::Rect(4,4,size.width,size.height)).clone();
-
-        if (upper_left_actual[2])
-            *coords += (*normals)*upper_left_actual[2];
-    }
-    else
-        *coords = (*coords)(cv::Rect(4,4,size.width,size.height)).clone();
-}
-
-SurfaceControlPoint::SurfaceControlPoint(Surface *base, SurfacePointer *ptr_, const cv::Vec3f &control)
-{
-    ptr = ptr_->clone();
+    ptr = ptr_;
     orig_wp = base->coord(ptr_);
     normal = base->normal(ptr_);
     control_point = control;
@@ -994,96 +955,82 @@ void DeltaSurface::setBase(Surface *base)
     _base = base;
 }
 
-SurfacePointer *DeltaSurface::pointer()
+cv::Vec3f DeltaSurface::pointer()
 {
     return _base->pointer();
 }
 
-void DeltaSurface::move(SurfacePointer *ptr, const cv::Vec3f &offset)
+void DeltaSurface::move(cv::Vec3f &ptr, const cv::Vec3f &offset)
 {
     _base->move(ptr, offset);
 }
 
-bool DeltaSurface::valid(SurfacePointer *ptr, const cv::Vec3f &offset)
+bool DeltaSurface::valid(const cv::Vec3f &ptr, const cv::Vec3f &offset)
 {
     return _base->valid(ptr, offset);
 }
 
-cv::Vec3f DeltaSurface::loc(SurfacePointer *ptr, const cv::Vec3f &offset)
+cv::Vec3f DeltaSurface::loc(const cv::Vec3f &ptr, const cv::Vec3f &offset)
 {
     return _base->loc(ptr, offset);
 }
 
-cv::Vec3f DeltaSurface::coord(SurfacePointer *ptr, const cv::Vec3f &offset)
+cv::Vec3f DeltaSurface::coord(const cv::Vec3f &ptr, const cv::Vec3f &offset)
 {
     return _base->coord(ptr, offset);
 }
 
-cv::Vec3f DeltaSurface::normal(SurfacePointer *ptr, const cv::Vec3f &offset)
+cv::Vec3f DeltaSurface::normal(const cv::Vec3f &ptr, const cv::Vec3f &offset)
 {
     return _base->normal(ptr, offset);
 }
 
-float DeltaSurface::pointTo(SurfacePointer *ptr, const cv::Vec3f &tgt, float th, int max_iters)
+float DeltaSurface::pointTo(cv::Vec3f &ptr, const cv::Vec3f &tgt, float th, int max_iters)
 {
     return _base->pointTo(ptr, tgt, th, max_iters);
 }
 
-
-void ControlPointSurface::addControlPoint(SurfacePointer *base_ptr, cv::Vec3f control_point)
+void ControlPointSurface::addControlPoint(const cv::Vec3f &base_ptr, cv::Vec3f control_point)
 {
     _controls.push_back(SurfaceControlPoint(this, base_ptr, control_point));
-    
 }
 
-void ControlPointSurface::gen(cv::Mat_<cv::Vec3f> *coords_, cv::Mat_<cv::Vec3f> *normals_, cv::Size size, SurfacePointer *ptr, float scale, const cv::Vec3f &offset)
+void ControlPointSurface::gen(cv::Mat_<cv::Vec3f> *coords_, cv::Mat_<cv::Vec3f> *normals_, cv::Size size, const cv::Vec3f &ptr, float scale, const cv::Vec3f &offset)
 {
     std::cout << "corr gen " << _controls.size() << std::endl;
     cv::Mat_<cv::Vec3f> _coords_local;
-    
+
     cv::Mat_<cv::Vec3f> *coords = coords_;
-    
+
     if (!coords)
         coords = &_coords_local;
-    
-    TrivialSurfacePointer _ptr_local({0,0,0});
-    if (!ptr)
-        ptr = &_ptr_local;
-    
-    TrivialSurfacePointer *ptr_inst = dynamic_cast<TrivialSurfacePointer*>(ptr);
-    assert(ptr_inst);
 
     _base->gen(coords, normals_, size, ptr, scale, offset);
-    
+
     int w = size.width;
     int h = size.height;
     cv::Rect bounds(0,0,w,h);
-    
-    //FIXME can we do this without assuming quad base? I think so ...
-    
-    cv::Vec3f upper_left_nominal = nominal_loc(offset/scale, ptr_inst->loc, dynamic_cast<QuadSurface*>(_base)->_scale);
-    
+
+    cv::Vec3f upper_left_nominal = nominal_loc(offset/scale, ptr, dynamic_cast<QuadSurface*>(_base)->_scale);
+
     float z_offset = upper_left_nominal[2];
     upper_left_nominal[2] = 0;
-    
-    //FIXME implement z_offset
-    
+
     for(auto p : _controls) {
-        cv::Vec3f p_loc = nominal_loc(loc(p.ptr), ptr_inst->loc, dynamic_cast<QuadSurface*>(_base)->_scale)  - upper_left_nominal;
-        std::cout << p_loc << p_loc*scale <<  loc(p.ptr) << ptr_inst->loc << std::endl;
+        cv::Vec3f p_loc = nominal_loc(loc(p.ptr), ptr, dynamic_cast<QuadSurface*>(_base)->_scale) - upper_left_nominal;
+        std::cout << p_loc << p_loc*scale << loc(p.ptr) << ptr << std::endl;
         p_loc *= scale;
-        cv::Rect roi(p_loc[0]-40,p_loc[1]-40,80,80);
+        cv::Rect roi(p_loc[0]-40, p_loc[1]-40, 80, 80);
         cv::Rect area = roi & bounds;
-        
+
         PlaneSurface plane(p.control_point, p.normal);
         float delta = plane.scalarp(coord(p.ptr));
         cv::Vec3f move = delta*p.normal;
-        
+
         std::cout << area << roi << bounds << move << p.control_point << p.normal << coord(p.ptr) << std::endl;
-        
-        for(int j=area.y;j<area.y+area.height;j++)
-            for(int i=area.x;i<area.x+area.width;i++) {
-                //TODO correct by scale!
+
+        for(int j=area.y; j<area.y+area.height; j++)
+            for(int i=area.x; i<area.x+area.width; i++) {
                 float w = sdist(p_loc, cv::Vec3f(i,j,0));
                 w = exp(-w/(20*20));
                 (*coords)(j,i) += w*move;
@@ -1108,32 +1055,22 @@ RefineCompSurface::RefineCompSurface(z5::Dataset *ds, ChunkCache *cache, QuadSur
     _cache = cache;
 }
 
-void RefineCompSurface::gen(cv::Mat_<cv::Vec3f> *coords_, cv::Mat_<cv::Vec3f> *normals_, cv::Size size, SurfacePointer *ptr, float scale, const cv::Vec3f &offset)
+void RefineCompSurface::gen(cv::Mat_<cv::Vec3f> *coords_, cv::Mat_<cv::Vec3f> *normals_, cv::Size size, const cv::Vec3f &ptr, float scale, const cv::Vec3f &offset)
 {
     cv::Mat_<cv::Vec3f> _coords_local;
     cv::Mat_<cv::Vec3f> _normals_local;
-    
+
     cv::Mat_<cv::Vec3f> *coords = coords_;
     cv::Mat_<cv::Vec3f> *normals = normals_;
-    
+
     if (!coords)
         coords = &_coords_local;
     if (!normals)
-    normals = &_normals_local;
-    
-    TrivialSurfacePointer _ptr_local({0,0,0});
-    if (!ptr)
-        ptr = &_ptr_local;
-    
-    TrivialSurfacePointer *ptr_inst = dynamic_cast<TrivialSurfacePointer*>(ptr);
-    assert(ptr_inst);
-    
+        normals = &_normals_local;
+
     _base->gen(coords, normals, size, ptr, scale, offset);
-    
+
     cv::Mat_<cv::Vec3f> res;
-    
-    // cv::Mat_<float> integ(size, 0);
-    // cv::Mat_<float> integ_blur(size, 0);
     cv::Mat_<float> transparent(size, 1);
     cv::Mat_<float> blur(size, 0);
     cv::Mat_<float> integ_z(size, 0);
@@ -1141,34 +1078,27 @@ void RefineCompSurface::gen(cv::Mat_<cv::Vec3f> *coords_, cv::Mat_<cv::Vec3f> *n
     if (stop < start)
         step = -abs(step);
 
-    for(int n=0;n<=(stop-start)/step;n++) {
+    for(int n=0; n<=(stop-start)/step; n++) {
         cv::Mat_<uint8_t> slice;
         float off = start + step*n;
         readInterpolated3D(slice, _ds, (*coords+*normals*off)*scale, _cache);
-        
+
         cv::Mat floatslice;
         slice.convertTo(floatslice, CV_32F, 1/255.0);
-        
+
         cv::GaussianBlur(floatslice, blur, {7,7}, 0);
         cv::Mat opaq_slice = blur;
-        
+
         opaq_slice = (opaq_slice-low)/(high-low);
         opaq_slice = cv::min(opaq_slice,1);
         opaq_slice = cv::max(opaq_slice,0);
-        
+
         cv::Mat joint = transparent.mul(opaq_slice);
-        // integ += joint.mul(floatslice);
-        // integ_blur += joint.mul(blur);
         integ_z += joint * off * scale;
         transparent = transparent-joint;
     }
-    
+
     integ_z /= (1-transparent);
-    
-    //NOTE could be used as an additional output layer to improv visualization!
-    // integ /= (1-transparent);
-    // integ_blur /= (1-transparent);
-    // cv::imwrite("blended_comp1.tif", integ/(integ_blur+0.5));
 
     cv::Mat mul;
     cv::cvtColor(integ_z, mul, cv::COLOR_GRAY2BGR);
@@ -1432,52 +1362,6 @@ struct DSReader
     ChunkCache *cache;
 };
 
-static float alphacomp_offset(DSReader &reader, cv::Vec3f point, cv::Vec3f normal, float start, float stop, float step)
-{
-    cv::Size size = {7,7};
-    cv::Point2i c = {3,3};
-
-    float transparent = 1;
-    cv::Mat_<float> blur(size, 0);
-    float integ_z = 0;
-
-    cv::Mat_<cv::Vec3f> coords;
-    PlaneSurface plane(point, normal);
-    plane.gen(&coords, nullptr, size, nullptr, reader.scale, {0,0,0});
-
-    coords *= reader.scale;
-    float s = copysignf(1.0,step);
-
-    for(double off=start;off*s<=stop*s;off+=step) {
-        cv::Mat_<uint8_t> slice;
-        //I hate opencv
-        cv::Mat_<cv::Vec3f> offmat(size, normal*off*reader.scale);
-        readInterpolated3D(slice, reader.ds, coords+offmat, reader.cache);
-
-        cv::Mat floatslice;
-        slice.convertTo(floatslice, CV_32F, 1/255.0);
-
-        cv::GaussianBlur(floatslice, blur, {7,7}, 0);
-        cv::Mat_<float> opaq_slice = blur;
-
-        float low = 0.1; //map to 0
-        float up = 1.0; //map to 1
-        opaq_slice = (opaq_slice-low)/(up-low);
-        opaq_slice = cv::min(opaq_slice,1);
-        opaq_slice = cv::max(opaq_slice,0);
-
-        float joint = transparent*opaq_slice(c);
-        integ_z += joint * off;
-        transparent = transparent-joint;
-    }
-
-    integ_z += transparent * stop;
-    transparent = 0.0;
-
-    // integ_z /= (1-transparent+1e-5);
-
-    return integ_z;
-}
 
 float clampsigned(float val, float limit)
 {
@@ -1638,38 +1522,30 @@ bool overlap(SurfaceMeta &a, SurfaceMeta &b, int max_iters)
         return false;
 
     cv::Mat_<cv::Vec3f> points = a.surface()->rawPoints();
-    for(int r=0;r<std::max(10, max_iters/10);r++) {
+    for(int r=0; r<std::max(10, max_iters/10); r++) {
         cv::Vec2f p = {rand() % points.cols, rand() % points.rows};
-        cv::Vec3f loc = points(p[1],p[0]);
+        cv::Vec3f loc = points(p[1], p[0]);
         if (loc[0] == -1)
             continue;
 
-        auto *ptr = b.surface()->pointer();
-
+        cv::Vec3f ptr = b.surface()->pointer();
         if (b.surface()->pointTo(ptr, loc, 2.0, max_iters) <= 2.0) {
-            delete ptr;
             return true;
         }
-        
-        delete ptr;
     }
-
     return false;
 }
+
 
 bool contains(SurfaceMeta &a, const cv::Vec3f &loc, int max_iters)
 {
     if (!intersect(a.bbox, {loc,loc}))
         return false;
-        
-    auto *ptr = a.surface()->pointer();
-    
+
+    cv::Vec3f ptr = a.surface()->pointer();
     if (a.surface()->pointTo(ptr, loc, 2.0, max_iters) <= 2.0) {
-        delete ptr;
         return true;
     }
-    
-    delete ptr;
     return false;
 }
 
