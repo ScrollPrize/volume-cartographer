@@ -6,6 +6,7 @@
 #include <opencv2/core/core.hpp>
 
 #include <set>
+#include <unordered_map>
 #include "PathData.hpp"
 #include "vc/core/util/VCCollection.hpp"
 #include "COutlinedTextItem.hpp"
@@ -69,6 +70,13 @@ public:
 
     void fitSurfaceInView();
     void updateAllOverlays();
+    
+    // Direction hints for vc_grow_seg_from_segments flip_x visualization
+    void renderDirectionHints();
+
+    // Generic overlay group management (ad-hoc helper for reuse)
+    void setOverlayGroup(const std::string& key, const std::vector<QGraphicsItem*>& items);
+    void clearOverlayGroup(const std::string& key);
 
     // Get current scale for coordinate transformation
     float getCurrentScale() const { return _scale; }
@@ -201,6 +209,9 @@ protected:
     
     QList<PathData> _paths;
     std::vector<QGraphicsItem*> _path_items;
+    
+    // Generic overlay groups; each key owns its items' lifetime
+    std::unordered_map<std::string, std::vector<QGraphicsItem*>> _overlay_groups;
     
     // Drawing mode state
     bool _drawingModeActive = false;
