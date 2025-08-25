@@ -456,7 +456,7 @@ void readInterpolated3D(cv::Mat_<uint8_t> &out, z5::Dataset *ds,
     for(auto &it : needs_io) {
         cv::Vec4i idx = it.first;
         std::shared_ptr<xt::xarray<uint8_t>> chunk_ref;
-        it.second = z5::multiarray::readChunk<uint8_t>(*ds, {size_t(idx[1]),size_t(idx[2]),size_t(idx[3])});
+        it.second = readChunk<uint8_t>(*ds, {size_t(idx[1]),size_t(idx[2]),size_t(idx[3])});
     }
 
     cache->mutex.lock();
