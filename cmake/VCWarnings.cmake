@@ -94,6 +94,7 @@ list(APPEND project_warnings
     -Wno-c++98-compat
     -Wno-unknown-attributes
     -Wno-shorten-64-to-32
+    -Weverything
 )
 endif()
 

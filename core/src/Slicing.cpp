@@ -355,7 +355,6 @@ void readInterpolated3D(cv::Mat_<uint8_t> &out, z5::Dataset *ds,
 
         }
 
-#pragma omp paralle for schedule(dynamic)
     for(auto &it : chunks) {
         xt::xarray<uint8_t> *chunk = nullptr;
         std::shared_ptr<xt::xarray<uint8_t>> chunk_ref;

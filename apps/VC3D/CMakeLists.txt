@@ -42,6 +42,11 @@ set(srcs
     COutlinedTextItem.cpp
 )
 
+if(VC_ENABLE_TSAN OR VC_ENABLE_LSAN OR VC_ENABLE_UBSAN OR VC_ENABLE_ASAN)
+    list(APPEND srcs "${CMAKE_SOURCE_DIR}/misc/sanitizer_config.c")
+endif()
+
+
 set(MACOSX_BUNDLE_ICON logo.icns)
 set_source_files_properties(${MACOSX_BUNDLE_ICON} PROPERTIES
     MACOSX_PACKAGE_LOCATION Resources
