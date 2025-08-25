@@ -256,6 +256,7 @@ private:
     QShortcut* fDefectiveShortcut;
     QShortcut* fDrawingModeShortcut;
     QShortcut* fCompositeViewShortcut;
+    QShortcut* fDirectionHintsShortcut;
 
 
 };  // class CWindow
