@@ -2599,6 +2599,34 @@ QuadSurface *grow_surf_from_surfs(SurfaceMeta *seed, const std::vector<SurfaceMe
     straight_min_count = params.value("straight_min_count", 1.0f);      // Minimum number of straight constraints
     inlier_base_threshold = params.value("inlier_base_threshold", 20);  // Starting threshold for inliers
 
+    // Optional hard z-range constraint: [z_min, z_max]
+    bool enforce_z_range = false;
+    double z_min = 0.0, z_max = 0.0;
+    if (params.contains("z_range")) {
+        try {
+            if (params["z_range"].is_array() && params["z_range"].size() == 2) {
+                z_min = params["z_range"][0].get<double>();
+                z_max = params["z_range"][1].get<double>();
+                if (z_min > z_max)
+                    std::swap(z_min, z_max);
+                enforce_z_range = true;
+            }
+        } catch (...) {
+            // Ignore malformed z_range silently; fall back to no constraint
+            enforce_z_range = false;
+        }
+    } else if (params.contains("z_min") && params.contains("z_max")) {
+        try {
+            z_min = params["z_min"].get<double>();
+            z_max = params["z_max"].get<double>();
+            if (z_min > z_max)
+                std::swap(z_min, z_max);
+            enforce_z_range = true;
+        } catch (...) {
+            enforce_z_range = false;
+        }
+    }
+
     std::cout << "  local_cost_inl_th: " << local_cost_inl_th << std::endl;
     std::cout << "  same_surface_th: " << same_surface_th << std::endl;
     std::cout << "  straight_weight: " << straight_weight << std::endl;
@@ -2609,6 +2637,8 @@ QuadSurface *grow_surf_from_surfs(SurfaceMeta *seed, const std::vector<SurfaceMe
     std::cout << "  z_loc_loss_w: " << z_loc_loss_w << std::endl;
     std::cout << "  dist_loss_2d_w: " << dist_loss_2d_w << std::endl;
     std::cout << "  dist_loss_3d_w: " << dist_loss_3d_w << std::endl;
+    if (enforce_z_range)
+        std::cout << "  z_range: [" << z_min << ", " << z_max << "]" << std::endl;
 
     std::cout << "total surface count: " << surfs_v.size() << std::endl;
 
@@ -2690,6 +2720,8 @@ QuadSurface *grow_surf_from_surfs(SurfaceMeta *seed, const std::vector<SurfaceMe
     data.seed_loc = cv::Point2i(y0,x0);
     
     std::cout << "seed coord " << data.seed_coord << " at " << data.seed_loc << std::endl;
+    if (enforce_z_range && (data.seed_coord[2] < z_min || data.seed_coord[2] > z_max))
+        std::cout << "warning: seed z " << data.seed_coord[2] << " is outside z_range; growth will be restricted to [" << z_min << ", " << z_max << "]" << std::endl;
 
     state(y0,x0) = STATE_LOC_VALID | STATE_COORD_VALID;
     fringe.insert(cv::Vec2i(y0,x0));
@@ -2868,6 +2900,11 @@ QuadSurface *grow_surf_from_surfs(SurfaceMeta *seed, const std::vector<SurfaceMe
 
                 //TODO could also have priorities!
                 if (approved_sm.count(ref_surf) && straight_count_init >= 2 && count_init >= 4) {
+                    // Respect z-range if enforced
+                    if (enforce_z_range && (coord[2] < z_min || coord[2] > z_max)) {
+                        data_th.erase(ref_surf, p);
+                        continue;
+                    }
                     std::cout << "found approved sm " << ref_surf->name() << std::endl;
 
                     // Log approved surface if not already logged
@@ -2907,6 +2944,11 @@ QuadSurface *grow_surf_from_surfs(SurfaceMeta *seed, const std::vector<SurfaceMe
                     }
                 }
                 if ((inliers_count >= 2 || ref_seed) && inliers_sum > best_inliers) {
+                    if (enforce_z_range && (coord[2] < z_min || coord[2] > z_max)) {
+                        // Do not consider candidates outside the allowed z-range
+                        data_th.erase(ref_surf, p);
+                        continue;
+                    }
                     best_inliers = inliers_sum;
                     best_coord = coord;
                     best_surf = ref_surf;
@@ -2921,6 +2963,11 @@ QuadSurface *grow_surf_from_surfs(SurfaceMeta *seed, const std::vector<SurfaceMe
             
             if (!best_approved && (best_inliers >= curr_best_inl_th || best_ref_seed))
             {
+                if (enforce_z_range && (best_coord[2] < z_min || best_coord[2] > z_max)) {
+                    // Final guard: reject best candidate outside z-range
+                    best_inliers = -1;
+                    best_ref_seed = false;
+                } else {
                 cv::Vec2f tmp_loc_;
                 cv::Rect used_th = used_area;
                 float dist = pointTo(tmp_loc_, points(used_th), best_coord, same_surface_th, 1000, 1.0/(step*src_step));
@@ -2931,6 +2978,7 @@ QuadSurface *grow_surf_from_surfs(SurfaceMeta *seed, const std::vector<SurfaceMe
                     best_ref_seed = false;
                     if (!state_sum)
                         throw std::runtime_error("this should not have any location?!");
+                }
                 }
             }
             
