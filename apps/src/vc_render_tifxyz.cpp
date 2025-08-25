@@ -68,6 +68,26 @@ AffineTransform loadAffineTransform(const std::string& filename) {
 }
 
 /**
+ * @brief Apply affine transform to a single point
+ * 
+ * @param point Point to transform
+ * @param transform Affine transform to apply
+ * @return cv::Vec3f Transformed point
+ */
+cv::Vec3f applyAffineTransformToPoint(const cv::Vec3f& point, const AffineTransform& transform) {
+    float ptx = point[0];
+    float pty = point[1];
+    float ptz = point[2];
+    
+    // Apply affine transform (note: matrix is in XYZ format)
+    float ptx_new = transform.matrix(0, 0) * ptx + transform.matrix(0, 1) * pty + transform.matrix(0, 2) * ptz + transform.matrix(0, 3);
+    float pty_new = transform.matrix(1, 0) * ptx + transform.matrix(1, 1) * pty + transform.matrix(1, 2) * ptz + transform.matrix(1, 3);
+    float ptz_new = transform.matrix(2, 0) * ptx + transform.matrix(2, 1) * pty + transform.matrix(2, 2) * ptz + transform.matrix(2, 3);
+    
+    return cv::Vec3f(ptx_new, pty_new, ptz_new);
+}
+
+/**
  * @brief Apply affine transform to points and normals
  * 
  * @param points Points to transform (modified in-place)
@@ -87,15 +107,7 @@ void applyAffineTransform(cv::Mat_<cv::Vec3f>& points,
                 continue;
             }
 
-            float ptx = pt[0];
-            float pty = pt[1];
-            float ptz = pt[2];
-            
-            // Apply affine transform (note: matrix is in XYZ format)
-            float ptx_new = transform.matrix(0, 0) * ptx + transform.matrix(0, 1) * pty + transform.matrix(0, 2) * ptz + transform.matrix(0, 3);
-            float pty_new = transform.matrix(1, 0) * ptx + transform.matrix(1, 1) * pty + transform.matrix(1, 2) * ptz + transform.matrix(1, 3);
-            float ptz_new = transform.matrix(2, 0) * ptx + transform.matrix(2, 1) * pty + transform.matrix(2, 2) * ptz + transform.matrix(2, 3);
-            pt = {ptx_new, pty_new, ptz_new};
+            pt = applyAffineTransformToPoint(pt, transform);
         }
     }
     
