@@ -84,7 +84,7 @@ using IntersectVec = std::vector<std::pair<float,cv::Vec2f>>;
 IntersectVec getIntersects(const cv::Vec2i &seed, const cv::Mat_<cv::Vec3f> &points, const cv::Vec2f &step)
 {
     cv::Vec3f o = points(seed[1],seed[0]);
-    cv::Vec3f n = grid_normal(points, {seed[0],seed[1],0});
+    cv::Vec3f n = grid_normal(points, {(float)seed[0],(float)seed[1],0});
     if (std::isnan(n[0]))
         return {};
     std::vector<cv::Vec2f> locs = {seed};
@@ -189,15 +189,25 @@ int main(int argc, char** argv) {
         std::string collection_name = collection.generateNewCollectionName("col");
         collection.addCollection(collection_name);
 
+        float base_winding = at_int(winding, {float(seed_loc.x), float(seed_loc.y)});
         float last_winding = -1e9;
-
+        
+        std::vector<std::pair<float, cv::Vec2f>> filtered_intersects;
         for (const auto& intersect : intersects) {
             cv::Vec2f loc = intersect.second;
             float w = at_int(winding, loc);
-
-            if (std::abs(w - round(w)) > 0.1) {
-                continue;
+            
+            float diff = std::abs(w - base_winding);
+            if (std::abs(diff - round(diff)) < 0.1) {
+                filtered_intersects.push_back({w, loc});
             }
+        }
+
+        std::sort(filtered_intersects.begin(), filtered_intersects.end(), [](auto a, auto b) {return a.first < b.first; });
+
+        for (const auto& intersect : filtered_intersects) {
+            float w = intersect.first;
+            cv::Vec2f loc = intersect.second;
 
             int current_winding_int = round(w);
             if (current_winding_int != round(last_winding)) {
