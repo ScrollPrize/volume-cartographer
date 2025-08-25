@@ -86,11 +86,16 @@ void applyAffineTransform(cv::Mat_<cv::Vec3f>& points,
             if (std::isnan(pt[0]) || std::isnan(pt[1]) || std::isnan(pt[2])) {
                 continue;
             }
+
+            float ptx = pt[0];
+            float pty = pt[1];
+            float ptz = pt[2];
             
             // Apply affine transform (note: matrix is in XYZ format)
-            cv::Vec4f pt4 = {pt[0], pt[1], pt[2], 1};
-            cv::Mat transformed_pt_mat = transform.matrix * pt4;
-            pt = {transformed_pt_mat.at<float>(0), transformed_pt_mat.at<float>(1), transformed_pt_mat.at<float>(2)};
+            float ptx_new = transform.matrix(0, 0) * ptx + transform.matrix(0, 1) * pty + transform.matrix(0, 2) * ptz + transform.matrix(0, 3);
+            float pty_new = transform.matrix(1, 0) * ptx + transform.matrix(1, 1) * pty + transform.matrix(1, 2) * ptz + transform.matrix(1, 3);
+            float ptz_new = transform.matrix(2, 0) * ptx + transform.matrix(2, 1) * pty + transform.matrix(2, 2) * ptz + transform.matrix(2, 3);
+            pt = {ptx_new, pty_new, ptz_new};
         }
     }
     
@@ -109,12 +114,9 @@ void applyAffineTransform(cv::Mat_<cv::Vec3f>& points,
             float nz = n[2];
             
             // Apply rotation part of affine transform
-            float nx_new = transform.matrix(0, 2) * nx + transform.matrix(0, 1) * ny + 
-                          transform.matrix(0, 0) * nz;
-            float ny_new = transform.matrix(1, 2) * nx + transform.matrix(1, 1) * ny + 
-                          transform.matrix(1, 0) * nz;
-            float nz_new = transform.matrix(2, 2) * nx + transform.matrix(2, 1) * ny + 
-                          transform.matrix(2, 0) * nz;
+            float nx_new = transform.matrix(0, 0) * nx + transform.matrix(0, 1) * ny + transform.matrix(0, 2) * nz;
+            float ny_new = transform.matrix(1, 0) * nx + transform.matrix(1, 1) * ny + transform.matrix(1, 2) * nz;
+            float nz_new = transform.matrix(2, 0) * nx + transform.matrix(2, 1) * ny + transform.matrix(2, 2) * nz;
             
             // Normalize the transformed normal
             float norm = std::sqrt(nx_new * nx_new + ny_new * ny_new + nz_new * nz_new);
@@ -443,24 +445,25 @@ int main(int argc, char *argv[])
         slice_gen = true;
     else {
         surf->gen(&points, &normals, tgt_size, cv::Vec3f(0,0,0), tgt_scale, {-full_size.width/2+crop.x,-full_size.height/2+crop.y,0});
-        
-        // Calculate the actual mesh centroid
-        meshCentroid = calculateMeshCentroid(points);
-        globalFlipDecision = shouldFlipNormals(points, normals, meshCentroid);
-        orientationDetermined = true;
 
-        applyNormalOrientation(normals, globalFlipDecision);
-
+        // Scale the segmentation points if requested
         points *= scale_seg;
 
         if (hasAffine) {
             applyAffineTransform(points, normals, affineTransform);
         }
+
+        // Calculate the actual mesh centroid
+        meshCentroid = calculateMeshCentroid(points);
+
+        globalFlipDecision = shouldFlipNormals(points, normals, meshCentroid);
+        orientationDetermined = true;
         if (globalFlipDecision) {
             std::cout << "Orienting normals to point consistently (flipped)" << std::endl;
         } else {
             std::cout << "Orienting normals to point consistently (not flipped)" << std::endl;
         }
+        applyNormalOrientation(normals, globalFlipDecision);
     }
 
     cv::Mat_<uint8_t> img;
