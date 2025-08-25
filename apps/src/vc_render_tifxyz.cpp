@@ -544,6 +544,9 @@ int main(int argc, char *argv[])
             }
             else {
                 cv::Mat_<cv::Vec3f> offsetPoints = points + off*ds_scale*normals;
+                // Scale the segmentation points if requested
+                offsetPoints *= scale_seg;
+
                 // Apply affine transform if provided (for non-slice_gen case)
                 if (hasAffine) {
                     std::cout << "Applying affine transform to points and normals for slice " << i << " for non-slice_gen case" << std::endl;
