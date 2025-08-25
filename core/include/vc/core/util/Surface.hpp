@@ -236,6 +236,5 @@ void write_overlapping_json(const std::filesystem::path& seg_path, const std::se
 std::set<std::string> read_overlapping_json(const std::filesystem::path& seg_path);
 
 QuadSurface* surface_diff(QuadSurface* a, QuadSurface* b, float tolerance = 2.0);
-QuadSurface* surface_diff_fast(QuadSurface* a, QuadSurface* b, float tolerance = 2.0);
 QuadSurface* surface_union(QuadSurface* a, QuadSurface* b, float tolerance = 2.0);
 QuadSurface* surface_intersection(QuadSurface* a, QuadSurface* b, float tolerance = 2.0);

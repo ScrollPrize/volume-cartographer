@@ -1641,7 +1641,6 @@ QuadSurface* surface_diff(QuadSurface* a, QuadSurface* b, float tolerance) {
     int height = diff_points->rows;
 
     if (!intersect(a->bbox(), b->bbox())) {
-        // No intersection, so all of a is unique
         return new QuadSurface(diff_points, a->scale());
     }
 
@@ -1653,24 +1652,19 @@ QuadSurface* surface_diff(QuadSurface* a, QuadSurface* b, float tolerance) {
         for (int i = 0; i < width; i++) {
             cv::Vec3f point = (*diff_points)(j, i);
 
-            // Skip invalid points
             if (point[0] == -1 && point[1] == -1 && point[2] == -1) {
                 continue;
             }
 
             total_valid++;
 
-            // Check if this point exists in surface b
-            TrivialSurfacePointer* ptr = new TrivialSurfacePointer({0, 0, 0});
+            cv::Vec3f ptr = {0,0,0};
             float dist = b->pointTo(ptr, point, tolerance, 100);
 
-            // If point is found in b (within tolerance), mark it as invalid
             if (dist >= 0 && dist <= tolerance) {
                 (*diff_points)(j, i) = {-1, -1, -1};
                 removed_count++;
             }
-
-            delete ptr;
         }
     }
 
@@ -1691,64 +1685,7 @@ QuadSurface* surface_diff(QuadSurface* a, QuadSurface* b, float tolerance) {
     return result;
 }
 
-QuadSurface* surface_diff_fast(QuadSurface* a, QuadSurface* b, float tolerance) {
-    cv::Mat_<cv::Vec3f>* diff_points = new cv::Mat_<cv::Vec3f>(a->rawPoints().clone());
-
-    int width = diff_points->cols;
-    int height = diff_points->rows;
-
-    cv::Vec2f scale_ratio = {b->scale()[0] / a->scale()[0],
-                             b->scale()[1] / a->scale()[1]};
-
-    cv::Mat_<cv::Vec3f> b_points = b->rawPoints();
-
-    int removed_count = 0;
-    int total_valid = 0;
-
-    for (int j = 0; j < height; j++) {
-        for (int i = 0; i < width; i++) {
-            cv::Vec3f point_a = (*diff_points)(j, i);
-
-            if (point_a[0] == -1) {
-                continue;
-            }
-
-            total_valid++;
-
-            cv::Vec2f loc_b;
-            cv::Vec3f found_point;
-
-            // Use the more efficient pointTo function for grid-based search
-            float dist = pointTo(loc_b, b_points, point_a, tolerance, 10, b->scale()[0]);
-
-            if (dist >= 0 && dist <= tolerance) {
-                (*diff_points)(j, i) = {-1, -1, -1};
-                removed_count++;
-            }
-        }
-    }
-
-    std::cout << "Surface diff (fast): removed " << removed_count
-              << " points out of " << total_valid << " valid points" << std::endl;
-
-    // Create and return the new surface
-    QuadSurface* result = new QuadSurface(diff_points, a->scale());
-
-    // Copy and update metadata
-    if (a->meta) {
-        result->meta = new nlohmann::json(*a->meta);
-        (*result->meta)["source"] = "surface_diff_fast";
-        (*result->meta)["parent_a"] = a->id.empty() ? "unknown" : a->id;
-        (*result->meta)["parent_b"] = b->id.empty() ? "unknown" : b->id;
-        (*result->meta)["diff_tolerance"] = tolerance;
-        (*result->meta)["points_removed"] = removed_count;
-    }
-
-    return result;
-}
-
 QuadSurface* surface_union(QuadSurface* a, QuadSurface* b, float tolerance) {
-    // Start with a copy of surface a
     cv::Mat_<cv::Vec3f>* union_points = new cv::Mat_<cv::Vec3f>(a->rawPoints().clone());
 
     cv::Mat_<cv::Vec3f> b_points = b->rawPoints();
@@ -1771,8 +1708,6 @@ QuadSurface* surface_union(QuadSurface* a, QuadSurface* b, float tolerance) {
 
             // If point is not found in a, we need to add it
             if (dist < 0 || dist > tolerance) {
-                // Find the corresponding grid position in a's coordinate system
-                // This is simplified - you may need more sophisticated mapping
                 int grid_x = std::round(i * b->scale()[0] / a->scale()[0]);
                 int grid_y = std::round(j * b->scale()[1] / a->scale()[1]);
 
@@ -1794,7 +1729,6 @@ QuadSurface* surface_union(QuadSurface* a, QuadSurface* b, float tolerance) {
 }
 
 QuadSurface* surface_intersection(QuadSurface* a, QuadSurface* b, float tolerance) {
-    // Clone the points from surface a
     cv::Mat_<cv::Vec3f>* intersect_points = new cv::Mat_<cv::Vec3f>(a->rawPoints().clone());
 
     int width = intersect_points->cols;

@@ -3116,22 +3116,17 @@ QuadSurface *grow_surf_from_surfs(SurfaceMeta *seed, const std::vector<SurfaceMe
             cv::Mat_<cv::Vec3d> points_hr = surftrack_genpoints_hr(data, state, points, used_area, step, src_step);
             QuadSurface *current_surf = new QuadSurface(points_hr(used_area_hr), {1/src_step,1/src_step});
 
-            // Generate timestamp ONCE for both surfaces
             std::string timestamp = get_surface_time_str();
 
-            // Calculate area metrics for current surface
             float const area_est_vx2 = loc_valid_count*src_step*src_step*step*step;
             float const area_est_cm2 = area_est_vx2 * voxelsize * voxelsize / 1e8;
 
-            // Get contributing surfaces for metadata
             std::set<std::string> contributing_surfaces = get_contributing_surfaces(data, state, used_area);
 
-            // Calculate unique contribution
             QuadSurface *unique_surf = nullptr;
             if (accumulated_surface) {
                 unique_surf = surface_diff(current_surf, accumulated_surface, 2.0);
             } else {
-                // First surface is entirely unique
                 unique_surf = new QuadSurface(current_surf->rawPoints(), current_surf->scale());
             }
 
@@ -3153,59 +3148,32 @@ QuadSurface *grow_surf_from_surfs(SurfaceMeta *seed, const std::vector<SurfaceMe
             std::string uuid_unique = uuid_base + "_unique";
             std::string uuid_full = uuid_base;
 
-            // Save unique contribution surface
             unique_surf->meta = new nlohmann::json;
-            (*unique_surf->meta)["type"] = "unique_contribution";
             (*unique_surf->meta)["generation"] = generation;
-            (*unique_surf->meta)["seed_surface"] = seed->name();
+            (*unique_surf->meta)["seed"] = seed->name();
             (*unique_surf->meta)["surface_sequence"] = surface_sequence;
             (*unique_surf->meta)["contributing_surfaces"] = contributing_surfaces;
-            (*unique_surf->meta)["unique_points_count"] = unique_valid_count;
-            (*unique_surf->meta)["unique_area_vx2"] = unique_area_vx2;
-            (*unique_surf->meta)["unique_area_cm2"] = unique_area_cm2;
-            (*unique_surf->meta)["original_area_vx2"] = area_est_vx2;
-            (*unique_surf->meta)["original_area_cm2"] = area_est_cm2;
-            (*unique_surf->meta)["is_first_surface"] = (accumulated_surface == nullptr);
+            (*unique_surf->meta)["area_vx2"] = unique_area_vx2;
+            (*unique_surf->meta)["area_cm2"] = unique_area_cm2;
             (*unique_surf->meta)["vc_grow_seg_from_segments_params"] = params;
-            (*unique_surf->meta)["scale"] = {unique_surf->scale()[0], unique_surf->scale()[1]};
-            (*unique_surf->meta)["format"] = "tifxyz";
-            (*unique_surf->meta)["source"] = "vc_grow_seg_from_segments_unique";
-            (*unique_surf->meta)["full_version_uuid"] = uuid_full;
-            (*unique_surf->meta)["timestamp"] = timestamp;
+            (*unique_surf->meta)["used_approved_segments"] = std::vector<std::string>(used_approved_names.begin(), used_approved_names.end());
+
 
             unique_surf->save(tgt_dir / uuid_unique, uuid_unique);
 
-            // Update accumulated surface - IMPORTANT: use the FULL current_surf, not unique_surf!
             if (accumulated_surface) {
                 delete accumulated_surface;
             }
             accumulated_surface = new QuadSurface(current_surf->rawPoints(), current_surf->scale());
             surface_sequence.push_back(uuid_unique);
 
-            // Save full surface with complete metadata
             current_surf->meta = new nlohmann::json;
-            (*current_surf->meta)["vc_grow_seg_from_segments_params"] = params;
-            (*current_surf->meta)["generation"] = generation;
-            (*current_surf->meta)["seed_surface"] = seed->name();
-            (*current_surf->meta)["contributing_surfaces"] = contributing_surfaces;
-            (*current_surf->meta)["surface_sequence"] = surface_sequence;
             (*current_surf->meta)["area_vx2"] = area_est_vx2;
             (*current_surf->meta)["area_cm2"] = area_est_cm2;
-            (*current_surf->meta)["valid_points_count"] = loc_valid_count;
-            (*current_surf->meta)["scale"] = {current_surf->scale()[0], current_surf->scale()[1]};
-            (*current_surf->meta)["format"] = "tifxyz";
-            (*current_surf->meta)["source"] = "vc_grow_seg_from_segments";
-            (*current_surf->meta)["has_unique_version"] = true;
-            (*current_surf->meta)["unique_version_uuid"] = uuid_unique;
-            (*current_surf->meta)["unique_area_vx2"] = unique_area_vx2;
-            (*current_surf->meta)["unique_area_cm2"] = unique_area_cm2;
-            (*current_surf->meta)["unique_points_count"] = unique_valid_count;
-            (*current_surf->meta)["accumulated_surfaces_count"] = surface_sequence.size();
-            (*current_surf->meta)["timestamp"] = timestamp;
+            (*current_surf->meta)["used_approved_segments"] = std::vector<std::string>(used_approved_names.begin(), used_approved_names.end());
 
             current_surf->save(tgt_dir / uuid_full, uuid_full);
 
-            // Clean up
             delete unique_surf;
             delete current_surf;
         }
