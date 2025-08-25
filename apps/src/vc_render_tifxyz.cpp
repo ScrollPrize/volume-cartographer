@@ -20,10 +20,10 @@ using json = nlohmann::json;
  * @brief Structure to hold affine transform data
  */
 struct AffineTransform {
-    cv::Mat_<float> matrix;  // 3x4 matrix in XYZ format
+    cv::Mat_<float> matrix;  // 4x4 matrix in XYZ format
     
     AffineTransform() {
-        matrix = cv::Mat_<float>::eye(3, 4);
+        matrix = cv::Mat_<float>::eye(4, 4);
     }
 };
 
@@ -51,13 +51,13 @@ AffineTransform loadAffineTransform(const std::string& filename) {
                 throw std::runtime_error("Affine matrix must have 3 rows");
             }
             
-            transform.matrix = cv::Mat_<float>(3, 4);
-            for (int i = 0; i < 3; i++) {
-                if (mat[i].size() != 4) {
+            transform.matrix = cv::Mat_<float>(4, 4);
+            for (int row = 0; row < 4; row++) {
+                if (mat[row].size() != 4) {
                     throw std::runtime_error("Each row of affine matrix must have 4 elements");
                 }
-                for (int j = 0; j < 4; j++) {
-                    transform.matrix(i, j) = mat[i][j].get<float>();
+                for (int col = 0; col < 4; col++) {
+                    transform.matrix.at<float>(row, col) = mat[row][col].get<float>();
                 }
             }
         }
@@ -89,23 +89,9 @@ void applyAffineTransform(cv::Mat_<cv::Vec3f>& points,
             }
             
             // Apply affine transform (note: matrix is in XYZ format)
-            float px = pt[0];
-            float py = pt[1];
-            float pz = pt[2];
-            
-            // Row 0 (X in output)
-            float x_new = transform.matrix(0, 2) * px + transform.matrix(0, 1) * py + 
-                         transform.matrix(0, 0) * pz + transform.matrix(0, 3);
-            // Row 1 (Y in output) 
-            float y_new = transform.matrix(1, 2) * px + transform.matrix(1, 1) * py + 
-                         transform.matrix(1, 0) * pz + transform.matrix(1, 3);
-            // Row 2 (Z in output)
-            float z_new = transform.matrix(2, 2) * px + transform.matrix(2, 1) * py + 
-                         transform.matrix(2, 0) * pz + transform.matrix(2, 3);
-            
-            pt[0] = x_new;
-            pt[1] = y_new;
-            pt[2] = z_new;
+            cv::Vec4f pt4 = {pt[0], pt[1], pt[2], 1};
+            cv::Mat transformed_pt_mat = transform.matrix * pt4;
+            pt = {transformed_pt_mat.at<float>(0), transformed_pt_mat.at<float>(1), transformed_pt_mat.at<float>(2)};
         }
     }
     
@@ -330,7 +316,7 @@ int main(int argc, char *argv[])
             "Crop region width (0 = no crop)")
         ("crop-height", po::value<int>()->default_value(0),
             "Crop region height (0 = no crop)")
-        ("affine-transform,a", po::value<std::string>(),
+        ("affine-transform", po::value<std::string>(),
             "Path to affine transform file (JSON or text format)")
         ("scale-segmentation", po::value<float>()->default_value(1.0),
             "Scale segmentation to target scale")
