@@ -119,37 +119,64 @@ int ChunkCache::groupIdx(std::string name)
     
 void ChunkCache::put(cv::Vec4i idx, xt::xarray<uint8_t> *ar)
 {
-    if (_stored >= _size) {
-        using KP = std::pair<cv::Vec4i, uint64_t>;
-        std::vector<KP> gen_list(_gen_store.begin(), _gen_store.end());
-        std::sort(gen_list.begin(), gen_list.end(), [](KP &a, KP &b){ return a.second < b.second; });
-        for(auto it : gen_list) {
-            std::shared_ptr<xt::xarray<uint8_t>> ar = _store[it.first];
-            //TODO we could remove this with lower probability so we dont store infiniteyl empty blocks but also keep more of them as they are cheap
-            if (ar.get()) {
-                size_t size = ar.get()->storage().size();
-                ar.reset();
-                _stored -= size;
-            
-                _store.erase(it.first);
-                _gen_store.erase(it.first);
-            }
+    // First check if this is a zero chunk (nullptr or all values below ISO_CUTOFF)
+    bool is_zero = isZeroChunk(ar);
 
-            //we delete 10% of cache content to amortize sorting costs
-            if (_stored < 0.9*_size) {
-                break;
-            }
+    // If we're removing an existing chunk, update storage accounting
+    if (_store.count(idx)) {
+        auto existing = _store[idx];
+        if (existing) {
+            _stored -= existing->size();
         }
+        _store.erase(idx);
     }
 
-    if (ar) {
-        if (_store.count(idx)) {
-            assert(_store[idx].get());
-            _stored -= ar->size();
+    // Remove from zero chunk tracking if it was there
+    _zero_chunk_keys.erase(idx);
+
+    if (is_zero) {
+
+        // Track this as a zero chunk - don't store in _store at all
+        if (!_zero_chunk) {
+            throw std::runtime_error("Zero chunk not initialized. Call initZeroChunk first.");
         }
+        _zero_chunk_keys.insert(idx);
+        // Clean up the original chunk since we're not using it
+        if (ar) {
+            delete ar;
+        }
+    } else if (ar) {
+        // Handle cache eviction if needed for non-zero chunks
+        if (_stored + ar->size() >= _size) {
+            using KP = std::pair<cv::Vec4i, uint64_t>;
+            std::vector<KP> gen_list(_gen_store.begin(), _gen_store.end());
+            std::sort(gen_list.begin(), gen_list.end(), [](KP &a, KP &b){ return a.second < b.second; });
+            for(auto it : gen_list) {
+                // Skip if this is a zero chunk key
+                if (_zero_chunk_keys.count(it.first)) {
+                    continue;
+                }
+
+                auto chunk_it = _store.find(it.first);
+                if (chunk_it != _store.end() && chunk_it->second) {
+                    size_t size = chunk_it->second->size();
+                    _stored -= size;
+                    _store.erase(it.first);
+                    _gen_store.erase(it.first);
+                }
+
+                // Delete 10% of cache content to amortize sorting costs
+                if (_stored < 0.9*_size) {
+                    break;
+                }
+            }
+        }
+
+        // Store the regular chunk
+        _store[idx].reset(ar);
         _stored += ar->size();
     }
-    _store[idx].reset(ar);
+
     _generation++;
     _gen_store[idx] = _generation;
 }
@@ -222,6 +249,7 @@ ChunkCache::~ChunkCache()
 {
     for(auto &it : _store)
         it.second.reset();
+    _zero_chunk.reset();
 }
 
 void ChunkCache::reset()
@@ -229,6 +257,8 @@ void ChunkCache::reset()
     _gen_store.clear();
     _group_store.clear();
     _store.clear();
+    _zero_chunk_keys.clear();
+    // Keep the zero chunk allocated for reuse
 
     _generation = 0;
     _stored = 0;
@@ -236,19 +266,50 @@ void ChunkCache::reset()
 
 std::shared_ptr<xt::xarray<uint8_t>> ChunkCache::get(cv::Vec4i idx)
 {
+    // First check if this is a zero chunk
+    if (_zero_chunk_keys.count(idx)) {
+        _generation++;
+        _gen_store[idx] = _generation;
+        return _zero_chunk;
+    }
+
+    // Otherwise look in regular store
     auto res = _store.find(idx);
     if (res == _store.end())
         return nullptr;
 
     _generation++;
     _gen_store[idx] = _generation;
-    
+
     return res->second;
 }
 
 bool ChunkCache::has(cv::Vec4i idx)
 {
     return _store.count(idx);
+}
+
+void ChunkCache::initZeroChunk(const std::vector<size_t>& chunkShape) {
+    // Initialize the shared zero chunk once with the standard chunk dimensions
+    if (!_zero_chunk) {
+        _zero_chunk = std::make_shared<xt::xarray<uint8_t>>();
+        *_zero_chunk = xt::zeros<uint8_t>(chunkShape);
+    }
+}
+
+bool ChunkCache::isZeroChunk(const xt::xarray<uint8_t>* chunk) {
+    if (!chunk) return true; // nullptr means chunk doesn't exist in dataset = zero chunk
+
+    const uint8_t* data = chunk->data();
+    size_t size = chunk->size();
+
+    // Check if all values are below the ISO cutoff
+    for (size_t i = 0; i < size; ++i) {
+        if (data[i] >= ISO_CUTOFF) {
+            return false;
+        }
+    }
+    return true;
 }
 
 void readInterpolated3D(cv::Mat_<uint8_t> &out, z5::Dataset *ds,
@@ -259,7 +320,7 @@ void readInterpolated3D(cv::Mat_<uint8_t> &out, z5::Dataset *ds,
         std::cout << "ERROR should use a shared chunk cache!" << std::endl;
         abort();
     }
-
+    cache->initZeroChunk(ds->defaultChunkShape());
     int group_idx = cache->groupIdx(ds->path());
 
     auto cw = ds->chunking().blockShape()[0];

@@ -5,6 +5,7 @@
 #include <opencv2/core.hpp>
 
 #include <shared_mutex>
+#include <unordered_set>
 
 namespace z5
 {
@@ -33,20 +34,31 @@ struct vec4i_hash {
 class ChunkCache
 {
 public:
+    // ISO cutoff for considering a chunk as "zero"
+    static constexpr uint8_t ISO_CUTOFF = 128;
+
     ChunkCache(size_t size) : _size(size) {};
     ~ChunkCache();
-    
+
     //get key for a subvolume - should be uniqueley identified between all groups and volumes that use this cache.
     //for example by using path + group name
     int groupIdx(std::string name);
-    
+
     //key should be unique for chunk and contain groupkey (groupkey sets highest 16bits of uint64_t)
     void put(cv::Vec4i key, xt::xarray<uint8_t> *ar);
     std::shared_ptr<xt::xarray<uint8_t>> get(cv::Vec4i key);
     void reset();
     bool has(cv::Vec4i idx);
+
+    // Initialize the shared zero chunk with given dimensions
+    void initZeroChunk(const std::vector<size_t>& chunkShape);
+
     std::shared_mutex mutex;
+
 private:
+    // Check if a chunk is effectively zero (all values below ISO_CUTOFF)
+    bool isZeroChunk(const xt::xarray<uint8_t>* chunk);
+
     uint64_t _generation = 0;
     size_t _size = 0;
     size_t _stored = 0;
@@ -55,6 +67,12 @@ private:
     std::unordered_map<cv::Vec4i,uint64_t,vec4i_hash> _gen_store;
     //store group keys
     std::unordered_map<std::string,int> _group_store;
+
+    // Shared zero chunk for deduplication
+    std::shared_ptr<xt::xarray<uint8_t>> _zero_chunk;
+
+    // Track which chunks are using the zero chunk
+    std::unordered_set<cv::Vec4i, vec4i_hash> _zero_chunk_keys;
 
     std::shared_mutex _mutex;
 };
