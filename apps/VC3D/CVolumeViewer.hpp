@@ -68,6 +68,10 @@ public:
     void setResetViewOnSurfaceChange(bool reset);
     bool isCompositeEnabled() const { return _composite_enabled; }
 
+    // Direction hints toggle
+    void setShowDirectionHints(bool on) { _showDirectionHints = on; updateAllOverlays(); }
+    bool isShowDirectionHints() const { return _showDirectionHints; }
+
     void fitSurfaceInView();
     void updateAllOverlays();
     
@@ -218,6 +222,7 @@ protected:
     float _brushSize = 3.0f;
     bool _brushIsSquare = false;
     bool _resetViewOnSurfaceChange = true;
+    bool _showDirectionHints = true;
 
     int _downscale_override = 0;  // 0=auto, 1=2x, 2=4x, 3=8x, 4=16x, 5=32x
     QTimer* _overlayUpdateTimer;

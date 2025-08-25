@@ -31,8 +31,18 @@
            <property name="text">
             <string>Default *.volpkg path</string>
            </property>
-          </widget>
-         </item>
+         </widget>
+        </item>
+        <item row="9" column="0" colspan="2">
+         <widget class="QCheckBox" name="chkShowDirectionHints">
+          <property name="text">
+           <string>Show direction hints (flip_x arrows)</string>
+          </property>
+          <property name="checked">
+           <bool>true</bool>
+          </property>
+         </widget>
+        </item>
          <item row="0" column="1">
           <widget class="QLineEdit" name="edtDefaultPathVolpkg"/>
          </item>

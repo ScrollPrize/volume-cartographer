@@ -1829,6 +1829,10 @@ void CVolumeViewer::clearOverlayGroup(const std::string& key)
 // Shown on segmentation and projected into slice views.
 void CVolumeViewer::renderDirectionHints()
 {
+    if (!_showDirectionHints) {
+        clearOverlayGroup("direction_hints");
+        return;
+    }
     // Clear previous group
     clearOverlayGroup("direction_hints");
 
