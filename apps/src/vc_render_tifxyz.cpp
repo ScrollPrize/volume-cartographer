@@ -52,7 +52,7 @@ AffineTransform loadAffineTransform(const std::string& filename) {
             }
             
             transform.matrix = cv::Mat_<float>(4, 4);
-            for (int row = 0; row < 4; row++) {
+            for (int row = 0; row < 3; row++) {
                 if (mat[row].size() != 4) {
                     throw std::runtime_error("Each row of affine matrix must have 4 elements");
                 }
