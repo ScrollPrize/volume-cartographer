@@ -116,6 +116,13 @@ target_link_libraries(vc_calc_surface_metrics
     Boost::program_options
 )
 
+add_executable(vc_tiffxyz_gengt src/vc_tiffxyz_gengt.cpp)
+target_link_libraries(vc_tiffxyz_gengt
+    VC::metrics
+    VC::surface
+    Boost::program_options
+)
+
 add_executable(vc_render_bench src/ZarrExtract.cpp)
 target_link_libraries(vc_render_bench
     VC::surface
