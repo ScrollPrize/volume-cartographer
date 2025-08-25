@@ -458,13 +458,6 @@ int main(int argc, char *argv[])
     else {
         surf->gen(&points, &normals, tgt_size, cv::Vec3f(0,0,0), tgt_scale, {-full_size.width/2+crop.x,-full_size.height/2+crop.y,0});
 
-        // Scale the segmentation points if requested
-        points *= scale_seg;
-
-        if (hasAffine) {
-            applyAffineTransform(points, normals, affineTransform);
-        }
-
         // Calculate the actual mesh centroid
         meshCentroid = calculateMeshCentroid(points);
 
@@ -486,6 +479,15 @@ int main(int argc, char *argv[])
     }
 
     if (num_slices == 1) {
+        // Scale the segmentation points if requested
+        points *= scale_seg;
+
+        // Apply affine transform if provided
+        if (hasAffine) {
+            std::cout << "Applying affine transform to points and normals for single slice" << std::endl;
+            applyAffineTransform(points, normals, affineTransform);
+        }
+
         readInterpolated3D(img, ds.get(), points, &chunk_cache);
 
         // Apply transformations
@@ -511,8 +513,12 @@ int main(int argc, char *argv[])
                     int w = std::min(tgt_size.width+crop.x-x, 1024);
                     surf->gen(&points, &normals, {w,crop.height}, cv::Vec3f(0,0,0), tgt_scale, {-full_size.width/2+x,-full_size.height/2+crop.y,0});
                     
+                    // Scale the segmentation points if requested
+                    points *= scale_seg;
+
                     // Apply affine transform if provided
                     if (hasAffine) {
+                        std::cout << "Applying affine transform to points and normals for slice " << i << std::endl;
                         applyAffineTransform(points, normals, affineTransform);
                     }
                     // Determine orientation from first chunk if not yet determined
@@ -539,7 +545,8 @@ int main(int argc, char *argv[])
             else {
                 cv::Mat_<cv::Vec3f> offsetPoints = points + off*ds_scale*normals;
                 // Apply affine transform if provided (for non-slice_gen case)
-                if (hasAffine && !slice_gen) {
+                if (hasAffine) {
+                    std::cout << "Applying affine transform to points and normals for slice " << i << " for non-slice_gen case" << std::endl;
                     cv::Mat_<cv::Vec3f> offsetNormals = normals.clone();
                     applyAffineTransform(offsetPoints, offsetNormals, affineTransform);
                 }
