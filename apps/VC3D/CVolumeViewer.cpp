@@ -1641,40 +1641,35 @@ QuadSurface* CVolumeViewer::makeBBoxFilteredSurfaceFromSceneRect(const QRectF& s
     const int H = src.rows;
     const int W = src.cols;
 
-    // First pass: decide which points are inside, and track bounding box in grid coords
-    std::vector<uint8_t> inside(H * W, 0);
-    int min_i = W, min_j = H, max_i = -1, max_j = -1;
+    // Convert scene-space rect to surface-parameter rect (nominal units)
+    QRectF rSurf(QPointF(sceneRect.left()/_scale,  sceneRect.top()/_scale),
+                 QPointF(sceneRect.right()/_scale, sceneRect.bottom()/_scale));
+    rSurf = rSurf.normalized();
 
-    for (int j = 0; j < H; ++j) {
-        for (int i = 0; i < W; ++i) {
-            const cv::Vec3f& p = src(j, i);
-            if (p[0] == -1.0f && p[1] == -1.0f && p[2] == -1.0f) {
-                continue; // invalid
-            }
-            auto ptr = quad->pointer();
-            quad->pointTo(ptr, p, 2.0f, 100);
-            cv::Vec3f sp = quad->loc(ptr) * _scale;
-            QPointF s(sp[0], sp[1]);
-            if (sceneRect.contains(s)) {
-                inside[j * W + i] = 1;
-                if (i < min_i) min_i = i;
-                if (j < min_j) min_j = j;
-                if (i > max_i) max_i = i;
-                if (j > max_j) max_j = j;
-            }
-        }
-    }
+    // Compute tight index bounds from surface-parameter rect
+    const double cx = W * 0.5; // cols/2
+    const double cy = H * 0.5; // rows/2
+    const cv::Vec2f sc = quad->scale();
+    int i0 = std::max(0,               (int)std::floor(cx + rSurf.left()   * sc[0]));
+    int i1 = std::min(W - 1,           (int)std::ceil (cx + rSurf.right()  * sc[0]));
+    int j0 = std::max(0,               (int)std::floor(cy + rSurf.top()    * sc[1]));
+    int j1 = std::min(H - 1,           (int)std::ceil (cy + rSurf.bottom() * sc[1]));
+    if (i0 > i1 || j0 > j1) return nullptr;
 
-    if (max_i < 0 || max_j < 0) {
-        return nullptr; // no points selected
-    }
-
-    const int outW = (max_i - min_i + 1);
-    const int outH = (max_j - min_j + 1);
+    const int outW = (i1 - i0 + 1);
+    const int outH = (j1 - j0 + 1);
     cv::Mat_<cv::Vec3f> cropped(outH, outW, cv::Vec3f(-1.f, -1.f, -1.f));
-    for (int j = min_j; j <= max_j; ++j) {
-        for (int i = min_i; i <= max_i; ++i) {
-            if (inside[j * W + i]) cropped(j - min_j, i - min_i) = src(j, i);
+
+    // Keep only points whose parameter coords fall inside rSurf (cheap, linear mapping)
+    for (int j = j0; j <= j1; ++j) {
+        for (int i = i0; i <= i1; ++i) {
+            const cv::Vec3f& p = src(j, i);
+            if (p[0] == -1.0f && p[1] == -1.0f && p[2] == -1.0f) continue;
+            const double u = (i - cx) / sc[0];
+            const double v = (j - cy) / sc[1];
+            if (u >= rSurf.left() && u <= rSurf.right() && v >= rSurf.top() && v <= rSurf.bottom()) {
+                cropped(j - j0, i - i0) = p;
+            }
         }
     }
 
