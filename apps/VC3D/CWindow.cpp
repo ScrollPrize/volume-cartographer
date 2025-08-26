@@ -76,7 +76,7 @@ CWindow::CWindow() :
     ui.setupUi(this);
     // setAttribute(Qt::WA_DeleteOnClose);
 
-    chunk_cache = new ChunkCache(CHUNK_CACHE_SIZE_GB*1024*1024*1024);
+    chunk_cache = new ChunkCache(CHUNK_CACHE_SIZE_GB*1024ULL*1024ULL*1024ULL);
     std::cout << "chunk cache size is " << CHUNK_CACHE_SIZE_GB << " gigabytes " << std::endl;
     
     _surf_col = new CSurfaceCollection();
@@ -188,6 +188,19 @@ CWindow::CWindow() :
         }
     });
 
+    // Toggle direction hints overlay (Ctrl+T)
+    fDirectionHintsShortcut = new QShortcut(QKeySequence("Ctrl+T"), this);
+    fDirectionHintsShortcut->setContext(Qt::ApplicationShortcut);
+    connect(fDirectionHintsShortcut, &QShortcut::activated, [this]() {
+        QSettings settings("VC.ini", QSettings::IniFormat);
+        bool current = settings.value("viewer/show_direction_hints", true).toBool();
+        bool next = !current;
+        settings.setValue("viewer/show_direction_hints", next ? "1" : "0");
+        for (auto& viewer : _viewers) {
+            viewer->setShowDirectionHints(next);
+        }
+    });
+
     appInitComplete = true;
 }
 
@@ -218,6 +231,13 @@ CVolumeViewer *CWindow::newConnectedCVolumeViewer(std::string surfaceName, QStri
     connect(_surf_col, &CSurfaceCollection::sendPOIChanged, volView, &CVolumeViewer::onPOIChanged);
     connect(_surf_col, &CSurfaceCollection::sendPOIChanged, this, &CWindow::onFocusPOIChanged);
     connect(_surf_col, &CSurfaceCollection::sendIntersectionChanged, volView, &CVolumeViewer::onIntersectionChanged);
+
+    // Initialize viewer settings from persisted configuration
+    {
+        QSettings settings("VC.ini", QSettings::IniFormat);
+        bool showDirHints = settings.value("viewer/show_direction_hints", true).toBool();
+        volView->setShowDirectionHints(showDirHints);
+    }
     connect(volView, &CVolumeViewer::sendVolumeClicked, this, &CWindow::onVolumeClicked);
     connect(this, &CWindow::sendVolumeClosing, volView, &CVolumeViewer::onVolumeClosing);
 
@@ -1207,6 +1227,7 @@ void CWindow::Keybindings(void)
         "7,8: Slice down/up by 50 \n"
         "9,0: Slice down/up by 100 \n"
         "Ctrl+G: Go to slice (opens dialog to insert slice index) \n"
+        "Ctrl+T: Toggle direction hints (flip_x arrows) \n"
         "T: Segmentation Tool \n"
         "P: Pen Tool \n"
         "Space: Toggle Curve Visibility \n"
@@ -1259,6 +1280,14 @@ void CWindow::ShowSettings()
     }
     
     pDlg->exec();
+    // Apply updated settings immediately to viewers
+    {
+        QSettings settings("VC.ini", QSettings::IniFormat);
+        bool showDirHints = settings.value("viewer/show_direction_hints", true).toBool();
+        for (auto &viewer : _viewers) {
+            viewer->setShowDirectionHints(showDirHints);
+        }
+    }
     delete pDlg;
 }
 
@@ -1304,7 +1333,7 @@ void CWindow::onVolumeClicked(cv::Vec3f vol_loc, cv::Vec3f normal, Surface *surf
                 segYZ = new PlaneSurface();
 
             //FIXME actually properly use ptr
-            SurfacePointer *ptr = segment->pointer();
+            auto ptr = segment->pointer();
             segment->pointTo(ptr, vol_loc, 1.0);
             
             cv::Vec3f p2;
@@ -2608,7 +2637,7 @@ void CWindow::onPointDoubleClicked(uint64_t pointId)
         // Find the closest normal on the segmentation surface
         Surface* seg_surface = _surf_col->surface("segmentation");
         if (auto* quad_surface = dynamic_cast<QuadSurface*>(seg_surface)) {
-            SurfacePointer* ptr = quad_surface->pointer();
+            auto ptr = quad_surface->pointer();
             quad_surface->pointTo(ptr, point_opt->p, 4.0, 100);
             poi->n = quad_surface->normal(ptr, quad_surface->loc(ptr));
         } else {

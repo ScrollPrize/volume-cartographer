@@ -34,11 +34,11 @@ CPointCollectionWidget::CPointCollectionWidget(VCCollection *collection, QWidget
 
 void CPointCollectionWidget::setupUi()
 {
-    QWidget *main_widget = new QWidget();
+    QWidget *main_widget = new QWidget(this);
     QVBoxLayout *layout = new QVBoxLayout(main_widget);
 
-    _tree_view = new QTreeView();
-    _model = new QStandardItemModel();
+    _tree_view = new QTreeView(main_widget);
+    _model = new QStandardItemModel(this);
     _tree_view->setModel(_model);
     _tree_view->setSelectionBehavior(QAbstractItemView::SelectRows);
     _tree_view->setSelectionMode(QAbstractItemView::SingleSelection);
@@ -136,8 +136,18 @@ void CPointCollectionWidget::setupUi()
 
 void CPointCollectionWidget::refreshTree()
 {
-    _model->clear();
-    _model->setHorizontalHeaderLabels({"Name", "Points"});
+    if (_model) {
+        _model->blockSignals(true);
+
+        // Remove all rows before clearing
+        if (_model->rowCount() > 0) {
+            _model->removeRows(0, _model->rowCount());
+        }
+
+        _model->clear();
+        _model->setHorizontalHeaderLabels({"Name", "Points"});
+        _model->blockSignals(false);
+    }
 
     if (!_point_collection) {
         return;
@@ -241,10 +251,18 @@ void CPointCollectionWidget::onCollectionChanged(uint64_t collectionId)
 
 void CPointCollectionWidget::onCollectionRemoved(uint64_t collectionId)
 {
-    if (collectionId == -1) { // Clear all
-        _model->clear();
+    if (collectionId == static_cast<uint64_t>(-1)) { // Clear all
+        // Properly clear the model
+        if (_model) {
+            _model->blockSignals(true);
+            _model->removeRows(0, _model->rowCount());
+            _model->clear();
+            _model->setHorizontalHeaderLabels({"Name", "Points"});
+            _model->blockSignals(false);
+        }
         return;
     }
+
     QStandardItem* item = findCollectionItem(collectionId);
     if (item) {
         _model->removeRow(item->row());
@@ -573,4 +591,17 @@ void CPointCollectionWidget::keyPressEvent(QKeyEvent *event)
     }
 }
 
+CPointCollectionWidget::~CPointCollectionWidget() {
+    if (_tree_view && _tree_view->selectionModel()) {
+        disconnect(_tree_view->selectionModel(), nullptr, this, nullptr);
+    }
+
+    // Clear model safely
+    if (_model) {
+        _model->blockSignals(true);
+        _model->clear();
+    }
 }
+
+}
+

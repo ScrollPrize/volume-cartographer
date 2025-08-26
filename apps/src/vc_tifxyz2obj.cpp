@@ -13,6 +13,7 @@
 #include <iomanip>
 #include <iostream>
 #include <cmath>
+#include <limits>
 
 namespace fs = std::filesystem;
 using json = nlohmann::json;
@@ -41,6 +42,173 @@ static inline cv::Vec3f fd_fallback_normal(const cv::Mat_<cv::Vec3f>& P, int y, 
     if (okx && oky) return unit_or_default(dx.cross(dy));
     return {0.f,0.f,1.f};
 }
+// ---------------------------------------------------------------------------
+
+// Decimates a grid of points by keeping every nth point in both dimensions
+// This reduces the total point count by approximately (1 - 1/stride²)
+// For stride=3, this keeps ~11% of points (close to the 10% target)
+static cv::Mat_<cv::Vec3f> decimate_grid(const cv::Mat_<cv::Vec3f>& points, int iterations = 1)
+{
+    if (iterations <= 0) return points.clone();
+    
+    cv::Mat_<cv::Vec3f> result = points.clone();
+    
+    for (int iter = 0; iter < iterations; ++iter) {
+        // Use stride of 3 to achieve ~89% reduction (keeping ~11%)
+        const int stride = 3;
+        
+        // Calculate new dimensions
+        int new_rows = (result.rows + stride - 1) / stride;
+        int new_cols = (result.cols + stride - 1) / stride;
+        
+        cv::Mat_<cv::Vec3f> decimated(new_rows, new_cols);
+        
+        // Sample every stride-th point
+        for (int j = 0; j < new_rows; ++j) {
+            for (int i = 0; i < new_cols; ++i) {
+                int src_j = j * stride;
+                int src_i = i * stride;
+                
+                // Ensure we don't go out of bounds
+                if (src_j < result.rows && src_i < result.cols) {
+                    decimated(j, i) = result(src_j, src_i);
+                } else {
+                    // Handle edge case - use the last valid point
+                    src_j = std::min(src_j, result.rows - 1);
+                    src_i = std::min(src_i, result.cols - 1);
+                    decimated(j, i) = result(src_j, src_i);
+                }
+            }
+        }
+        
+        result = decimated;
+        
+        std::cout << "Decimation iteration " << (iter + 1) << ": " 
+                  << "reduced to " << new_rows << " x " << new_cols 
+                  << " (" << (new_rows * new_cols) << " points)" << std::endl;
+    }
+    
+    return result;
+}
+
+// ---------------------------------------------------------------------------
+
+// Cleans the surface by removing points that are spatial outliers
+static cv::Mat_<cv::Vec3f> clean_surface_outliers(const cv::Mat_<cv::Vec3f>& points, float distance_threshold = 5.0f)
+{
+    cv::Mat_<cv::Vec3f> cleaned = points.clone();
+    
+    // Calculate average neighbor distance to determine outlier threshold
+    std::vector<float> all_neighbor_dists;
+    
+    // First pass: collect all neighbor distances to compute statistics
+    for (int j = 0; j < points.rows; ++j) {
+        for (int i = 0; i < points.cols; ++i) {
+            if (points(j, i)[0] == -1) continue;
+            
+            cv::Vec3f center = points(j, i);
+            
+            // Check 8-connected neighbors
+            for (int dy = -1; dy <= 1; ++dy) {
+                for (int dx = -1; dx <= 1; ++dx) {
+                    if (dx == 0 && dy == 0) continue;
+                    
+                    int ny = j + dy;
+                    int nx = i + dx;
+                    
+                    if (ny >= 0 && ny < points.rows && nx >= 0 && nx < points.cols) {
+                        if (points(ny, nx)[0] != -1) {
+                            cv::Vec3f neighbor = points(ny, nx);
+                            float dist = cv::norm(center - neighbor);
+                            if (std::isfinite(dist) && dist > 0) {
+                                all_neighbor_dists.push_back(dist);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    // Calculate median and MAD for robust statistics
+    float median_dist = 0;
+    float mad = 0;
+    
+    if (!all_neighbor_dists.empty()) {
+        std::sort(all_neighbor_dists.begin(), all_neighbor_dists.end());
+        median_dist = all_neighbor_dists[all_neighbor_dists.size() / 2];
+        
+        // Calculate MAD
+        std::vector<float> abs_deviations;
+        for (float d : all_neighbor_dists) {
+            abs_deviations.push_back(std::abs(d - median_dist));
+        }
+        std::sort(abs_deviations.begin(), abs_deviations.end());
+        mad = abs_deviations[abs_deviations.size() / 2];
+    }
+    
+    // Threshold is median + distance_threshold * scaled MAD
+    float threshold = median_dist + distance_threshold * (mad / 0.6745f);
+    
+    std::cout << "Outlier detection statistics:" << std::endl;
+    std::cout << "  Median neighbor distance: " << median_dist << std::endl;
+    std::cout << "  MAD: " << mad << std::endl;
+    std::cout << "  Distance threshold: " << threshold << std::endl;
+    
+    // Second pass: identify and remove outliers
+    for (int j = 0; j < points.rows; ++j) {
+        for (int i = 0; i < points.cols; ++i) {
+            if (points(j, i)[0] == -1) continue;
+            
+            cv::Vec3f center = points(j, i);
+            float min_neighbor_dist = std::numeric_limits<float>::max();
+            int neighbor_count = 0;
+            
+            // Check 8-connected neighbors
+            for (int dy = -1; dy <= 1; ++dy) {
+                for (int dx = -1; dx <= 1; ++dx) {
+                    if (dx == 0 && dy == 0) continue;
+                    
+                    int ny = j + dy;
+                    int nx = i + dx;
+                    
+                    if (ny >= 0 && ny < points.rows && nx >= 0 && nx < points.cols) {
+                        if (points(ny, nx)[0] != -1) {
+                            cv::Vec3f neighbor = points(ny, nx);
+                            float dist = cv::norm(center - neighbor);
+                            if (std::isfinite(dist)) {
+                                min_neighbor_dist = std::min(min_neighbor_dist, dist);
+                                neighbor_count++;
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // Mark as outlier if:
+            // 1. Has no neighbors at all, OR
+            // 2. Closest neighbor is beyond threshold
+            if (neighbor_count == 0 || (min_neighbor_dist > threshold && threshold > 0)) {
+                cleaned(j, i) = cv::Vec3f(-1, -1, -1);
+            }
+        }
+    }
+    
+    // Count removed points
+    int removed_count = 0;
+    for (int j = 0; j < points.rows; ++j) {
+        for (int i = 0; i < points.cols; ++i) {
+            if (points(j, i)[0] != -1 && cleaned(j, i)[0] == -1) {
+                removed_count++;
+            }
+        }
+    }
+    
+    std::cout << "Surface cleaning: removed " << removed_count << " outlier points" << std::endl;
+    
+    return cleaned;
+}
+
 // ---------------------------------------------------------------------------
 
 // Adds vertex/texcoord/normal for grid location (y,x) if not already added.
@@ -126,9 +294,48 @@ static cv::Mat_<cv::Vec3f> build_vertex_normals_from_faces(
     return nsum;
 }
 
-static void surf_write_obj(QuadSurface *surf, const fs::path &out_fn, bool normalize_uv)
+static void surf_write_obj(QuadSurface *surf, const fs::path &out_fn, bool normalize_uv, bool align_grid, int decimate_iterations, bool clean_surface)
 {
     cv::Mat_<cv::Vec3f> points = surf->rawPoints();
+    
+    // Clean surface outliers if requested
+    if (clean_surface) {
+        std::cout << "Cleaning surface outliers..." << std::endl;
+        points = clean_surface_outliers(points);
+    }
+    
+    // If align_grid is enabled, align each row to the same z-plane
+    if (align_grid) {
+        for (int j = 0; j < points.rows; ++j) {
+            // Calculate average z for this row (excluding invalid points)
+            float z_sum = 0.0f;
+            int valid_count = 0;
+            for (int i = 0; i < points.cols; ++i) {
+                if (points(j, i)[0] != -1) {  // Check if point is valid
+                    z_sum += points(j, i)[2];
+                    valid_count++;
+                }
+            }
+            
+            if (valid_count > 0) {
+                float avg_z = z_sum / valid_count;
+                // Set all valid points in this row to the average z
+                for (int i = 0; i < points.cols; ++i) {
+                    if (points(j, i)[0] != -1) {
+                        points(j, i)[2] = avg_z;
+                    }
+                }
+            }
+        }
+    }
+    
+    // Apply decimation if requested
+    if (decimate_iterations > 0) {
+        std::cout << "Original grid: " << points.rows << " x " << points.cols 
+                  << " (" << (points.rows * points.cols) << " points)" << std::endl;
+        points = decimate_grid(points, decimate_iterations);
+    }
+    
     cv::Mat_<int> idxs(points.size(), -1);
 
     std::ofstream out(out_fn);
@@ -143,6 +350,10 @@ static void surf_write_obj(QuadSurface *surf, const fs::path &out_fn, bool norma
     std::cout << "Point dims: " << points.size()
               << " cols: " << points.cols
               << " rows: " << points.rows << std::endl;
+    
+    if (align_grid) {
+        std::cout << "Grid alignment: enabled (vertices aligned to z-planes by row)\n";
+    }
 
     // Derive UV scale from meta: surf->scale() is typically micrometers-per-pixel (or similar).
     // You asked to use the reciprocal (1/scale) as the multiplier.
@@ -180,22 +391,52 @@ static void surf_write_obj(QuadSurface *surf, const fs::path &out_fn, bool norma
 int main(int argc, char *argv[])
 {
     if (argc == 2 && (std::string(argv[1]) == "-h" || std::string(argv[1]) == "--help")) {
-        std::cout << "usage: " << argv[0] << " <tiffxyz> <obj> [--normalize-uv]\n";
+        std::cout << "usage: " << argv[0] << " <tiffxyz> <obj> [--normalize-uv] [--align-grid] [--decimate [iterations]] [--clean]\n"
+                  << "  --normalize-uv : Normalize UVs to [0,1] range\n"
+                  << "  --align-grid   : Align vertices to z-planes by row\n"
+                  << "  --decimate [n] : Reduce points by ~90% per iteration (default n=1)\n"
+                  << "  --clean        : Remove outlier points that lie far from the surface\n";
         return EXIT_SUCCESS;
     }
 
-    if (argc < 3 || argc > 4) {
-        std::cerr << "error: wrong number of arguments\n"
-                  << "usage: " << argv[0] << " <tiffxyz> <obj> [--normalize-uv]\n";
+    if (argc < 3) {
+        std::cerr << "error: too few arguments\n"
+                  << "usage: " << argv[0] << " <tiffxyz> <obj> [--normalize-uv] [--align-grid] [--decimate [iterations]] [--clean]\n";
         return EXIT_FAILURE;
     }
 
     bool normalize_uv = false;
-    if (argc == 4) {
-        if (std::string(argv[3]) == "--normalize-uv")
+    bool align_grid = false;
+    bool clean_surface = false;
+    int decimate_iterations = 0;
+    
+    // Parse optional arguments
+    for (int i = 3; i < argc; ++i) {
+        std::string arg = argv[i];
+        if (arg == "--normalize-uv") {
             normalize_uv = true;
-        else {
-            std::cerr << "error: unknown option '" << argv[3] << "'\n";
+        } else if (arg == "--align-grid") {
+            align_grid = true;
+        } else if (arg == "--decimate") {
+            decimate_iterations = 1; // Default to 1 iteration
+            
+            // Check if next argument is a number (iterations)
+            if (i + 1 < argc) {
+                std::string next = argv[i + 1];
+                try {
+                    int iters = std::stoi(next);
+                    if (iters > 0) {
+                        decimate_iterations = iters;
+                        ++i; // Skip the number argument
+                    }
+                } catch (...) {
+                    // Not a number, continue with default of 1
+                }
+            }
+        } else if (arg == "--clean") {
+            clean_surface = true;
+        } else {
+            std::cerr << "error: unknown option '" << arg << "'\n";
             return EXIT_FAILURE;
         }
     }
@@ -212,7 +453,7 @@ int main(int argc, char *argv[])
         return EXIT_FAILURE;
     }
 
-    surf_write_obj(surf, obj_path, normalize_uv);
+    surf_write_obj(surf, obj_path, normalize_uv, align_grid, decimate_iterations, clean_surface);
 
     delete surf;
     return EXIT_SUCCESS;

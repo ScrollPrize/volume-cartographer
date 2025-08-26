@@ -136,7 +136,7 @@ class S3SyncManager:
 
             for filename in filenames:
                 # Skip hidden files, sync config, and database
-                if filename.startswith('.') or filename in ['.s3sync.json', '.s3sync.db']:
+                if filename.startswith('.') or filename in ['.s3sync.json', '.s3sync.db'] or filename.endswith('.obj'):
                     continue
 
                 filepath = os.path.join(root, filename)
@@ -198,7 +198,7 @@ class S3SyncManager:
 
                 # Skip hidden files
                 filename = os.path.basename(relative_path)
-                if filename.startswith('.'):
+                if filename.startswith('.') or filename.endswith('.obj'):
                     continue
 
                 # Skip files in hidden directories or directories containing 'layers'

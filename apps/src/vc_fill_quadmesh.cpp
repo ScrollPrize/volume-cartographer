@@ -827,7 +827,7 @@ int main(int argc, char *argv[])
                     continue;
                 
                 
-                SurfacePointer *ptr = surfs[i]->pointer();
+                cv::Vec3f ptr = surfs[i]->pointer();
                 float res = surfs[i]->pointTo(ptr, surf_points[0](p), 2.0);
                 
                 if (res < 0 || res >= 2)

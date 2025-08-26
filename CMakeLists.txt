@@ -18,7 +18,10 @@ set(EXECUTABLE_OUTPUT_PATH ${CMAKE_BINARY_DIR}/bin)
 set(LIBRARY_OUTPUT_PATH ${CMAKE_BINARY_DIR}/lib)
 set(CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
 
-set(CMAKE_CXX_FLAGS " -Wno-narrowing -std=c++20 -DWITH_BLOSC=1 -DWITH_ZLIB=1" )
+option(VC_USE_OPENMP "Enable OpenMP support" ON)
+
+set(CMAKE_CXX_FLAGS " -Wno-narrowing -std=c++23 -DWITH_BLOSC=1 -DWITH_ZLIB=1 -g3 -gdwarf-5 -funwind-tables -fasynchronous-unwind-tables" )
+set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS}  -g3 -gdwarf-5 -rdynamic")
 
 if(NOT CMAKE_BUILD_TYPE)
     message(STATUS "Setting build type to 'Release' as none was specified.")
@@ -26,14 +29,90 @@ if(NOT CMAKE_BUILD_TYPE)
 endif()
 
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -ggdb -O0  -g3")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -ggdb -O0")
+elseif(CMAKE_BUILD_TYPE STREQUAL "QuickBuild")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O1")
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ")
 elseif(CMAKE_BUILD_TYPE STREQUAL "Release")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3  -flto ")
-    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -flto ")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3  -flto=auto")
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -flto=auto ")
+elseif(CMAKE_BUILD_TYPE STREQUAL "ReleaseUnsafe")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3   -flto=auto")
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -flto=auto -fuse-ld=lld")
 elseif(CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -flto -ggdb -g3")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -flto=auto")
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -flto=auto")
 elseif(CMAKE_BUILD_TYPE STREQUAL "MinSizeRel")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Os  -flto -ggdb -g3")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Os  -flto=auto")
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -flto=auto")
+endif()
+
+
+option(VC_ENABLE_ASAN "Enable AddressSanitizer for memory error detection" OFF)
+option(VC_ENABLE_UBSAN "Enable UndefinedBehaviorSanitizer" OFF)
+option(VC_ENABLE_TSAN "Enable ThreadSanitizer for data race detection" OFF)
+option(VC_ENABLE_LSAN "Enable LeakSanitizer for memory leak detection (standalone)" OFF)
+
+if(VC_ENABLE_ASAN AND VC_ENABLE_TSAN)
+    message(FATAL_ERROR "AddressSanitizer and ThreadSanitizer cannot be used together")
+endif()
+
+if(VC_ENABLE_LSAN AND VC_ENABLE_ASAN)
+    message(WARNING "LeakSanitizer is already included with AddressSanitizer. Disabling standalone LeakSanitizer.")
+    set(VC_ENABLE_LSAN OFF)
+endif()
+
+if(VC_ENABLE_LSAN AND VC_ENABLE_TSAN)
+    message(FATAL_ERROR "LeakSanitizer and ThreadSanitizer cannot be used together")
+endif()
+
+if(VC_ENABLE_ASAN)
+    message(STATUS "AddressSanitizer enabled")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address -fno-omit-frame-pointer  -Og")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fsanitize=address -fno-omit-frame-pointer -Og")
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fsanitize=address")
+    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -fsanitize=address")
+
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DADDRESS_SANITIZER")
+else()
+    message(STATUS "Addressanitizer disabled")
+endif()
+
+if(VC_ENABLE_UBSAN)
+    message(STATUS "UndefinedBehaviorSanitizer enabled")
+    set(UBSAN_FLAGS "-fsanitize=undefined -fno-sanitize-recover=all")
+    set(UBSAN_FLAGS "${UBSAN_FLAGS} -fsanitize=float-divide-by-zero")
+    set(UBSAN_FLAGS "${UBSAN_FLAGS} -fsanitize=float-cast-overflow")
+    set(UBSAN_FLAGS "${UBSAN_FLAGS} -fsanitize=nullability")
+
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${UBSAN_FLAGS} -fno-omit-frame-pointer  -Og")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${UBSAN_FLAGS} -fno-omit-frame-pointer  -Og")
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${UBSAN_FLAGS}")
+    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} ${UBSAN_FLAGS}")
+else()
+    message(STATUS "UndefinedBehaviorSanitizer disabled")
+endif()
+
+if(VC_ENABLE_TSAN)
+    message(STATUS "ThreadSanitizer enabled")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=thread -fno-omit-frame-pointer  -Og")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fsanitize=thread -fno-omit-frame-pointer  -Og")
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fsanitize=thread")
+    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -fsanitize=thread")
+
+    set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+else()
+    message(STATUS "ThreadSanitizer disabled")
+endif()
+
+if(VC_ENABLE_LSAN)
+    message(STATUS "LeakSanitizer enabled")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=leak -fno-omit-frame-pointer  -Og")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fsanitize=leak -fno-omit-frame-pointer  -Og")
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fsanitize=leak")
+    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -fsanitize=leak")
+else()
+    message(STATUS "LeakSanitizer disabled ")
 endif()
 
 find_program(CCACHE_PROGRAM "ccache")
@@ -81,15 +160,10 @@ if(VC_DEVELOPER_WARNINGS)
     include(VCWarnings)
 endif()
 
+add_subdirectory(misc)
 add_subdirectory(core)
-if (VC_BUILD_TESTS)
-    add_subdirectory(testing)
-endif()
 
-# App support library
-if(VC_BUILD_APPS OR VC_BUILD_UTILS)
-    add_subdirectory(app_support)
-endif()
+
 
 ## VC Core Apps ##
 if (VC_BUILD_APPS)
@@ -101,16 +175,6 @@ endif()
 ## VC Example Apps ##
 
 ## VC Documentation
-find_package(Doxygen OPTIONAL_COMPONENTS dot)
-CMAKE_DEPENDENT_OPTION(VC_BUILD_DOCS "Build VC Doxygen documentation" on "DOXYGEN_FOUND" off)
-CMAKE_DEPENDENT_OPTION(VC_INSTALL_DOCS "Install VC documentation" off "VC_BUILD_DOCS" off)
-if(VC_BUILD_DOCS)
-    add_subdirectory(docs)
-endif()
-
-if(VC_BUILD_PYTHON_BINDINGS)
-    add_subdirectory(python)
-endif()
 
 # Setup the config files #
 include(VCPackageConfig)

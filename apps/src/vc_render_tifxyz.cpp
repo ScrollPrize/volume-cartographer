@@ -20,17 +20,15 @@ using json = nlohmann::json;
  * @brief Structure to hold affine transform data
  */
 struct AffineTransform {
-    cv::Mat_<float> matrix;  // 3x4 matrix in ZYX format
-    cv::Vec3f offset;        // optional pre-transform offset
-    bool hasOffset;
+    cv::Mat_<float> matrix;  // 4x4 matrix in XYZ format
     
-    AffineTransform() : hasOffset(false), offset(0, 0, 0) {
-        matrix = cv::Mat_<float>::eye(3, 4);
+    AffineTransform() {
+        matrix = cv::Mat_<float>::eye(4, 4);
     }
 };
 
 /**
- * @brief Load affine transform from file (JSON or text format)
+ * @brief Load affine transform from file (JSON)
  * 
  * @param filename Path to affine transform file
  * @return AffineTransform Loaded transform data
@@ -43,69 +41,50 @@ AffineTransform loadAffineTransform(const std::string& filename) {
         throw std::runtime_error("Cannot open affine transform file: " + filename);
     }
     
-    // Try to parse as JSON first
     try {
         json j;
         file >> j;
         
-        if (j.contains("affine")) {
-            auto affine = j["affine"];
-            if (affine.size() != 3) {
+        if (j.contains("transformation_matrix")) {
+            auto mat = j["transformation_matrix"];
+            if (mat.size() != 3) {
                 throw std::runtime_error("Affine matrix must have 3 rows");
             }
             
-            transform.matrix = cv::Mat_<float>(3, 4);
-            for (int i = 0; i < 3; i++) {
-                if (affine[i].size() != 4) {
+            for (int row = 0; row < 3; row++) {
+                if (mat[row].size() != 4) {
                     throw std::runtime_error("Each row of affine matrix must have 4 elements");
                 }
-                for (int j = 0; j < 4; j++) {
-                    transform.matrix(i, j) = affine[i][j].get<float>();
+                for (int col = 0; col < 4; col++) {
+                    transform.matrix.at<float>(row, col) = mat[row][col].get<float>();
                 }
             }
         }
-        
-        if (j.contains("offset")) {
-            auto offset = j["offset"];
-            if (offset.size() != 3) {
-                throw std::runtime_error("Offset must have 3 elements");
-            }
-            transform.offset = cv::Vec3f(offset[0].get<float>(), 
-                                        offset[1].get<float>(), 
-                                        offset[2].get<float>());
-            transform.hasOffset = true;
-        }
     } catch (json::parse_error&) {
-        // Not JSON, try plain text format
-        file.clear();
-        file.seekg(0);
-        
-        std::vector<float> values;
-        float val;
-        while (file >> val) {
-            values.push_back(val);
-        }
-        
-        if (values.size() != 12 && values.size() != 15) {
-            throw std::runtime_error("Text file must contain 12 values (3x4 matrix) or 15 values (3x4 matrix + 3 offset values)");
-        }
-        
-        // Load the 3x4 matrix
-        transform.matrix = cv::Mat_<float>(3, 4);
-        for (int i = 0; i < 3; i++) {
-            for (int j = 0; j < 4; j++) {
-                transform.matrix(i, j) = values[i * 4 + j];
-            }
-        }
-        
-        // Load offset if present
-        if (values.size() == 15) {
-            transform.offset = cv::Vec3f(values[12], values[13], values[14]);
-            transform.hasOffset = true;
-        }
+        throw std::runtime_error("Error parsing affine transform file: " + filename);
     }
-    
+
     return transform;
+}
+
+/**
+ * @brief Apply affine transform to a single point
+ * 
+ * @param point Point to transform
+ * @param transform Affine transform to apply
+ * @return cv::Vec3f Transformed point
+ */
+cv::Vec3f applyAffineTransformToPoint(const cv::Vec3f& point, const AffineTransform& transform) {
+    float ptx = point[0];
+    float pty = point[1];
+    float ptz = point[2];
+    
+    // Apply affine transform (note: matrix is in XYZ format)
+    float ptx_new = transform.matrix(0, 0) * ptx + transform.matrix(0, 1) * pty + transform.matrix(0, 2) * ptz + transform.matrix(0, 3);
+    float pty_new = transform.matrix(1, 0) * ptx + transform.matrix(1, 1) * pty + transform.matrix(1, 2) * ptz + transform.matrix(1, 3);
+    float ptz_new = transform.matrix(2, 0) * ptx + transform.matrix(2, 1) * pty + transform.matrix(2, 2) * ptz + transform.matrix(2, 3);
+    
+    return cv::Vec3f(ptx_new, pty_new, ptz_new);
 }
 
 /**
@@ -127,30 +106,8 @@ void applyAffineTransform(cv::Mat_<cv::Vec3f>& points,
             if (std::isnan(pt[0]) || std::isnan(pt[1]) || std::isnan(pt[2])) {
                 continue;
             }
-            
-            // Apply optional offset first
-            if (transform.hasOffset) {
-                pt += transform.offset;
-            }
-            
-            // Apply affine transform (note: matrix is in ZYX format as per the Rust example)
-            float px = pt[0];
-            float py = pt[1];
-            float pz = pt[2];
-            
-            // Row 0 (Z in output)
-            float z_new = transform.matrix(0, 2) * px + transform.matrix(0, 1) * py + 
-                         transform.matrix(0, 0) * pz + transform.matrix(0, 3);
-            // Row 1 (Y in output) 
-            float y_new = transform.matrix(1, 2) * px + transform.matrix(1, 1) * py + 
-                         transform.matrix(1, 0) * pz + transform.matrix(1, 3);
-            // Row 2 (X in output)
-            float x_new = transform.matrix(2, 2) * px + transform.matrix(2, 1) * py + 
-                         transform.matrix(2, 0) * pz + transform.matrix(2, 3);
-            
-            pt[0] = x_new;
-            pt[1] = y_new;
-            pt[2] = z_new;
+
+            pt = applyAffineTransformToPoint(pt, transform);
         }
     }
     
@@ -169,12 +126,9 @@ void applyAffineTransform(cv::Mat_<cv::Vec3f>& points,
             float nz = n[2];
             
             // Apply rotation part of affine transform
-            float nz_new = transform.matrix(0, 2) * nx + transform.matrix(0, 1) * ny + 
-                          transform.matrix(0, 0) * nz;
-            float ny_new = transform.matrix(1, 2) * nx + transform.matrix(1, 1) * ny + 
-                          transform.matrix(1, 0) * nz;
-            float nx_new = transform.matrix(2, 2) * nx + transform.matrix(2, 1) * ny + 
-                          transform.matrix(2, 0) * nz;
+            float nx_new = transform.matrix(0, 0) * nx + transform.matrix(0, 1) * ny + transform.matrix(0, 2) * nz;
+            float ny_new = transform.matrix(1, 0) * nx + transform.matrix(1, 1) * ny + transform.matrix(1, 2) * nz;
+            float nz_new = transform.matrix(2, 0) * nx + transform.matrix(2, 1) * ny + transform.matrix(2, 2) * nz;
             
             // Normalize the transformed normal
             float norm = std::sqrt(nx_new * nx_new + ny_new * ny_new + nz_new * nz_new);
@@ -375,8 +329,10 @@ int main(int argc, char *argv[])
             "Crop region width (0 = no crop)")
         ("crop-height", po::value<int>()->default_value(0),
             "Crop region height (0 = no crop)")
-        ("affine-transform,a", po::value<std::string>(),
+        ("affine-transform", po::value<std::string>(),
             "Path to affine transform file (JSON or text format)")
+        ("scale-segmentation", po::value<float>()->default_value(1.0),
+            "Scale segmentation to target scale")
         ("rotate", po::value<double>()->default_value(0.0),
             "Rotate output image by angle in degrees (counterclockwise)")
         ("flip", po::value<int>()->default_value(-1),
@@ -412,7 +368,7 @@ int main(int argc, char *argv[])
     float tgt_scale = parsed["scale"].as<float>();
     int group_idx = parsed["group-idx"].as<int>();
     int num_slices = parsed["num-slices"].as<int>();
-    
+    float scale_seg = parsed["scale-segmentation"].as<float>();
     // Transformation parameters
     double rotate_angle = parsed["rotate"].as<double>();
     int flip_axis = parsed["flip"].as<int>();
@@ -500,23 +456,19 @@ int main(int argc, char *argv[])
     if (tgt_size.width >= 10000 && num_slices > 1)
         slice_gen = true;
     else {
-        surf->gen(&points, &normals, tgt_size, nullptr, tgt_scale, {-full_size.width/2+crop.x,-full_size.height/2+crop.y,0});
-        
+        surf->gen(&points, &normals, tgt_size, cv::Vec3f(0,0,0), tgt_scale, {-full_size.width/2+crop.x,-full_size.height/2+crop.y,0});
+
         // Calculate the actual mesh centroid
         meshCentroid = calculateMeshCentroid(points);
+
         globalFlipDecision = shouldFlipNormals(points, normals, meshCentroid);
         orientationDetermined = true;
-
-        applyNormalOrientation(normals, globalFlipDecision);
-
-        if (hasAffine) {
-            applyAffineTransform(points, normals, affineTransform);
-        }
         if (globalFlipDecision) {
             std::cout << "Orienting normals to point consistently (flipped)" << std::endl;
         } else {
             std::cout << "Orienting normals to point consistently (not flipped)" << std::endl;
         }
+        applyNormalOrientation(normals, globalFlipDecision);
     }
 
     cv::Mat_<uint8_t> img;
@@ -527,6 +479,15 @@ int main(int argc, char *argv[])
     }
 
     if (num_slices == 1) {
+        // Scale the segmentation points if requested
+        points *= scale_seg;
+
+        // Apply affine transform if provided
+        if (hasAffine) {
+            std::cout << "Applying affine transform to points and normals for single slice" << std::endl;
+            applyAffineTransform(points, normals, affineTransform);
+        }
+
         readInterpolated3D(img, ds.get(), points, &chunk_cache);
 
         // Apply transformations
@@ -550,10 +511,14 @@ int main(int argc, char *argv[])
                 // or a representative sample to ensure consistency
                 for(int x=crop.x;x<crop.x+crop.width;x+=1024) {
                     int w = std::min(tgt_size.width+crop.x-x, 1024);
-                    surf->gen(&points, &normals, {w,crop.height}, nullptr, tgt_scale, {-full_size.width/2+x,-full_size.height/2+crop.y,0});
+                    surf->gen(&points, &normals, {w,crop.height}, cv::Vec3f(0,0,0), tgt_scale, {-full_size.width/2+x,-full_size.height/2+crop.y,0});
                     
+                    // Scale the segmentation points if requested
+                    points *= scale_seg;
+
                     // Apply affine transform if provided
                     if (hasAffine) {
+                        std::cout << "Applying affine transform to points and normals for slice " << i << std::endl;
                         applyAffineTransform(points, normals, affineTransform);
                     }
                     // Determine orientation from first chunk if not yet determined
@@ -579,8 +544,12 @@ int main(int argc, char *argv[])
             }
             else {
                 cv::Mat_<cv::Vec3f> offsetPoints = points + off*ds_scale*normals;
+                // Scale the segmentation points if requested
+                offsetPoints *= scale_seg;
+
                 // Apply affine transform if provided (for non-slice_gen case)
-                if (hasAffine && !slice_gen) {
+                if (hasAffine) {
+                    std::cout << "Applying affine transform to points and normals for slice " << i << " for non-slice_gen case" << std::endl;
                     cv::Mat_<cv::Vec3f> offsetNormals = normals.clone();
                     applyAffineTransform(offsetPoints, offsetNormals, affineTransform);
                 }

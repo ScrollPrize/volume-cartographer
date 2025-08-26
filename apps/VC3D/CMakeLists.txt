@@ -42,6 +42,11 @@ set(srcs
     COutlinedTextItem.cpp
 )
 
+if(VC_ENABLE_TSAN OR VC_ENABLE_LSAN OR VC_ENABLE_UBSAN OR VC_ENABLE_ASAN)
+    list(APPEND srcs "${CMAKE_SOURCE_DIR}/misc/sanitizer_config.c")
+endif()
+
+
 set(MACOSX_BUNDLE_ICON logo.icns)
 set_source_files_properties(${MACOSX_BUNDLE_ICON} PROPERTIES
     MACOSX_PACKAGE_LOCATION Resources
@@ -81,7 +86,6 @@ target_include_directories(${target}
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
         $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
 )
-find_package(OpenMP)
 find_package(SDL2 REQUIRED)
 include_directories(${SDL2_INCLUDE_DIRS})
 find_package(GSL REQUIRED)

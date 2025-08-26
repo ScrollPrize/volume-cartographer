@@ -43,11 +43,25 @@ if(NOT OpenCV_FOUND)
     find_package(OpenCV 4 QUIET REQUIRED)
 endif()
 
+
+if(VC_USE_OPENMP)
+    message(STATUS "OpenMP support enabled")
+
+    find_package(OpenMP REQUIRED)
+    set(XTENSOR_USE_OPENMP 1)
+else()
+    message(STATUS "OpenMP support disabled")
+
+    set(XTENSOR_USE_OPENMP 0)
+    include_directories(${CMAKE_SOURCE_DIR}/core/openmp_stub)
+    add_library(openmp_stub INTERFACE)
+    add_library(OpenMP::OpenMP_CXX ALIAS openmp_stub)
+    add_library(OpenMP::OpenMP_C ALIAS openmp_stub)
+endif()
+
 set(XTENSOR_USE_XSIMD 1)
-set(XTENSOR_USE_OPENMP 1)
 find_package(xtensor REQUIRED)
 
-find_package(OpenMP REQUIRED)
 
 ### spdlog ###
 find_package(spdlog 1.4.2 CONFIG REQUIRED)
@@ -61,5 +75,4 @@ find_package(CURL REQUIRED)
 ### Boost and indicators (for app use only) ###
 if(VC_BUILD_APPS OR VC_BUILD_UTILS)
     find_package(Boost 1.58 REQUIRED COMPONENTS system program_options)
-    include(BuildIndicators)
 endif()

@@ -6,6 +6,7 @@
 #include <opencv2/core/core.hpp>
 
 #include <set>
+#include <unordered_map>
 #include "PathData.hpp"
 #include "vc/core/util/VCCollection.hpp"
 #include "COutlinedTextItem.hpp"
@@ -67,8 +68,20 @@ public:
     void setResetViewOnSurfaceChange(bool reset);
     bool isCompositeEnabled() const { return _composite_enabled; }
 
+    // Direction hints toggle
+    void setShowDirectionHints(bool on) { _showDirectionHints = on; updateAllOverlays(); }
+    bool isShowDirectionHints() const { return _showDirectionHints; }
+
     void fitSurfaceInView();
     void updateAllOverlays();
+    
+    // Direction hints for vc_grow_seg_from_segments flip_x visualization
+    void renderDirectionHints();
+    void renderDirectionStepMarkers();
+
+    // Generic overlay group management (ad-hoc helper for reuse)
+    void setOverlayGroup(const std::string& key, const std::vector<QGraphicsItem*>& items);
+    void clearOverlayGroup(const std::string& key);
 
     // Get current scale for coordinate transformation
     float getCurrentScale() const { return _scale; }
@@ -141,7 +154,7 @@ protected:
     
     std::shared_ptr<volcart::Volume> volume = nullptr;
     Surface *_surf = nullptr;
-    SurfacePointer *_ptr = nullptr;
+    cv::Vec3f _ptr = cv::Vec3f(0,0,0);
     cv::Vec2f _vis_center = {0,0};
     std::string _surf_name;
     int axis = 0;
@@ -202,14 +215,20 @@ protected:
     QList<PathData> _paths;
     std::vector<QGraphicsItem*> _path_items;
     
+    // Generic overlay groups; each key owns its items' lifetime
+    std::unordered_map<std::string, std::vector<QGraphicsItem*>> _overlay_groups;
+    
     // Drawing mode state
     bool _drawingModeActive = false;
     float _brushSize = 3.0f;
     bool _brushIsSquare = false;
     bool _resetViewOnSurfaceChange = true;
+    bool _showDirectionHints = true;
 
     int _downscale_override = 0;  // 0=auto, 1=2x, 2=4x, 3=8x, 4=16x, 5=32x
     QTimer* _overlayUpdateTimer;
+
+    bool _useFastInterpolation;
 
 };  // class CVolumeViewer
 

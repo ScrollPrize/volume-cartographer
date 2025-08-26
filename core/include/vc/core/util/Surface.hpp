@@ -16,20 +16,6 @@ namespace z5 {
     class Dataset;
 }
 
-class SurfacePointer
-{
-public:
-    virtual SurfacePointer *clone() const = 0;
-};
-
-class TrivialSurfacePointer : public SurfacePointer
-{
-public:
-    TrivialSurfacePointer(cv::Vec3f loc_) : loc(loc_) {}
-    SurfacePointer *clone() const override { return new TrivialSurfacePointer(*this); }
-    cv::Vec3f loc;
-};
-
 struct Rect3D {
     cv::Vec3f low = {0,0,0};
     cv::Vec3f high = {0,0,0};
@@ -42,7 +28,7 @@ QuadSurface *load_quad_from_vcps(const std::string &path);
 QuadSurface *load_quad_from_obj(const std::string &path);
 QuadSurface *load_quad_from_tifxyz(const std::string &path);
 QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *cache, cv::Vec3f origin, int generations = 100, float step = 10, const std::string &cache_root = "", float voxelsize = 1.0, std::vector<std::unique_ptr<z5::Dataset>> const &h_fiber_ds = {nullptr, nullptr, nullptr}, float fibers_scale = 1.f);
-QuadSurface *regularized_local_quad(QuadSurface *src, SurfacePointer *ptr, int w, int h, int step_search = 100, int step_out = 5);
+QuadSurface *regularized_local_quad(QuadSurface *src, const cv::Vec3f &ptr, int w, int h, int step_search = 100, int step_out = 5);
 QuadSurface *smooth_vc_segmentation(QuadSurface *src);
 
 cv::Vec3f vx_from_orig_norm(const cv::Vec3f &o, const cv::Vec3f &n);
@@ -54,22 +40,22 @@ class Surface
 public:
     virtual ~Surface();
 
-    // a pointer in some central location
-    virtual SurfacePointer *pointer() = 0;
-    
+    // get a central location point
+    virtual cv::Vec3f pointer() = 0;
+
     //move pointer within internal coordinate system
-    virtual void move(SurfacePointer *ptr, const cv::Vec3f &offset) = 0;
+    virtual void move(cv::Vec3f &ptr, const cv::Vec3f &offset) = 0;
     //does the pointer location contain valid surface data
-    virtual bool valid(SurfacePointer *ptr, const cv::Vec3f &offset = {0,0,0}) = 0;
+    virtual bool valid(const cv::Vec3f &ptr, const cv::Vec3f &offset = {0,0,0}) = 0;
     //nominal pointer coordinates (in "output" coordinates)
-    virtual cv::Vec3f loc(SurfacePointer *ptr, const cv::Vec3f &offset = {0,0,0}) = 0;
+    virtual cv::Vec3f loc(const cv::Vec3f &ptr, const cv::Vec3f &offset = {0,0,0}) = 0;
     //read coord at pointer location, potentially with (3) offset
-    virtual cv::Vec3f coord(SurfacePointer *ptr, const cv::Vec3f &offset = {0,0,0}) = 0;
-    virtual cv::Vec3f normal(SurfacePointer *ptr, const cv::Vec3f &offset = {0,0,0}) = 0;
-    virtual float pointTo(SurfacePointer *ptr, const cv::Vec3f &coord, float th, int max_iters = 1000) = 0;
+    virtual cv::Vec3f coord(const cv::Vec3f &ptr, const cv::Vec3f &offset = {0,0,0}) = 0;
+    virtual cv::Vec3f normal(const cv::Vec3f &ptr, const cv::Vec3f &offset = {0,0,0}) = 0;
+    virtual float pointTo(cv::Vec3f &ptr, const cv::Vec3f &coord, float th, int max_iters = 1000) = 0;
     //coordgenerator relative to ptr&offset
     //needs to be deleted after use
-    virtual void gen(cv::Mat_<cv::Vec3f> *coords, cv::Mat_<cv::Vec3f> *normals, cv::Size size, SurfacePointer *ptr, float scale, const cv::Vec3f &offset) = 0;
+    virtual void gen(cv::Mat_<cv::Vec3f> *coords, cv::Mat_<cv::Vec3f> *normals, cv::Size size, const cv::Vec3f &ptr, float scale, const cv::Vec3f &offset) = 0;
     nlohmann::json *meta = nullptr;
     std::filesystem::path path;
     SurfaceID id;
@@ -79,18 +65,18 @@ class PlaneSurface : public Surface
 {
 public:
     //Surface API FIXME
-    TrivialSurfacePointer *pointer() override;
-    void move(SurfacePointer *ptr, const cv::Vec3f &offset);
-    bool valid(SurfacePointer *ptr, const cv::Vec3f &offset = {0,0,0}) override { return true; };
-    cv::Vec3f loc(SurfacePointer *ptr, const cv::Vec3f &offset = {0,0,0}) override;
-    cv::Vec3f coord(SurfacePointer *ptr, const cv::Vec3f &offset = {0,0,0}) override;
-    cv::Vec3f normal(SurfacePointer *ptr, const cv::Vec3f &offset = {0,0,0}) override;
-    float pointTo(SurfacePointer *ptr, const cv::Vec3f &coord, float th, int max_iters = 1000) override { abort(); };
+    cv::Vec3f pointer() override;
+    void move(cv::Vec3f &ptr, const cv::Vec3f &offset);
+    bool valid(const cv::Vec3f &ptr, const cv::Vec3f &offset = {0,0,0}) override { return true; };
+    cv::Vec3f loc(const cv::Vec3f &ptr, const cv::Vec3f &offset = {0,0,0}) override;
+    cv::Vec3f coord(const cv::Vec3f &ptr, const cv::Vec3f &offset = {0,0,0}) override;
+    cv::Vec3f normal(const cv::Vec3f &ptr, const cv::Vec3f &offset = {0,0,0}) override;
+    float pointTo(cv::Vec3f &ptr, const cv::Vec3f &coord, float th, int max_iters = 1000) override { abort(); };
 
     PlaneSurface() {};
     PlaneSurface(cv::Vec3f origin_, cv::Vec3f normal_);
 
-    void gen(cv::Mat_<cv::Vec3f> *coords, cv::Mat_<cv::Vec3f> *normals, cv::Size size, SurfacePointer *ptr, float scale, const cv::Vec3f &offset) override;
+    void gen(cv::Mat_<cv::Vec3f> *coords, cv::Mat_<cv::Vec3f> *normals, cv::Size size, const cv::Vec3f &ptr, float scale, const cv::Vec3f &offset) override;
 
     float pointDist(cv::Vec3f wp);
     cv::Vec3f project(cv::Vec3f wp, float render_scale = 1.0, float coord_scale = 1.0);
@@ -110,21 +96,21 @@ protected:
 class QuadSurface : public Surface
 {
 public:
-    TrivialSurfacePointer *pointer();
+    cv::Vec3f pointer();
     QuadSurface() {};
     // points will be cloned in constructor
     QuadSurface(const cv::Mat_<cv::Vec3f> &points, const cv::Vec2f &scale);
     // points will not be cloned in constructor, but pointer stored
     QuadSurface(cv::Mat_<cv::Vec3f> *points, const cv::Vec2f &scale);
     ~QuadSurface();
-    void move(SurfacePointer *ptr, const cv::Vec3f &offset) override;
-    bool valid(SurfacePointer *ptr, const cv::Vec3f &offset = {0,0,0}) override;
-    cv::Vec3f loc(SurfacePointer *ptr, const cv::Vec3f &offset = {0,0,0}) override;
-    cv::Vec3f loc_raw(SurfacePointer *ptr);
-    cv::Vec3f coord(SurfacePointer *ptr, const cv::Vec3f &offset = {0,0,0}) override;
-    cv::Vec3f normal(SurfacePointer *ptr, const cv::Vec3f &offset = {0,0,0}) override;
-    void gen(cv::Mat_<cv::Vec3f> *coords, cv::Mat_<cv::Vec3f> *normals, cv::Size size, SurfacePointer *ptr, float scale, const cv::Vec3f &offset) override;
-    float pointTo(SurfacePointer *ptr, const cv::Vec3f &tgt, float th, int max_iters = 1000) override;
+    void move(cv::Vec3f &ptr, const cv::Vec3f &offset) override;
+    bool valid(const cv::Vec3f &ptr, const cv::Vec3f &offset = {0,0,0}) override;
+    cv::Vec3f loc(const cv::Vec3f &ptr, const cv::Vec3f &offset = {0,0,0}) override;
+    cv::Vec3f loc_raw(const cv::Vec3f &ptr);
+    cv::Vec3f coord(const cv::Vec3f &ptr, const cv::Vec3f &offset = {0,0,0}) override;
+    cv::Vec3f normal(const cv::Vec3f &ptr, const cv::Vec3f &offset = {0,0,0}) override;
+    void gen(cv::Mat_<cv::Vec3f> *coords, cv::Mat_<cv::Vec3f> *normals, cv::Size size, const cv::Vec3f &ptr, float scale, const cv::Vec3f &offset) override;
+    float pointTo(cv::Vec3f &ptr, const cv::Vec3f &tgt, float th, int max_iters = 1000) override;
     cv::Size size();
     cv::Vec2f scale() const;
 
@@ -136,7 +122,7 @@ public:
     virtual cv::Mat_<cv::Vec3f> rawPoints() { return *_points; }
     virtual cv::Mat_<cv::Vec3f> *rawPointsPtr() { return _points; }
 
-    friend QuadSurface *regularized_local_quad(QuadSurface *src, SurfacePointer *ptr, int w, int h, int step_search, int step_out);
+    friend QuadSurface *regularized_local_quad(QuadSurface *src, const cv::Vec3f &ptr, int w, int h, int step_search, int step_out);
     friend QuadSurface *smooth_vc_segmentation(QuadSurface *src);
     friend class ControlPointSurface;
     cv::Vec2f _scale;
@@ -157,16 +143,16 @@ public:
     //like relocate ctrl points, mark as dirty, ...
     virtual void setBase(Surface *base);
     DeltaSurface(Surface *base);
-    
-    virtual SurfacePointer *pointer() override;
-    
-    void move(SurfacePointer *ptr, const cv::Vec3f &offset) override;
-    bool valid(SurfacePointer *ptr, const cv::Vec3f &offset = {0,0,0}) override;
-    cv::Vec3f loc(SurfacePointer *ptr, const cv::Vec3f &offset = {0,0,0}) override;
-    cv::Vec3f coord(SurfacePointer *ptr, const cv::Vec3f &offset = {0,0,0}) override;
-    cv::Vec3f normal(SurfacePointer *ptr, const cv::Vec3f &offset = {0,0,0}) override;
-    void gen(cv::Mat_<cv::Vec3f> *coords, cv::Mat_<cv::Vec3f> *normals, cv::Size size, SurfacePointer *ptr, float scale, const cv::Vec3f &offset) override = 0;
-    float pointTo(SurfacePointer *ptr, const cv::Vec3f &tgt, float th, int max_iters = 1000) override;
+
+    virtual cv::Vec3f pointer() override;
+
+    void move(cv::Vec3f &ptr, const cv::Vec3f &offset) override;
+    bool valid(const cv::Vec3f &ptr, const cv::Vec3f &offset = {0,0,0}) override;
+    cv::Vec3f loc(const cv::Vec3f &ptr, const cv::Vec3f &offset = {0,0,0}) override;
+    cv::Vec3f coord(const cv::Vec3f &ptr, const cv::Vec3f &offset = {0,0,0}) override;
+    cv::Vec3f normal(const cv::Vec3f &ptr, const cv::Vec3f &offset = {0,0,0}) override;
+    void gen(cv::Mat_<cv::Vec3f> *coords, cv::Mat_<cv::Vec3f> *normals, cv::Size size, const cv::Vec3f &ptr, float scale, const cv::Vec3f &offset) override = 0;
+    float pointTo(cv::Vec3f &ptr, const cv::Vec3f &tgt, float th, int max_iters = 1000) override;
 
 protected:
     Surface *_base = nullptr;
@@ -176,8 +162,8 @@ protected:
 class SurfaceControlPoint
 {
 public:
-    SurfaceControlPoint(Surface *base, SurfacePointer *ptr_, const cv::Vec3f &control);
-    SurfacePointer *ptr; //ptr to control point in base surface
+    SurfaceControlPoint(Surface *base, const cv::Vec3f &ptr_, const cv::Vec3f &control);
+    cv::Vec3f ptr; //location of control point in base surface
     cv::Vec3f orig_wp; //the original 3d location where the control point was created
     cv::Vec3f normal; //original normal
     cv::Vec3f control_point; //actual control point location - should be in line with _orig_wp along the normal, but could change if the underlaying surface changes!
@@ -187,8 +173,8 @@ class ControlPointSurface : public DeltaSurface
 {
 public:
     ControlPointSurface(Surface *base) : DeltaSurface(base) {};
-    void addControlPoint(SurfacePointer *base_ptr, cv::Vec3f control_point);
-    void gen(cv::Mat_<cv::Vec3f> *coords, cv::Mat_<cv::Vec3f> *normals, cv::Size size, SurfacePointer *ptr, float scale, const cv::Vec3f &offset) override;
+    void addControlPoint(const cv::Vec3f &base_ptr, cv::Vec3f control_point);
+    void gen(cv::Mat_<cv::Vec3f> *coords, cv::Mat_<cv::Vec3f> *normals, cv::Size size, const cv::Vec3f &ptr, float scale, const cv::Vec3f &offset) override;
 
     void setBase(Surface *base);
 
@@ -200,8 +186,8 @@ class RefineCompSurface : public DeltaSurface
 {
 public:
     RefineCompSurface(z5::Dataset *ds, ChunkCache *cache, QuadSurface *base = nullptr);
-    void gen(cv::Mat_<cv::Vec3f> *coords, cv::Mat_<cv::Vec3f> *normals, cv::Size size, SurfacePointer *ptr, float scale, const cv::Vec3f &offset) override;
-    
+    void gen(cv::Mat_<cv::Vec3f> *coords, cv::Mat_<cv::Vec3f> *normals, cv::Size size, const cv::Vec3f &ptr, float scale, const cv::Vec3f &offset) override;
+
     float start = 0;
     float stop = -100;
     float step = 2.0;
