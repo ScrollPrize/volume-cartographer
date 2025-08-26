@@ -9,22 +9,16 @@
 
 #include "z5/factory.hxx"
 #include "z5/filesystem/handle.hxx"
-#include "z5/filesystem/dataset.hxx"
-#include "z5/common.hxx"
 #include "z5/multiarray/xtensor_access.hxx"
 #include "z5/attributes.hxx"
 
-#include <opencv2/highgui.hpp>
 #include <opencv2/core.hpp>
-#include <opencv2/imgproc.hpp>
 
 #include "vc/core/util/Slicing.hpp"
 #include "vc/core/util/Surface.hpp"
 #include "vc/core/io/PointSetIO.hpp"
 
-#include <unordered_map>
 #include <filesystem>
-#include <omp.h>
 
 #include "../../core/src/SurfaceHelpers.hpp"
 #include "vc/core/types/ChunkedTensor.hpp"

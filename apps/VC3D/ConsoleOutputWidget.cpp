@@ -2,6 +2,8 @@
 #include <QApplication>
 #include <QClipboard>
 #include <QScrollBar>
+#include <QVBoxLayout>
+#include <QHBoxLayout>
 #include <QFontDatabase>
 
 namespace ChaoVis {

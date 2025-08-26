@@ -4,8 +4,6 @@
 #include "OpChain.hpp"
 #include "formsetsrc.hpp"
 
-#include <iostream>
-
 OpsSettings::OpsSettings(QWidget* parent)
     : QWidget(parent), ui(new Ui::OpsSettings)
 {

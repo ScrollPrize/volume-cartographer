@@ -4,14 +4,12 @@
 
 #include <QKeySequence>
 #include <QKeyEvent>
-#include <QProgressBar>
 #include <QSettings>
 #include <QMdiArea>
 #include <QMenu>
 #include <QAction>
 #include <QApplication>
 #include <QClipboard>
-#include <QTimer>
 #include <QDateTime>
 #include <QFileDialog>
 #include <QTextStream>
@@ -40,7 +38,6 @@
 #include "OpsList.hpp"
 #include "OpsSettings.hpp"
 #include "SurfaceTreeWidget.hpp"
-#include "CSegmentationEditorWindow.hpp"
 #include "SeedingWidget.hpp"
 #include "DrawingWidget.hpp"
 

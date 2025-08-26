@@ -5,7 +5,6 @@
 
 #include <iostream>
 
-#include <QComboBox>
 
 OpsList::OpsList(QWidget* parent) : QWidget(parent), ui(new Ui::OpsList)
 {
