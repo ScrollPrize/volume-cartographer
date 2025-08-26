@@ -99,6 +99,22 @@ int main(int argc, char *argv[])
     std::cout << "zarr dataset size for scale group 0 " << ds->shape() << std::endl;
     std::cout << "chunk shape shape " << ds->chunking().blockShape() << std::endl;
 
+    std::string const fiber_dirs_path = params.value("fiber_dirs_zarr", "");
+    std::vector<std::unique_ptr<z5::Dataset>> h_fiber_dirs_xyz_dss;
+    float fiber_dirs_scale = 1.f;
+    if (!fiber_dirs_path.empty()) {
+        z5::filesystem::handle::Group fiber_dirs_group(fiber_dirs_path, z5::FileMode::FileMode::r);
+        z5::filesystem::handle::Group h_fiber_dirs_group(fiber_dirs_group, "horizontal");
+        int const fiber_dirs_ome_level = params.value("fiber_dirs_scale", 2);
+        fiber_dirs_scale = std::pow(2, -fiber_dirs_ome_level);
+        for (auto dim: std::string("xyz")) {
+            z5::filesystem::handle::Group dim_group(h_fiber_dirs_group, std::string(&dim, 1));
+            z5::filesystem::handle::Dataset h_fiber_dirs_ds_handle(dim_group, std::to_string(fiber_dirs_ome_level), ".");
+            h_fiber_dirs_xyz_dss.push_back(z5::filesystem::openDataset(h_fiber_dirs_ds_handle));
+        }
+        std::cout << "fiber direction dataset shape " << h_fiber_dirs_xyz_dss.front()->shape() << std::endl;
+    }
+
     ChunkCache chunk_cache(params.value("cache_size", 1e9));
 
     passTroughComputor pass;
@@ -313,7 +329,7 @@ int main(int argc, char *argv[])
     if (thread_limit)
         omp_set_num_threads(thread_limit);
 
-    QuadSurface *surf = space_tracing_quad_phys(ds.get(), 1.0, &chunk_cache, origin, generations, step_size, cache_root, voxelsize);
+    QuadSurface *surf = space_tracing_quad_phys(ds.get(), 1.0, &chunk_cache, origin, generations, step_size, cache_root, voxelsize, h_fiber_dirs_xyz_dss, fiber_dirs_scale);
 
     double area_cm2 = (*surf->meta)["area_cm2"].get<double>();
     if (area_cm2 < min_area_cm)

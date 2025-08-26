@@ -636,3 +636,36 @@ private:
     std::vector<int>    _shape;
 };
 
+struct Chunked3dVec3fFromUint8
+{
+    Chunked3dVec3fFromUint8(std::vector<std::unique_ptr<z5::Dataset>> const &dss, float scale, ChunkCache *cache, std::string const &cache_root, std::string const &unique_id) :
+        _passthrough_x{unique_id + "_x"},
+        _passthrough_y{unique_id + "_y"},
+        _passthrough_z{unique_id + "_z"},
+        _x(_passthrough_x, dss[0].get(), cache, cache_root),
+        _y(_passthrough_y, dss[1].get(), cache, cache_root),
+        _z(_passthrough_z, dss[2].get(), cache, cache_root),
+        _scale(scale)  // multiplying by this maps indices of the 'canonical' volume to indices of our three volumes
+    {
+    }
+
+    cv::Vec3f operator()(cv::Vec3d p)
+    {
+        // Both p and returned vector have zyx ordering!
+        p *= _scale;
+        cv::Vec3i i{lround(p[0]), lround(p[1]), lround(p[2])};
+        uint8_t x = _x(i) ;
+        uint8_t y = _y(i) ;
+        uint8_t z = _z(i) ;
+        return (cv::Vec3f{z, y, x} - cv::Vec3f{128.f, 128.f, 128.f}) / 127.f;
+    }
+
+    cv::Vec3f operator()(double z, double y, double x)
+    {
+        return operator()({z,y,x});
+    }
+
+    passTroughComputor _passthrough_x, _passthrough_y, _passthrough_z;
+    Chunked3d<uint8_t, passTroughComputor> _x, _y, _z;
+    float _scale;
+};
