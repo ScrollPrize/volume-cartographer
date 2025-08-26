@@ -1,23 +1,19 @@
 #include <omp.h>
 
-#include "SurfaceHelpers.hpp"
 
 #include <opencv2/highgui.hpp>
 #include <opencv2/core.hpp>
 #include <opencv2/imgproc.hpp>
-#include <opencv2/video/tracking.hpp>
 
 #include "vc/core/util/Slicing.hpp"
 #include "vc/core/util/Surface.hpp"
 #include "vc/core/util/SurfaceModeling.hpp"
 #include "vc/core/util/OMPThreadPointCollection.hpp"
+#include "vc/core/util/DateTime.hpp"
 #include "vc/core/util/HashFunctions.hpp"
 #include "vc/core/types/ChunkedTensor.hpp"
 
 #include "vc/core/util/LifeTime.hpp"
-
-#include "vc/core/util/xtensor_include.hpp"
-#include XTENSORINCLUDE(views, xview.hpp)
 
 #include <fstream>
 #include <iostream>

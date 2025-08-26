@@ -1,10 +1,5 @@
-#include <omp.h>
-
-#include "SurfaceHelpers.hpp"
-
 #include <opencv2/core.hpp>
 #include <opencv2/imgproc.hpp>
-#include <opencv2/video/tracking.hpp>
 
 #include "vc/core/util/Slicing.hpp"
 #include "vc/core/util/Surface.hpp"
@@ -17,7 +12,6 @@
 #include "vc/core/util/xtensor_include.hpp"
 #include XTENSORINCLUDE(views, xview.hpp)
 
-#include <fstream>
 #include <iostream>
 
 static float space_trace_dist_w = 1.0;

@@ -35,7 +35,7 @@ target_include_directories(vc_slicing
 
 set(surface_srcs
     src/Surface.cpp
-        src/GrowSeed.cpp
+        src/GrowPatch.cpp
         src/GrowSurface.cpp
     src/ChunkedTensor.cpp
     src/SurfaceVoxelizer.cpp
