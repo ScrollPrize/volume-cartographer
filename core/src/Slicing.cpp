@@ -558,7 +558,7 @@ void readInterpolated3D(cv::Mat_<uint8_t> &out, z5::Dataset *ds,
 }
 
 //somehow opencvs functions are pretty slow 
-static inline cv::Vec3f normed(const cv::Vec3f v)
+static cv::Vec3f normed(const cv::Vec3f v)
 {
     return v/sqrt(v[0]*v[0]+v[1]*v[1]+v[2]*v[2]);
 }
@@ -679,25 +679,6 @@ static void min_loc(const cv::Mat_<cv::Vec3f> &points, cv::Vec2f &loc, cv::Vec3f
             changed = true;
         }
     }
-}
-
-static float tdist(const cv::Vec3f &a, const cv::Vec3f &b, float t_dist)
-{
-    cv::Vec3f d = a-b;
-    float l = sqrt(d.dot(d));
-    
-    return abs(l-t_dist);
-}
-
-static float tdist_sum(const cv::Vec3f &v, const std::vector<cv::Vec3f> &tgts, const std::vector<float> &tds)
-{
-    float sum = 0;
-    for(int i=0;i<tgts.size();i++) {
-        float d = tdist(v, tgts[i], tds[i]);
-        sum += d*d;
-    }
-    
-    return sum;
 }
 
 //this works surprisingly well, though some artifacts where original there was a lot of skew

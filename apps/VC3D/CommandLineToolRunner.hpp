@@ -15,7 +15,6 @@
 
 #include "ProgressUtil.hpp"
 #include "ConsoleOutputWidget.hpp"
-#include "vc/core/util/SurfaceDef.hpp"
 
 namespace ChaoVis {
 
