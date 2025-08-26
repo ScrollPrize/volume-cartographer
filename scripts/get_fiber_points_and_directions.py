@@ -312,7 +312,7 @@ def main(
         dim_group = horizontal_group.create_group(dim)
         return dim_group.create_dataset(
             f'{output_ome_scale}',
-            dtype=np.float32,  # TODO: float16 should be sufficient, but z5 doesn't support it
+            dtype=np.uint8,  # TODO: check if this is precise enough; chosen due to ChunkedTensor support
             shape=(predictions_zarr_array.shape[0] // output_downsample, predictions_zarr_array.shape[1] // output_downsample, predictions_zarr_array.shape[2] // output_downsample),
             chunks=(128, 128, 128),
             compressor=zarr.Blosc(cname='zstd', clevel=1, shuffle=True),
@@ -406,7 +406,8 @@ def main(
                     directions[*points_zyx.T] = directions_zyx
                 directions /= np.linalg.norm(directions, axis=-1, keepdims=True)
                 for dim_idx in range(3):
-                    out_ds_by_dim[dim_idx][z_start // output_downsample : z_end // output_downsample, y_start // output_downsample : y_end // output_downsample, x_start // output_downsample : x_end // output_downsample] = directions[..., dim_idx]
+                    directions_dim_u8 = (directions[..., dim_idx] * 127 + 128).clip(0, 255).astype(np.uint8)
+                    out_ds_by_dim[dim_idx][z_start // output_downsample : z_end // output_downsample, y_start // output_downsample : y_end // output_downsample, x_start // output_downsample : x_end // output_downsample] = directions_dim_u8
                 if False:
                     import matplotlib.pyplot as plt
                     plt.imsave('wibl.png', chunk_ccs[150:170].max(0)[::output_downsample, ::output_downsample])
