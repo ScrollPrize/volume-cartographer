@@ -85,7 +85,7 @@ shape idCoord(const std::unique_ptr<z5::Dataset> &ds, shape id)
     return coord;
 }
 
-void timed_plane_slice(Surface &plane, z5::Dataset *ds, int size, ChunkCache *cache, std::string msg)
+void timed_plane_slice(Surface &plane, z5::Dataset *ds, int size, ChunkCache *cache, std::string msg, bool nearest_neighbor)
 {
     cv::Mat_<cv::Vec3f> coords;
     cv::Mat_<cv::Vec3f> normals;
@@ -93,25 +93,31 @@ void timed_plane_slice(Surface &plane, z5::Dataset *ds, int size, ChunkCache *ca
 
     auto start = std::chrono::high_resolution_clock::now();
     plane.gen(&coords, &normals, {size, size}, plane.pointer(), 1.0, {0,0,0});
-    // auto end = std::chrono::high_resolution_clock::now();
-    // std::cout << std::chrono::duration<double>(end-start).count() << "s gen_coords() " << msg << std::endl;
-    // start = std::chrono::high_resolution_clock::now();
-    readInterpolated3D(img, ds, coords, cache);
     auto end = std::chrono::high_resolution_clock::now();
-    std::cout << std::chrono::duration<double>(end-start).count() << "s slicing / " << size*size/1024.0/1024.0/std::chrono::duration<double>(end-start).count() << "MiB/s " << msg << std::endl;
+    std::cout << std::chrono::duration<double>(end-start).count() << "s gen_coords() " << msg << std::endl;
+    start = std::chrono::high_resolution_clock::now();
+    readInterpolated3D(img, ds, coords, cache, nearest_neighbor);
+    end = std::chrono::high_resolution_clock::now();
+    std::cout << std::chrono::duration<double>(end-start).count() << "s slicing  " << size*size/1024.0/1024.0/std::chrono::duration<double>(end-start).count() << "MiB/s " << msg << std::endl;
 }
+
 
 int main(int argc, char *argv[])
 {
-  assert(argc == 2);
+  assert(argc == 2 || argc == 3);
   // z5::filesystem::handle::File f(argv[1]);
   z5::filesystem::handle::Group group(argv[1], z5::FileMode::FileMode::r);
   z5::filesystem::handle::Dataset ds_handle(group, "1", "/");
   std::unique_ptr<z5::Dataset> ds = z5::filesystem::openDataset(ds_handle);
 
+   bool nearest_neighbor =  (argc == 3 && strncmp(argv[2],"nearest",7) == 0);
+
   std::cout << "ds shape " << ds->shape() << std::endl;
   std::cout << "ds shape via chunk " << ds->chunking().shape() << std::endl;
   std::cout << "chunk shape shape " << ds->chunking().blockShape() << std::endl;
+  if (nearest_neighbor) {
+    std::cout << "doing nearest neighbor interpolation" << std::endl;
+  }
 
   cv::Mat_<cv::Vec3f> coords;
   cv::Mat_<cv::Vec3f> normals;
@@ -136,8 +142,8 @@ int main(int argc, char *argv[])
   // gen_plane.gen_coords(coords, 1000, 1000);
   // gen_grid.gen(&coords, &normals, {1000, 1000}, gen_grid.pointer(), 1.0, {0,0,0});
 
-  ChunkCache chunk_cache(10*10e9);
-  
+    ChunkCache chunk_cache(10*10e9);
+
   // auto start = std::chrono::high_resolution_clock::now();
   // readInterpolated3D(img,ds.get(),coords, &chunk_cache);
   // auto end = std::chrono::high_resolution_clock::now();
@@ -157,15 +163,16 @@ int main(int argc, char *argv[])
 
   std::cout << "testing different slice directions / caching" << std::endl;
   for(int r=0;r<3;r++) {
-      timed_plane_slice(plane_x, ds.get(), size, &chunk_cache, "yz cold");
-      timed_plane_slice(plane_x, ds.get(), size, &chunk_cache, "yz");
-      timed_plane_slice(plane_y, ds.get(), size, &chunk_cache, "xz cold");
-      timed_plane_slice(plane_y, ds.get(), size, &chunk_cache, "xz");
-      timed_plane_slice(plane_z, ds.get(), size, &chunk_cache, "xy cold");
-      timed_plane_slice(plane_z, ds.get(), size, &chunk_cache, "xy");
-      timed_plane_slice(gen_plane, ds.get(), size, &chunk_cache, "diag cold");
-      timed_plane_slice(gen_plane, ds.get(), size, &chunk_cache, "diag");
+      timed_plane_slice(plane_x, ds.get(), size, &chunk_cache, "yz cold", nearest_neighbor);
+      timed_plane_slice(plane_x, ds.get(), size, &chunk_cache, "yz", nearest_neighbor);
+      timed_plane_slice(plane_y, ds.get(), size, &chunk_cache, "xz cold", nearest_neighbor);
+      timed_plane_slice(plane_y, ds.get(), size, &chunk_cache, "xz", nearest_neighbor);
+      timed_plane_slice(plane_z, ds.get(), size, &chunk_cache, "xy cold", nearest_neighbor);
+      timed_plane_slice(plane_z, ds.get(), size, &chunk_cache, "xy", nearest_neighbor);
+      timed_plane_slice(gen_plane, ds.get(), size, &chunk_cache, "diag cold", nearest_neighbor);
+      timed_plane_slice(gen_plane, ds.get(), size, &chunk_cache, "diag", nearest_neighbor);
   }
+
 
   {
     auto start = std::chrono::high_resolution_clock::now();

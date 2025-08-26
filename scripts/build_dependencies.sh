@@ -19,7 +19,7 @@ elif [[ "$(uname)" == "Linux" ]]; then
     sudo apt-get update
     #todo: determine the complete list
     sudo apt-get install -y libgmp-dev libmpfr-dev ccache ninja-build lld \
-        libcurl4-openssl-dev libboost-system-dev libboost-program-options-dev qt6-base-dev
+        libcurl4-openssl-dev libboost-system-dev libboost-program-options-dev qt6-base-dev clang llvm
 fi
 
 
@@ -202,7 +202,6 @@ ninja -j$JOBS
 ninja install
 cd "$BUILD_DIR"
 
-
 # OpenCV
 rm -rf opencv
 git clone --depth 1 https://github.com/opencv/opencv.git
@@ -276,3 +275,12 @@ cmake .. -G Ninja \
 
 ninja -j$JOBS
 ninja install
+
+echo "Dependencies built successfully!"
+echo "Install prefix: $INSTALL_PREFIX"
+echo ""
+echo "To use these dependencies when building volume-cartographer:"
+echo "cd volume-cartographer"
+echo "mkdir build"
+echo "cd build"
+echo "cmake .. -DCMAKE_PREFIX_PATH=~/vc-dependencies -DVC_BUILD_Z5=off -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DVC_USE_OPENMP=off -DVC_INSTALL_APPS=off -DVC_INSTALL_UTILS=off -DVC_INSTALL_LIBS=off"

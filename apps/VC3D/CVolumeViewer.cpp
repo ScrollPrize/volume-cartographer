@@ -79,7 +79,10 @@ CVolumeViewer::CVolumeViewer(CSurfaceCollection *col, QWidget* parent)
     // fScrollSpeed = settings.value("viewer/scroll_speed", false).toInt();
     fSkipImageFormatConv = settings.value("perf/chkSkipImageFormatConvExp", false).toBool();
     _downscale_override = settings.value("perf/downscale_override", 0).toInt();
-
+    _useFastInterpolation = settings.value("perf/fast_interpolation", false).toBool();
+    if (_useFastInterpolation) {
+        std::cout << "using nearest neighbor interpolation" << std::endl;
+    }
     QVBoxLayout* aWidgetLayout = new QVBoxLayout;
     aWidgetLayout->addWidget(fGraphicsView);
 
@@ -551,6 +554,8 @@ void CVolumeViewer::onSurfaceChanged(std::string name, Surface *surf)
             _points_items.clear();
             _path_items.clear();
             _paths.clear();
+            // Scene items are already deleted by fScene->clear(); just drop overlay references
+            _overlay_groups.clear();
             _cursor = nullptr;
             _center_marker = nullptr;
             fBaseImageItem = nullptr;
@@ -752,7 +757,7 @@ cv::Mat CVolumeViewer::render_area(const cv::Rect &roi)
             float z_step = z * _ds_scale;  // Scale the step to maintain consistent physical distance
             _surf->gen(&slice_coords, nullptr, roi.size(), _ptr, _scale, {-roi.width/2, -roi.height/2, _z_off + z_step});
             
-            readInterpolated3D(slice_img, volume->zarrDataset(_ds_sd_idx), slice_coords*_ds_scale, cache);
+            readInterpolated3D(slice_img, volume->zarrDataset(_ds_sd_idx), slice_coords*_ds_scale, cache, _useFastInterpolation);
             
             // Convert to float for accumulation
             cv::Mat_<float> slice_float;
@@ -850,7 +855,7 @@ cv::Mat CVolumeViewer::render_area(const cv::Rect &roi)
             _surf->gen(&coords, nullptr, roi.size(), _ptr, _scale, {-roi.width/2, -roi.height/2, _z_off});
         }
 
-        readInterpolated3D(img, volume->zarrDataset(_ds_sd_idx), coords*_ds_scale, cache);
+        readInterpolated3D(img, volume->zarrDataset(_ds_sd_idx), coords*_ds_scale, cache, _useFastInterpolation);
         return img;
     }
 }
@@ -1797,6 +1802,269 @@ void CVolumeViewer::updateAllOverlays()
     invalidateVis();
     invalidateIntersect();
     renderIntersections();
+    renderDirectionHints();
+    renderDirectionStepMarkers();
     renderPaths();
     refreshPointPositions();
+}
+
+void CVolumeViewer::setOverlayGroup(const std::string& key, const std::vector<QGraphicsItem*>& items)
+{
+    // Remove and delete existing items in the group
+    clearOverlayGroup(key);
+    _overlay_groups[key] = items;
+}
+
+// Visualize the 'step' parameter used by vc_grow_seg_from_segments by placing
+// three small markers in either direction along the same direction arrows.
+void CVolumeViewer::renderDirectionStepMarkers()
+{
+    if (!_showDirectionHints) {
+        clearOverlayGroup("step_markers");
+        return;
+    }
+
+    clearOverlayGroup("step_markers");
+
+    auto* seg = dynamic_cast<QuadSurface*>(_surf_name == "segmentation" ? _surf : _surf_col->surface("segmentation"));
+    if (!seg) return;
+
+    // Determine step value and number of points
+    QSettings settings("VC.ini", QSettings::IniFormat);
+    bool use_seg_step = settings.value("viewer/use_seg_step_for_hints", true).toBool();
+    int num_points = std::max(0, std::min(100, settings.value("viewer/direction_step_points", 5).toInt()));
+    float step_val = settings.value("viewer/direction_step", 10.0).toFloat();
+    if (use_seg_step && seg->meta) {
+        try {
+            if (seg->meta->contains("vc_grow_seg_from_segments_params")) {
+                auto& p = seg->meta->at("vc_grow_seg_from_segments_params");
+                if (p.contains("step")) step_val = p.at("step").get<float>();
+            }
+        } catch (...) {
+            // keep settings default
+        }
+    }
+    if (step_val <= 0) step_val = settings.value("viewer/direction_step", 10.0).toFloat();
+
+    // Anchor at focus POI if possible
+    cv::Vec3f target_wp;
+    bool have_focus = false;
+    if (auto* poi = _surf_col->poi("focus")) { target_wp = poi->p; have_focus = true; }
+
+    std::vector<QGraphicsItem*> items;
+
+    auto addDot = [&](const QPointF& center, const QColor& color, float radius = 3.0f) {
+        auto* dot = new QGraphicsEllipseItem(center.x() - radius, center.y() - radius, 2*radius, 2*radius);
+        dot->setPen(QPen(Qt::black, 1));
+        dot->setBrush(QBrush(color));
+        dot->setZValue(32);
+        fScene->addItem(dot);
+        items.push_back(dot);
+    };
+
+    if (_surf_name == "segmentation") {
+        // Work in segmentation nominal coordinates converted to scene
+        auto ptr = seg->pointer();
+        if (have_focus) seg->pointTo(ptr, target_wp, 4.0, 100);
+        cv::Vec3f nom = seg->loc(ptr) * _scale;
+        // Center point
+        addDot(QPointF(nom[0], nom[1]), QColor(255, 255, 0), 4.0f); // yellow center
+        // Red side (+X)
+        for (int n = 1; n <= num_points; ++n) {
+            cv::Vec3f p = seg->loc(ptr, {n * step_val, 0, 0}) * _scale;
+            addDot(QPointF(p[0], p[1]), Qt::red);
+        }
+        // Green side (−X)
+        for (int n = 1; n <= num_points; ++n) {
+            cv::Vec3f p = seg->loc(ptr, {-n * step_val, 0, 0}) * _scale;
+            addDot(QPointF(p[0], p[1]), Qt::green);
+        }
+        setOverlayGroup("step_markers", items);
+        return;
+    }
+
+    if (auto* plane = dynamic_cast<PlaneSurface*>(_surf)) {
+        // Project segmentation step samples into plane view
+        auto ptr = seg->pointer();
+        if (have_focus) seg->pointTo(ptr, target_wp, 4.0, 100);
+        cv::Vec3f p0 = seg->coord(ptr, {0,0,0});
+        if (p0[0] == -1) return;
+        cv::Vec3f s0 = plane->project(p0, 1.0f, _scale);
+        addDot(QPointF(s0[0], s0[1]), QColor(255, 255, 0), 4.0f);
+
+        for (int n = 1; n <= num_points; ++n) {
+            cv::Vec3f p_pos = seg->coord(ptr, {n * step_val, 0, 0});
+            cv::Vec3f p_neg = seg->coord(ptr, {-n * step_val, 0, 0});
+            if (p_pos[0] != -1) {
+                cv::Vec3f s = plane->project(p_pos, 1.0f, _scale);
+                addDot(QPointF(s[0], s[1]), Qt::red);
+            }
+            if (p_neg[0] != -1) {
+                cv::Vec3f s = plane->project(p_neg, 1.0f, _scale);
+                addDot(QPointF(s[0], s[1]), Qt::green);
+            }
+        }
+        setOverlayGroup("step_markers", items);
+        return;
+    }
+}
+
+void CVolumeViewer::clearOverlayGroup(const std::string& key)
+{
+    auto it = _overlay_groups.find(key);
+    if (it == _overlay_groups.end()) return;
+    for (auto* item : it->second) {
+        if (!item) continue;
+        fScene->removeItem(item);
+        delete item;
+    }
+    _overlay_groups.erase(it);
+}
+
+// Draw two small arrows indicating growth direction candidates:
+// red = flip_x=false (along +X)
+// green = flip_x=true (opposite −X)
+// Shown on segmentation and projected into slice views.
+void CVolumeViewer::renderDirectionHints()
+{
+    if (!_showDirectionHints) {
+        clearOverlayGroup("direction_hints");
+        return;
+    }
+    // Clear previous group
+    clearOverlayGroup("direction_hints");
+
+    if (!_surf) return;
+
+    // Helper to create an arrow path item
+
+    auto makeArrow = [&](const QPointF& origin, const QPointF& dir, const QColor& color) -> QGraphicsItem* {
+        // Basic line with arrowhead
+        const float line_len = 60.0f;      // scene units
+        const float head_len = 10.0f;
+        const float head_w   = 6.0f;
+
+        // Normalize dir
+        QPointF d = dir;
+        double mag = std::hypot(d.x(), d.y());
+        if (mag < 1e-3) mag = 1.0;
+        d.setX(d.x()/mag); d.setY(d.y()/mag);
+
+        QPointF tip = origin + QPointF(d.x()*line_len, d.y()*line_len);
+        // Perpendicular for head
+        QPointF perp(-d.y(), d.x());
+
+        QPainterPath path;
+        path.moveTo(origin);
+        path.lineTo(tip);
+        // Arrow head as a small V
+        QPointF left  = tip - QPointF(d.x()*head_len, d.y()*head_len) + QPointF(perp.x()*head_w, perp.y()*head_w);
+        QPointF right = tip - QPointF(d.x()*head_len, d.y()*head_len) - QPointF(perp.x()*head_w, perp.y()*head_w);
+        path.moveTo(tip);
+        path.lineTo(left);
+        path.moveTo(tip);
+        path.lineTo(right);
+
+        auto* item = fGraphicsView->scene()->addPath(path, QPen(color, 2));
+        item->setZValue(30); // Above intersections and points
+        return item;
+    };
+    auto makeLabel = [&](const QPointF& pos, const QString& text, const QColor& color) -> QGraphicsItem* {
+        auto* label = new COutlinedTextItem();
+        label->setDefaultTextColor(color);
+        label->setPlainText(text);
+        // Make the label a bit smaller than default
+        QFont f = label->font();
+        f.setPointSizeF(9.0);
+        label->setFont(f);
+        label->setZValue(31);
+        label->setPos(pos);
+        fScene->addItem(label);
+        return label;
+    };
+
+    if (_surf_name == "segmentation") {
+        // Determine anchor in scene coords: prefer focus POI projected to segmentation; fallback to visible center
+        QPointF anchor_scene = visible_center(fGraphicsView);
+
+        if (auto* quad = dynamic_cast<QuadSurface*>(_surf)) {
+            if (auto* poi = _surf_col->poi("focus")) {
+                auto ptr = quad->pointer();
+                float dist = quad->pointTo(ptr, poi->p, 4.0, 100);
+                if (dist >= 0 && dist < 20.0/_scale) {
+                    cv::Vec3f sp = quad->loc(ptr) * _scale;
+                    anchor_scene = QPointF(sp[0], sp[1]);
+                }
+            }
+        }
+
+        // Offsets so the two arrows don't overlap the same origin point
+        QPointF up_offset(0, -20.0);
+        QPointF down_offset(0, 20.0);
+
+        // On segmentation view, scene X is the surface +X direction.
+        // User preference: green = flip_x=true (−X), red = flip_x=false (+X)
+        QGraphicsItem* redArrow   = makeArrow(anchor_scene + up_offset, QPointF(1.0, 0.0), QColor(Qt::red));
+        QGraphicsItem* greenArrow = makeArrow(anchor_scene + down_offset, QPointF(-1.0, 0.0), QColor(Qt::green));
+        // Labels
+        QGraphicsItem* redText   = makeLabel(anchor_scene + up_offset + QPointF(8, -8), QString("false"), QColor(Qt::red));
+        QGraphicsItem* greenText = makeLabel(anchor_scene + down_offset + QPointF(8, -8), QString("true"), QColor(Qt::green));
+
+        std::vector<QGraphicsItem*> items { redArrow, greenArrow, redText, greenText };
+        setOverlayGroup("direction_hints", items);
+        return;
+    }
+
+    // For slice plane views (seg xz / seg yz), project the segmentation +X tangent onto the plane and draw arrows
+    if (auto* plane = dynamic_cast<PlaneSurface*>(_surf)) {
+        auto* seg = dynamic_cast<QuadSurface*>(_surf_col->surface("segmentation"));
+        if (!seg) return;
+
+        // Choose target world point near focus or plane origin
+        cv::Vec3f target_wp = plane->origin();
+        if (auto* poi = _surf_col->poi("focus")) {
+            target_wp = poi->p;
+        }
+
+        // Find nearest point on segmentation and derive local +X tangent in 3D
+        auto seg_ptr = seg->pointer();
+        float dist = seg->pointTo(seg_ptr, target_wp, 4.0, 100);
+        if (dist < 0) return;
+
+        cv::Vec3f p0 = seg->coord(seg_ptr, {0,0,0});
+        // Small nominal step along +X on the segmentation surface
+        const float step_nominal = 2.0f;
+        cv::Vec3f p1 = seg->coord(seg_ptr, {step_nominal, 0, 0});
+        cv::Vec3f dir3 = p1 - p0;
+        float len = std::sqrt(dir3.dot(dir3));
+        if (len < 1e-5f) return;
+        dir3 *= (1.0f / len);
+
+        // Project to plane scene coordinates
+        cv::Vec3f s0 = plane->project(p0, 1.0f, _scale);
+        // Use a fixed scene length for the arrow
+        const float scene_len = 60.0f;
+        cv::Vec3f s1 = plane->project(p0 + dir3 * (scene_len / _scale), 1.0f, _scale);
+        QPointF dir2(s1[0] - s0[0], s1[1] - s0[1]);
+        double mag = std::hypot(dir2.x(), dir2.y());
+        if (mag < 1e-3) return;
+
+        QPointF anchor_scene(s0[0], s0[1]);
+        // Slight offsets so they don't overlap exactly
+        QPointF up_offset(0, -10.0);
+        QPointF down_offset(0, 10.0);
+
+        // User preference: green = flip_x=true (opposite of +X tangent), red = flip_x=false (along +X tangent)
+        QGraphicsItem* redArrow   = makeArrow(anchor_scene + up_offset, dir2, QColor(Qt::red));
+        QGraphicsItem* greenArrow = makeArrow(anchor_scene + down_offset, QPointF(-dir2.x(), -dir2.y()), QColor(Qt::green));
+        // Labels near arrow tips
+        QPointF redTip = anchor_scene + up_offset + QPointF(dir2.x(), dir2.y());
+        QPointF greenTip = anchor_scene + down_offset + QPointF(-dir2.x(), -dir2.y());
+        QGraphicsItem* redText   = makeLabel(redTip + QPointF(8, -8), QString("false"), QColor(Qt::red));
+        QGraphicsItem* greenText = makeLabel(greenTip + QPointF(8, -8), QString("true"), QColor(Qt::green));
+
+        std::vector<QGraphicsItem*> items { redArrow, greenArrow, redText, greenText };
+        setOverlayGroup("direction_hints", items);
+        return;
+    }
 }

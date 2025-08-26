@@ -31,8 +31,74 @@
            <property name="text">
             <string>Default *.volpkg path</string>
            </property>
-          </widget>
-         </item>
+         </widget>
+        </item>
+        <item row="9" column="0" colspan="2">
+         <widget class="QCheckBox" name="chkShowDirectionHints">
+          <property name="text">
+           <string>Show direction hints (flip_x arrows)</string>
+          </property>
+          <property name="checked">
+           <bool>true</bool>
+          </property>
+         </widget>
+        </item>
+        <item row="10" column="0">
+         <widget class="QLabel" name="labelDirectionStep">
+          <property name="text">
+           <string>Direction step size (default)</string>
+          </property>
+         </widget>
+        </item>
+        <item row="10" column="1">
+         <widget class="QDoubleSpinBox" name="spinDirectionStep">
+          <property name="decimals">
+           <number>2</number>
+          </property>
+          <property name="minimum">
+           <double>0.010000000000000</double>
+          </property>
+          <property name="maximum">
+           <double>10000.000000000000000</double>
+          </property>
+          <property name="singleStep">
+           <double>1.000000000000000</double>
+          </property>
+          <property name="value">
+           <double>10.000000000000000</double>
+          </property>
+         </widget>
+        </item>
+        <item row="11" column="0" colspan="2">
+         <widget class="QCheckBox" name="chkUseSegStepForHints">
+          <property name="text">
+           <string>Use segmentation step for hints</string>
+          </property>
+          <property name="checked">
+           <bool>true</bool>
+          </property>
+         </widget>
+        </item>
+        <item row="12" column="0">
+         <widget class="QLabel" name="labelDirectionStepPoints">
+          <property name="text">
+           <string>Step points per direction</string>
+          </property>
+         </widget>
+        </item>
+        <item row="12" column="1">
+         <widget class="QSpinBox" name="spinDirectionStepPoints">
+          <property name="minimum">
+           <number>0</number>
+          </property>
+          <property name="maximum">
+           <number>100</number>
+          </property>
+          <property name="value">
+           <number>5</number>
+          </property>
+         </widget>
+        </item>
          <item row="0" column="1">
           <widget class="QLineEdit" name="edtDefaultPathVolpkg"/>
          </item>
@@ -403,6 +469,38 @@
                <bool>true</bool>
              </property>
            </widget>
+         </item>
+         <item row="5" column="0">
+          <widget class="QCheckBox" name="chkFastInterpolation">
+           <property name="text">
+            <string>Use fast interpolation (nearest neighbor)</string>
+           </property>
+          </widget>
+         </item>
+         <item row="5" column="2">
+          <widget class="QPushButton" name="btnHelpFastInterpolation">
+           <property name="enabled">
+            <bool>true</bool>
+           </property>
+           <property name="sizePolicy">
+            <sizepolicy hsizetype="Minimum" vsizetype="Minimum">
+             <horstretch>0</horstretch>
+             <verstretch>0</verstretch>
+            </sizepolicy>
+           </property>
+           <property name="toolTip">
+            <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Uses nearest neighbor interpolation instead of linear interpolation.&lt;/p&gt;&lt;p&gt;This improves rendering performance but reduces image quality.&lt;/p&gt;&lt;p&gt;Useful for slower systems or when working with very large volumes.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+           </property>
+           <property name="text">
+            <string/>
+           </property>
+           <property name="icon">
+            <iconset theme="help-contents"/>
+           </property>
+           <property name="flat">
+            <bool>true</bool>
+           </property>
+          </widget>
          </item>
         </layout>
        </widget>
