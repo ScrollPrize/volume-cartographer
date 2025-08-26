@@ -2071,7 +2071,6 @@ void CVolumeViewer::updateAllOverlays()
     renderPaths();
     refreshPointPositions();
 }
-<<<<<<< Updated upstream
 
 void CVolumeViewer::setOverlayGroup(const std::string& key, const std::vector<QGraphicsItem*>& items)
 {
@@ -2333,5 +2332,3 @@ void CVolumeViewer::renderDirectionHints()
         return;
     }
 }
-=======
->>>>>>> Stashed changes
