@@ -428,7 +428,7 @@ int gen_fiber_loss(ceres::Problem &problem, const cv::Vec2i &p, const int u_off,
     // Add a loss saying that if loc(p) is on a horizontal fiber, then the vector toward the adjacent point along
     // the U-axis should be aligned with the fiber direction
 
-    cv::Vec2i const p_off{p[0] + u_off, p[1]};
+    cv::Vec2i const p_off{p[0], p[1] + u_off};
 
     if (!loc_valid(state(p)))
         return 0;
@@ -502,7 +502,7 @@ int conditional_fiber_loss(int bit, const cv::Vec2i &p, const int u_off, cv::Mat
     ceres::Problem &problem, cv::Mat_<uint8_t> &state, cv::Mat_<cv::Vec3d> &loc, Chunked3dVec3fFromUint8 &h_fiber_dirs)
 {
     int set = 0;
-    cv::Vec2i const off{u_off, 0};
+    cv::Vec2i const off{0, u_off};
     if (!loss_mask(bit, p, off, loss_status))
         set = set_loss_mask(bit, p, off, loss_status, gen_fiber_loss(problem, p, u_off, state, loc, h_fiber_dirs));
     return set;
