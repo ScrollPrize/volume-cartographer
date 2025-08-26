@@ -23,18 +23,7 @@
 #define CCI_TLS_MAX 256
 #endif
 
-struct vec3i_hash {
-    size_t operator()(cv::Vec3i p) const
-    {
-        size_t hash1 = std::hash<int>{}(p[0]);
-        size_t hash2 = std::hash<int>{}(p[1]);
-        size_t hash3 = std::hash<int>{}(p[2]);
 
-        //magic numbers from boost. should be good enough
-        size_t hash = hash1  ^ (hash2 + 0x9e3779b9 + (hash1 << 6) + (hash1 >> 2));
-        return hash  ^ (hash3 + 0x9e3779b9 + (hash << 6) + (hash >> 2));
-    }
-};
 
 struct passTroughComputor
 {
@@ -137,7 +126,7 @@ public:
                     try {
                         fs::rename(tmp_dir, tgt_path);
                     }
-                    catch (fs::filesystem_error){
+                    catch (fs::filesystem_error&){
                         continue;
                     }
                     _cache_dir = tgt_path;
