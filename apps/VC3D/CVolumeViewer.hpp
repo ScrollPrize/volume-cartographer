@@ -14,6 +14,7 @@
 class ChunkCache;
 class Surface;
 class SurfacePointer;
+class QuadSurface;
 
 class QGraphicsScene;
 
@@ -87,6 +88,16 @@ public:
     float getCurrentScale() const { return _scale; }
     // Transform scene coordinates to volume coordinates
     cv::Vec3f sceneToVolume(const QPointF& scenePoint) const;
+
+    // BBox drawing mode for segmentation view
+    void setBBoxMode(bool enabled);
+    bool isBBoxMode() const { return _bboxMode; }
+    // Create a new QuadSurface with only points inside the given scene-rect
+    QuadSurface* makeBBoxFilteredSurfaceFromSceneRect(const QRectF& sceneRect);
+    // Current stored selections (scene-space rects with colors)
+    auto selections() const -> std::vector<std::pair<QRectF, QColor>>;
+    void clearSelections();
+    void updateSelectionGraphics();
     
     CVolumeViewerView* fGraphicsView;
 
@@ -132,6 +143,7 @@ signals:
     void sendCollectionSelected(uint64_t collectionId);
     void pointSelected(uint64_t pointId);
     void pointClicked(uint64_t pointId);
+    // (kept free for potential future signals)
 
 protected:
     void ScaleImage(double nFactor);
@@ -227,6 +239,13 @@ protected:
 
     int _downscale_override = 0;  // 0=auto, 1=2x, 2=4x, 3=8x, 4=16x, 5=32x
     QTimer* _overlayUpdateTimer;
+
+    // BBox tool state
+    bool _bboxMode = false;
+    QPointF _bboxStart;
+    QGraphicsRectItem* _bboxRectItem = nullptr;
+    struct Selection { QRectF surfRect; QColor color; QGraphicsRectItem* item; };
+    std::vector<Selection> _selections;
 
 };  // class CVolumeViewer
 
