@@ -3,7 +3,7 @@
 #include <QObject>
 #include <QApplication>
 
-SurfaceTreeWidgetItem* SurfaceTreeWidget::findItemForSurface(SurfaceID id)
+SurfaceTreeWidgetItem* SurfaceTreeWidget::findItemForSurface(std::string id)
 {
     QTreeWidgetItemIterator it(this);
     while (*it) {

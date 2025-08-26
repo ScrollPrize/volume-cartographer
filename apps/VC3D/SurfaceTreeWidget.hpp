@@ -2,8 +2,6 @@
 
 #include <QTreeWidget>
 
-#include "vc/core/util/SurfaceDef.hpp"
-
 #define SURFACE_ID_COLUMN 1
 
 class SurfaceTreeWidgetItem : public QTreeWidgetItem
@@ -36,5 +34,5 @@ public:
         setContextMenuPolicy(Qt::CustomContextMenu);
     }
     
-    SurfaceTreeWidgetItem* findItemForSurface(SurfaceID id);
+    SurfaceTreeWidgetItem* findItemForSurface(std::string id);
 };
