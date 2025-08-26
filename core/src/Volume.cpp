@@ -128,15 +128,6 @@ void Volume::setMin(double m) { metadata_.set("min", m); }
 void Volume::setMax(double m) { metadata_.set("max", m); }
 
 
-std::ostream& operator<< (std::ostream& out, const xt::xarray<uint8_t>::shape_type &v) {
-    if ( !v.empty() ) {
-        out << '[';
-        for(auto &v : v)
-            out << v << ",";
-        out << "\b\b]"; // use two ANSI backspace characters '\b' to overwrite final ", "
-    }
-    return out;
-}
 
 z5::Dataset *Volume::zarrDataset(int level)
 {

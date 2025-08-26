@@ -1,6 +1,8 @@
 #include "vc/core/util/Slicing.hpp"
 #include "vc/core/util/Surface.hpp"
 #include "vc/core/types/ChunkedTensor.hpp"
+#include "vc/core/util/StreamOperators.hpp"
+
 
 #include "z5/factory.hxx"
 #include <nlohmann/json.hpp>
@@ -12,15 +14,7 @@ namespace fs = std::filesystem;
 
 using json = nlohmann::json;
 
-std::ostream& operator<< (std::ostream& out, const xt::svector<size_t> &v) {
-    if ( !v.empty() ) {
-        out << '[';
-        for(auto &v : v)
-            out << v << ",";
-        out << "\b]";
-    }
-    return out;
-}
+
 
 std::string time_str()
 {

@@ -6,15 +6,7 @@
 namespace fs = std::filesystem;
 using json = nlohmann::json;
 
-std::ostream& operator<< (std::ostream& out, const xt::svector<size_t> &v) {
-    if ( !v.empty() ) {
-        out << '[';
-        for(auto &v : v)
-            out << v << ",";
-        out << "\b]";
-    }
-    return out;
-}
+
 
 int main(int argc, char *argv[])
 {
