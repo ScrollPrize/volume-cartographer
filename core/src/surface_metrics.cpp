@@ -25,7 +25,7 @@ static float dist_point_segment_sq(const cv::Vec3f& p, const cv::Vec3f& a, const
 }
 
 // Direct search method to minimize point-line distance from a starting location
-float find_intersection_direct(QuadSurface* surface, cv::Vec2f& loc, const cv::Vec3f& p1, const cv::Vec3f& p2, float init_step, float min_step, const cv::Vec3f& center_in_points)
+static float find_intersection_direct(QuadSurface* surface, cv::Vec2f& loc, const cv::Vec3f& p1, const cv::Vec3f& p2, float init_step, float min_step, const cv::Vec3f& center_in_points)
 {
     cv::Vec3f ptr_loc = cv::Vec3f(loc[0], loc[1], 0) - center_in_points;
     if (!surface->valid(ptr_loc)) {
@@ -77,7 +77,7 @@ float find_intersection_direct(QuadSurface* surface, cv::Vec2f& loc, const cv::V
     return sqrt(best_dist_sq);
 }
 
-cv::Vec2f find_closest_intersection(QuadSurface* surface, const cv::Vec3f& p1, const cv::Vec3f& p2, const cv::Vec3f& proximity_point, float& line_dist, float& prox_dist)
+static cv::Vec2f find_closest_intersection(QuadSurface* surface, const cv::Vec3f& p1, const cv::Vec3f& p2, const cv::Vec3f& proximity_point, float& line_dist, float& prox_dist)
 {
     cv::Vec2f best_loc = {-1, -1};
     line_dist = -1.0f;

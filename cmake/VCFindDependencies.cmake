@@ -75,5 +75,4 @@ find_package(CURL REQUIRED)
 ### Boost and indicators (for app use only) ###
 if(VC_BUILD_APPS OR VC_BUILD_UTILS)
     find_package(Boost 1.58 REQUIRED COMPONENTS system program_options)
-    include(BuildIndicators)
 endif()
