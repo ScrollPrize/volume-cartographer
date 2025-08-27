@@ -84,6 +84,10 @@ private:
     void startDrawing(cv::Vec3f startPoint);
     void addPointToPath(cv::Vec3f point);
     void finalizePath();
+    // Label Wraps helpers
+    void finalizePathLabelWraps(bool shiftHeld);
+    void findPeaksAlongPathToCollection(const PathData& path, const std::string& collectionName);
+    void setLabelWrapsMode(bool active);
     QColor generatePathColor();
     void displayPaths();
     void updatePointsDisplay();
@@ -118,6 +122,7 @@ private:
     QPushButton* expandSeedsButton;
     QPushButton* resetPointsButton;
     QPushButton* cancelButton;
+    QPushButton* labelWrapsButton;
     QProgressBar* progressBar;
     
     // Data
@@ -136,6 +141,7 @@ private:
     bool isDrawing;
     PathData currentPath;
     int colorIndex;
+    bool labelWrapsMode = false; // special mode built on DrawMode
     
     // Process management
     QList<QPointer<QProcess>> runningProcesses;

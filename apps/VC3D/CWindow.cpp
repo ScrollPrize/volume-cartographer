@@ -22,6 +22,7 @@
 #include <QComboBox>
 #include <QFutureWatcher>
 #include <QRegularExpressionValidator>
+#include <QDockWidget>
 
 #include <atomic>
 #include <omp.h>
@@ -368,6 +369,8 @@ void CWindow::CreateWidgets(void)
                 _drawingWidget, &DrawingWidget::onMouseRelease);
         connect(viewer, &CVolumeViewer::sendZSliceChanged,
                 _drawingWidget, &DrawingWidget::updateCurrentZSlice);
+
+        // Selection is stored in the viewer; actions are triggered from Selection dock
         
         // Connect drawing mode signal to update cursor
         connect(_drawingWidget, &DrawingWidget::sendDrawingModeActive,
@@ -395,6 +398,8 @@ void CWindow::CreateWidgets(void)
     _point_collection_widget = new CPointCollectionWidget(_point_collection, this);
     _point_collection_widget->setObjectName("pointCollectionDock");
     addDockWidget(Qt::RightDockWidgetArea, _point_collection_widget);
+
+    // Selection dock (removed per request; selection actions remain in the menu)
 
     for (auto& viewer : _viewers) {
         connect(_point_collection_widget, &CPointCollectionWidget::collectionSelected, viewer, &CVolumeViewer::onCollectionSelected);
@@ -683,6 +688,81 @@ void CWindow::CreateWidgets(void)
 
 }
 
+void CWindow::onDrawBBoxToggled(bool enabled)
+{
+    // Toggle bbox mode on the segmentation viewer
+    for (auto* viewer : _viewers) {
+        if (viewer->surfName() == "segmentation") {
+            viewer->setBBoxMode(enabled);
+            statusBar()->showMessage(enabled ? tr("BBox mode active: drag on Surface view")
+                                             : tr("BBox mode off"), 3000);
+            break;
+        }
+    }
+}
+
+void CWindow::onSurfaceFromSelection()
+{
+    // Use the segmentation viewer's stored selections to create surfaces
+    CVolumeViewer* segViewer = nullptr;
+    for (auto* v : _viewers) if (v->surfName() == "segmentation") { segViewer = v; break; }
+    if (!segViewer) { statusBar()->showMessage(tr("No Surface viewer found"), 3000); return; }
+
+    auto sels = segViewer->selections();
+    if (sels.empty()) {
+        statusBar()->showMessage(tr("No selections to convert"), 3000);
+        return;
+    }
+
+    if (_surfID.empty() || !_vol_qsurfs.count(_surfID)) {
+        statusBar()->showMessage(tr("Select a segmentation first"), 3000);
+        return;
+    }
+
+    namespace fs = std::filesystem;
+    fs::path baseSegPath = _vol_qsurfs[_surfID]->path; // .../paths/<uuid>
+    fs::path parentDir = baseSegPath.parent_path();
+
+    int idx = 1;
+    int created = 0;
+    QString ts = QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss");
+    for (const auto& pr : sels) {
+        const QRectF& rect = pr.first;
+        std::unique_ptr<QuadSurface> filtered(segViewer->makeBBoxFilteredSurfaceFromSceneRect(rect));
+        if (!filtered) continue;
+        std::string newId = _surfID + std::string("_sel_") + ts.toStdString() + std::string("_") + std::to_string(idx++);
+        fs::path outDir = parentDir / newId;
+        try {
+            filtered->save(outDir.string(), newId);
+            created++;
+        } catch (const std::exception& e) {
+            statusBar()->showMessage(tr("Failed to save selection: ") + e.what(), 5000);
+        }
+    }
+
+    if (created > 0) {
+        try {
+            fVpkg->refreshSegmentations();
+            LoadSurfacesIncremental();
+            statusBar()->showMessage(tr("Created ") + QString::number(created) + tr(" surface(s) from selection"), 5000);
+        } catch (...) {
+            statusBar()->showMessage(tr("Created surfaces but failed to refresh"), 5000);
+        }
+    } else {
+        statusBar()->showMessage(tr("No surfaces created from selection"), 3000);
+    }
+}
+
+void CWindow::onSelectionClear()
+{
+    // Clear all stored selections on the segmentation (Surface) viewer
+    CVolumeViewer* segViewer = nullptr;
+    for (auto* v : _viewers) if (v->surfName() == "segmentation") { segViewer = v; break; }
+    if (!segViewer) { statusBar()->showMessage(tr("No Surface viewer found"), 3000); return; }
+    segViewer->clearSelections();
+    statusBar()->showMessage(tr("Selections cleared"), 2000);
+}
+
 // Create menus
 void CWindow::CreateMenus(void)
 {
@@ -727,6 +807,11 @@ void CWindow::CreateMenus(void)
 
     fActionsMenu = new QMenu(tr("&Actions"), this);
     fActionsMenu->addAction(fVoxelizePathsAct);
+    fActionsMenu->addAction(fDrawBBoxAct);
+
+    fSelectionMenu = new QMenu(tr("&Selection"), this);
+    fSelectionMenu->addAction(fSelectionSurfaceFromAct);
+    fSelectionMenu->addAction(fSelectionClearAct);
 
     fHelpMenu = new QMenu(tr("&Help"), this);
     fHelpMenu->addAction(fKeybinds);
@@ -738,6 +823,7 @@ void CWindow::CreateMenus(void)
     menuBar()->addMenu(fEditMenu);
     menuBar()->addMenu(fViewMenu);
     menuBar()->addMenu(fActionsMenu);
+    menuBar()->addMenu(fSelectionMenu);
     menuBar()->addMenu(fHelpMenu);
 }
 
@@ -784,6 +870,16 @@ void CWindow::CreateActions(void)
     
     fVoxelizePathsAct = new QAction(tr("&Voxelize Paths..."), this);
     connect(fVoxelizePathsAct, &QAction::triggered, this, &CWindow::onVoxelizePaths);
+
+    fDrawBBoxAct = new QAction(tr("Draw BBox"), this);
+    fDrawBBoxAct->setCheckable(true);
+    connect(fDrawBBoxAct, &QAction::toggled, this, &CWindow::onDrawBBoxToggled);
+
+    // Selection menu actions
+    fSelectionSurfaceFromAct = new QAction(tr("Surface from Selection"), this);
+    connect(fSelectionSurfaceFromAct, &QAction::triggered, this, &CWindow::onSurfaceFromSelection);
+    fSelectionClearAct = new QAction(tr("Clear"), this);
+    connect(fSelectionClearAct, &QAction::triggered, this, &CWindow::onSelectionClear);
 }
 
 void CWindow::UpdateRecentVolpkgActions()
