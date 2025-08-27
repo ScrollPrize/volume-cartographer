@@ -426,7 +426,7 @@ int main(int argc, char *argv[])
     // Effective render scale for UV sampling:
     // If the seg mesh is in volume A (downscaled /2 vox) and we later scale coordinates by 'scale_seg'
     // (to get to A full res), we must counterbalance here so pixel density stays constant.
-    const float inv_scale_seg_sq = 1.0f / (scale_seg * scale_seg);
+    const float inv_scale_seg_sq = 1.0f / (scale_seg * scale_seg * affine_scale_iso * affine_scale_iso);
     const float tgt_scale_eff = (tgt_scale * ds_scale) * inv_scale_seg_sq;
     // Transformation parameters
     double rotate_angle = parsed["rotate"].as<double>();
@@ -436,6 +436,7 @@ int main(int argc, char *argv[])
     // Load affine transform if provided
     AffineTransform affineTransform;
     bool hasAffine = false;
+    double affine_scale_iso = 1.0; // ~uniform scale factor k from the affine
     
     if (parsed.count("affine-transform") > 0) {
         std::string affineFile = parsed["affine-transform"].as<std::string>();
@@ -452,6 +453,22 @@ int main(int argc, char *argv[])
                 }
                 inv.copyTo(affineTransform.matrix);
                 std::cout << "Note: Inverting affine as requested (--invert-affine).\n";
+            }
+            // Extract isotropic-equivalent scale k ~= cbrt(|det(A)|) from the 3x3 linear part
+            try {
+                const cv::Matx33d A(
+                    affineTransform.matrix(0,0), affineTransform.matrix(0,1), affineTransform.matrix(0,2),
+                    affineTransform.matrix(1,0), affineTransform.matrix(1,1), affineTransform.matrix(1,2),
+                    affineTransform.matrix(2,0), affineTransform.matrix(2,1), affineTransform.matrix(2,2)
+                );
+                const double detA = cv::determinant(cv::Mat(A));
+                double k = std::cbrt(std::abs(detA));
+                if (std::isfinite(k) && k > 0.0)
+                    affine_scale_iso = k;
+                std::cout << "Affine isotropic scale ~= " << affine_scale_iso << '\n';
+            } catch (...) {
+                std::cout << "Warning: could not infer affine scale; assuming k=1\n";
+                affine_scale_iso = 1.0;
             }
         } catch (const std::exception& e) {
             std::cerr << "Error loading affine transform: " << e.what() << std::endl;
@@ -498,8 +515,8 @@ int main(int argc, char *argv[])
     // Auto-scale the canvas by the pyramid level, so -g N shrinks by 2^N.
     // Use rounding to avoid truncation bias.
     {
-        const double sx = (static_cast<double>(tgt_scale) /  surf->_scale[0]) * ds_scale * scale_seg;
-        const double sy = (static_cast<double>(tgt_scale) /  surf->_scale[1]) * ds_scale * scale_seg;
+        const double sx = (static_cast<double>(tgt_scale) /  surf->_scale[0]) * ds_scale * scale_seg * affine_scale_iso;
+        const double sy = (static_cast<double>(tgt_scale) /  surf->_scale[1]) * ds_scale * scale_seg * affine_scale_iso;
         full_size.width  = std::max(1, static_cast<int>(std::lround(full_size.width  * sx)));
         full_size.height = std::max(1, static_cast<int>(std::lround(full_size.height * sy)));
     }
