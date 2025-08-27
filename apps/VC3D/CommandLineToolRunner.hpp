@@ -11,7 +11,6 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QFile>
-#include <memory>
 
 #include "ProgressUtil.hpp"
 #include "ConsoleOutputWidget.hpp"

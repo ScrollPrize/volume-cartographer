@@ -7,7 +7,6 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QCoreApplication>
-#include <QDateTime>
 
 #include "vc/core/types/VolumePkg.hpp"
 #include "vc/core/util/Surface.hpp"

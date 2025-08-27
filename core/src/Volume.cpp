@@ -1,10 +1,8 @@
 #include "vc/core/types/Volume.hpp"
 
 #include <iomanip>
-#include <sstream>
 
 #include <opencv2/imgcodecs.hpp>
-#include <opencv2/imgproc.hpp>
 
 #include "z5/attributes.hxx"
 #include "z5/dataset.hxx"
@@ -12,9 +10,6 @@
 #include "z5/metadata.hxx"
 #include "z5/handle.hxx"
 #include "z5/types/types.hxx"
-#include "z5/util/util.hxx"
-#include "z5/util/blocking.hxx"
-#include "z5/util/format_data.hxx"
 #include "z5/factory.hxx"
 #include "z5/multiarray/xtensor_access.hxx"
 
@@ -126,8 +121,6 @@ void Volume::setNumberOfSlices(std::size_t numSlices)
 void Volume::setVoxelSize(double s) { metadata_.set("voxelsize", s); }
 void Volume::setMin(double m) { metadata_.set("min", m); }
 void Volume::setMax(double m) { metadata_.set("max", m); }
-
-
 
 
 z5::Dataset *Volume::zarrDataset(int level)

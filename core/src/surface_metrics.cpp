@@ -4,10 +4,8 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
-#include <sstream>
 #include <iomanip>
 #include <opencv2/imgproc.hpp>
-#include <opencv2/imgcodecs.hpp>
 #include <nlohmann/json.hpp>
 
 namespace vc::apps

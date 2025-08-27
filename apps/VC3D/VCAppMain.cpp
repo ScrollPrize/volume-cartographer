@@ -1,7 +1,6 @@
 // main.cpp
 // Chao Du 2014 Dec
 
-#include <QScreen>
 #include <qapplication.h>
 
 #include "CWindow.hpp"
