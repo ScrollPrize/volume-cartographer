@@ -533,7 +533,7 @@ int main(int argc, char *argv[])
     bool orientationDetermined = false;
     cv::Vec3f meshCentroid;
 
-    if (tgt_size.width >= 10000 && num_slices > 1)
+    if ((tgt_size.width >= 10000 || tgt_size.height >= 10000) && num_slices > 1)
         slice_gen = true;
     else {
         // Use effective scale so UV sampling spans the same world area at lower canvas res
