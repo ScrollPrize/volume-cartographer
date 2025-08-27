@@ -422,9 +422,11 @@ int main(int argc, char *argv[])
     int num_slices = parsed["num-slices"].as<int>();
     // Downsample factor for this OME-Zarr pyramid level: g=0 -> 1, g=1 -> 0.5, ...
     const float ds_scale = std::ldexp(1.0f, -group_idx);  // 2^(-group_idx)
-    // Effective render scale for UV sampling: shrink sampling density with ds level
-    const float tgt_scale_eff = tgt_scale * ds_scale;
     float scale_seg = parsed["scale-segmentation"].as<float>();
+    // Effective render scale for UV sampling:
+    // If the seg mesh is in volume A (downscaled /2 vox) and we later scale coordinates by 'scale_seg'
+    // (to get to A full res), we must counterbalance here so pixel density stays constant.
+    const float tgt_scale_eff = (tgt_scale * ds_scale) / std::max(1.0f, scale_seg);
     // Transformation parameters
     double rotate_angle = parsed["rotate"].as<double>();
     const bool invert_affine = parsed["invert-affine"].as<bool>();
@@ -495,8 +497,10 @@ int main(int argc, char *argv[])
     // Auto-scale the canvas by the pyramid level, so -g N shrinks by 2^N.
     // Use rounding to avoid truncation bias.
     {
-        const double sx = (static_cast<double>(tgt_scale) / surf->_scale[0]) * ds_scale;
-        const double sy = (static_cast<double>(tgt_scale) / surf->_scale[1]) * ds_scale;
+        // Keep FOV consistent when the mesh will be scaled in coordinates by 'scale_seg':
+        // compensate the canvas scaling by dividing by 'scale_seg'.
+        const double sx = (static_cast<double>(tgt_scale) / (surf->_scale[0] * std::max(1.0f, scale_seg))) * ds_scale;
+        const double sy = (static_cast<double>(tgt_scale) / (surf->_scale[1] * std::max(1.0f, scale_seg))) * ds_scale;
         full_size.width  = static_cast<int>(std::lround(full_size.width  * sx));
         full_size.height = static_cast<int>(std::lround(full_size.height * sy));
     }
