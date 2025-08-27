@@ -471,11 +471,7 @@ int main(int argc, char *argv[])
         }
     }
 
-    // Effective render scale for UV sampling:
-    // If the seg mesh is in volume A (downscaled /2 vox) and we later scale coordinates by 'scale_seg'
-    // (to get to A full res), we must counterbalance here so pixel density stays constant.
-    const float inv_scale_seg_sq = 1.0f / (scale_seg * scale_seg * affine_scale_iso * affine_scale_iso);
-    const float tgt_scale_eff = (tgt_scale * ds_scale) * inv_scale_seg_sq;
+    const float tgt_scale_eff = (tgt_scale * ds_scale);
 
     z5::filesystem::handle::Group group(vol_path, z5::FileMode::FileMode::r);
     z5::filesystem::handle::Dataset ds_handle(group, std::to_string(group_idx), json::parse(std::ifstream(vol_path/std::to_string(group_idx)/".zarray")).value<std::string>("dimension_separator","."));
