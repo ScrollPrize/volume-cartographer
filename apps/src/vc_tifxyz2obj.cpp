@@ -6,8 +6,6 @@
 #include "z5/factory.hxx"
 #include <nlohmann/json.hpp>
 
-#include <opencv2/highgui.hpp>
-
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
@@ -304,27 +302,31 @@ static void surf_write_obj(QuadSurface *surf, const fs::path &out_fn, bool norma
         points = clean_surface_outliers(points);
     }
     
-    // If align_grid is enabled, align each row to the same z-plane
+    // If align_grid is enabled, align Z only:
+    // - Rows: flatten Z per row (keep original X and Y)
     if (align_grid) {
+        // Precompute row averages for Z only
+        std::vector<float> row_avg_z(points.rows, std::numeric_limits<float>::quiet_NaN());
+
+        // Row averages (Z only)
         for (int j = 0; j < points.rows; ++j) {
-            // Calculate average z for this row (excluding invalid points)
-            float z_sum = 0.0f;
-            int valid_count = 0;
+            double z_sum = 0.0; int n = 0;
             for (int i = 0; i < points.cols; ++i) {
-                if (points(j, i)[0] != -1) {  // Check if point is valid
+                if (points(j, i)[0] != -1) { // valid point: x != -1 sentinel
                     z_sum += points(j, i)[2];
-                    valid_count++;
+                    ++n;
                 }
             }
-            
-            if (valid_count > 0) {
-                float avg_z = z_sum / valid_count;
-                // Set all valid points in this row to the average z
-                for (int i = 0; i < points.cols; ++i) {
-                    if (points(j, i)[0] != -1) {
-                        points(j, i)[2] = avg_z;
-                    }
-                }
+            if (n > 0) {
+                row_avg_z[j] = static_cast<float>(z_sum / n);
+            }
+        }
+
+        // Apply alignment
+        for (int j = 0; j < points.rows; ++j) {
+            for (int i = 0; i < points.cols; ++i) {
+                if (points(j, i)[0] == -1) continue;
+                if (std::isfinite(row_avg_z[j])) points(j, i)[2] = row_avg_z[j];
             }
         }
     }
@@ -352,7 +354,7 @@ static void surf_write_obj(QuadSurface *surf, const fs::path &out_fn, bool norma
               << " rows: " << points.rows << std::endl;
     
     if (align_grid) {
-        std::cout << "Grid alignment: enabled (vertices aligned to z-planes by row)\n";
+        std::cout << "Grid alignment: enabled (rows: constant Z only)\n";
     }
 
     // Derive UV scale from meta: surf->scale() is typically micrometers-per-pixel (or similar).
@@ -393,7 +395,7 @@ int main(int argc, char *argv[])
     if (argc == 2 && (std::string(argv[1]) == "-h" || std::string(argv[1]) == "--help")) {
         std::cout << "usage: " << argv[0] << " <tiffxyz> <obj> [--normalize-uv] [--align-grid] [--decimate [iterations]] [--clean]\n"
                   << "  --normalize-uv : Normalize UVs to [0,1] range\n"
-                  << "  --align-grid   : Align vertices to z-planes by row\n"
+                  << "  --align-grid   : Align grid Z only (flatten Z per row)\n"
                   << "  --decimate [n] : Reduce points by ~90% per iteration (default n=1)\n"
                   << "  --clean        : Remove outlier points that lie far from the surface\n";
         return EXIT_SUCCESS;

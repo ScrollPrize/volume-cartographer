@@ -4,8 +4,6 @@
 #include "vc/core/util/VCCollection.hpp"
 #include <QTreeView>
 #include <QStandardItemModel>
-#include <QVBoxLayout>
-#include <QLabel>
 #include <QPushButton>
 #include <QWidget>
 #include <QGroupBox>

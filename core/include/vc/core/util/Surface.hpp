@@ -227,3 +227,8 @@ float pointTo(cv::Vec2f &loc, const cv::Mat_<cv::Vec3f> &points, const cv::Vec3f
 
 void write_overlapping_json(const std::filesystem::path& seg_path, const std::set<std::string>& overlapping_names);
 std::set<std::string> read_overlapping_json(const std::filesystem::path& seg_path);
+
+QuadSurface* surface_diff(QuadSurface* a, QuadSurface* b, float tolerance = 2.0);
+QuadSurface* surface_union(QuadSurface* a, QuadSurface* b, float tolerance = 2.0);
+QuadSurface* surface_intersection(QuadSurface* a, QuadSurface* b, float tolerance = 2.0);
+

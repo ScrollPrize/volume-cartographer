@@ -2,7 +2,6 @@
 
 /** @file */
 
-#include <stdexcept>
 #include <string>
 
 namespace volcart

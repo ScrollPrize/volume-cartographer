@@ -5,13 +5,10 @@
 
 #include <QGraphicsView>
 #include <QMouseEvent>
-#include <QScrollBar>
 #include <QKeyEvent>
 #include <QPainter>
 #include <cmath>
-#include <QPixmap>
 #include <QPainter>
-#include <QCursor>
 
 using namespace ChaoVis;
 

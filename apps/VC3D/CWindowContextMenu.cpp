@@ -7,7 +7,6 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QCoreApplication>
-#include <QDateTime>
 
 #include "vc/core/types/VolumePkg.hpp"
 #include "vc/core/util/Surface.hpp"
@@ -67,8 +66,16 @@ static QString resolveFlatboiScript()
     if (QFileInfo::exists("/src/scripts/flatboi.py"))
         return "/src/scripts/flatboi.py";
 
+    if (QFileInfo::exists("/usr/bin/flatboi.py"))
+        return "/usr/bin/flatboi.py";
+
     // Last resort: relative to binary
     QDir bin(QCoreApplication::applicationDirPath());
+
+    if (QFileInfo::exists(bin.filePath("flatboi.py"))) {
+        return bin.filePath("flatboi.py");
+    }
+
     return QDir(bin.filePath("../scripts")).filePath("flatboi.py");
 }
 // ---------------------------------------------------------------------------

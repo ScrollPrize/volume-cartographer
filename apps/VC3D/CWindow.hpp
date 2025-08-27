@@ -32,6 +32,7 @@ namespace volcart {
 
 // Qt related forward declaration
 class QMdiArea;
+class QDockWidget;
 class OpsList;
 class OpsSettings;
 class SurfaceTreeWidget;
@@ -155,6 +156,9 @@ private slots:
     void onEditMaskPressed();
     void onRefreshSurfaces();
     void onGenerateReviewReport();
+    void onDrawBBoxToggled(bool enabled);
+    void onSurfaceFromSelection();
+    void onSelectionClear();
     void onManualLocationChanged();
     void onZoomIn();
     void onZoomOut();
@@ -179,6 +183,7 @@ private:
     QMenu* fEditMenu;
     QMenu* fViewMenu;
     QMenu* fActionsMenu;
+    QMenu* fSelectionMenu;
     QMenu* fHelpMenu;
     QMenu* fRecentVolpkgMenu{};
 
@@ -192,6 +197,13 @@ private:
     QAction* fShowConsoleOutputAct;
     QAction* fReportingAct;
     QAction* fVoxelizePathsAct;
+    QAction* fDrawBBoxAct;
+    QAction* fSelectionSurfaceFromAct;
+    QAction* fSelectionClearAct;
+
+    // Selection dock
+    QDockWidget* _dockSelection = nullptr;
+    QPushButton* _btnSurfaceFromSelection = nullptr;
 
     QComboBox* volSelect;
     QCheckBox* chkFilterFocusPoints;

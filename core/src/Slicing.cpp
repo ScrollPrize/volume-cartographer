@@ -23,42 +23,11 @@
 #include <shared_mutex>
 
 #include <algorithm>
-#include <random>
 
 using shape = z5::types::ShapeType;
 using namespace xt::placeholders;
 
 
-static std::ostream& operator<< (std::ostream& out, const std::vector<int> &v) {
-    if ( !v.empty() ) {
-        out << '[';
-        for(auto &v : v)
-            out << v << ",";
-        out << "\b]"; // use ANSI backspace character '\b' to overwrite final ", "
-    }
-    return out;
-}
-
-template <size_t N>
-static std::ostream& operator<< (std::ostream& out, const std::array<size_t,N> &v) {
-    if ( !v.empty() ) {
-        out << '[';
-        for(auto &v : v)
-            out << v << ",";
-        out << "\b]"; // use ANSI backspace character '\b' to overwrite final ", "
-    }
-    return out;
-}
-
-static std::ostream& operator<< (std::ostream& out, const xt::svector<size_t> &v) {
-    if ( !v.empty() ) {
-        out << '[';
-        for(auto &v : v)
-            out << v << ",";
-        out << "\b]"; // use ANSI backspace character '\b' to overwrite final ", "
-    }
-    return out;
-}
 template<typename T>
 static xt::xarray<T> *readChunk(const z5::Dataset & ds, z5::types::ShapeType chunkId)
 {

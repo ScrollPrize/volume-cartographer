@@ -5,9 +5,7 @@
 #include <opencv2/core.hpp>
 
 #include "ceres/ceres.h"
-// #include "ceres/cubic_interpolation.h"
 
-// #include "cubic_interpolation_acc.h"
 
 static double  val(const double &v) { return v; }
 template <typename JetT>

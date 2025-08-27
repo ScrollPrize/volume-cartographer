@@ -2,7 +2,6 @@
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>
-#include <QGridLayout>
 #include <QLabel>
 #include <QSpinBox>
 #include <QSlider>
@@ -13,7 +12,6 @@
 #include <QColorDialog>
 #include <QMessageBox>
 #include <QFileDialog>
-#include <QApplication>
 #include <QPainter>
 #include <QPainterPath>
 

@@ -1,7 +1,6 @@
 #include "SegmentRenderThread.hpp"
 #include <QDir>
 #include <QFileInfo>
-#include <QDebug>
 
 SegmentRenderThread::SegmentRenderThread(QObject *parent)
     : QThread(parent)

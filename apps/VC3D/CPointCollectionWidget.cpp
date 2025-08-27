@@ -8,6 +8,9 @@
 #include <QFileDialog>
 #include <QKeyEvent>
 #include <QMessageBox>
+#include <QLabel>
+#include <QVBoxLayout>
+#include <QHBoxLayout>
  
 #include "vc/core/util/VCCollection.hpp"
  
