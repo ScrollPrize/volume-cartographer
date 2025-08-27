@@ -4,11 +4,9 @@
 
 #include <cassert>
 #include <cstddef>
-#include <iostream>
 #include <memory>
 #include <stdexcept>
 
-#include "Exceptions.hpp"
 #include "PointSet.hpp"
 
 namespace volcart

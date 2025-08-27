@@ -1,10 +1,8 @@
 #include "vc/core/types/Volume.hpp"
 
 #include <iomanip>
-#include <sstream>
 
 #include <opencv2/imgcodecs.hpp>
-#include <opencv2/imgproc.hpp>
 
 #include "z5/attributes.hxx"
 #include "z5/dataset.hxx"
@@ -12,9 +10,6 @@
 #include "z5/metadata.hxx"
 #include "z5/handle.hxx"
 #include "z5/types/types.hxx"
-#include "z5/util/util.hxx"
-#include "z5/util/blocking.hxx"
-#include "z5/util/format_data.hxx"
 #include "z5/factory.hxx"
 #include "z5/multiarray/xtensor_access.hxx"
 

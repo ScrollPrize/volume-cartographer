@@ -9,7 +9,6 @@
 #include <opencv2/highgui.hpp>
 #include <opencv2/imgproc.hpp>
 #include <fstream>
-#include <sstream>
 #include <boost/program_options.hpp>
 
 namespace fs = std::filesystem;

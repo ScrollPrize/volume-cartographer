@@ -3,9 +3,6 @@
 #include <QWidget>
 #include <QPlainTextEdit>
 #include <QPushButton>
-#include <QVBoxLayout>
-#include <QHBoxLayout>
-#include <QToolButton>
 #include <QLabel>
 
 namespace ChaoVis {

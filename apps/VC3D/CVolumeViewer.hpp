@@ -3,7 +3,6 @@
 #pragma once
 
 #include <QtWidgets>
-#include <opencv2/core/core.hpp>
 
 #include <set>
 #include <unordered_map>

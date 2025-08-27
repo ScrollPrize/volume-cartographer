@@ -12,8 +12,6 @@
 
 #include "z5/multiarray/xtensor_access.hxx"
 
-#include <random>
-
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>

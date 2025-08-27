@@ -7,15 +7,11 @@
 #include <QPushButton>
 #include <QLabel>
 #include <QProgressBar>
-#include <QFileDialog>
-#include <QLineEdit>
 #include <QHBoxLayout>
 #include <QProcess>
 #include <QPointer>
 #include <opencv2/core.hpp>
-#include <vector>
 #include <memory>
-#include <map>
 #include "PathData.hpp"
 #include "vc/core/util/VCCollection.hpp"
 
