@@ -2,8 +2,11 @@
 
 #include <iosfwd>
 #include <vector>
-#include <xtensor/containers/xarray.hpp>
-#include <xtensor/containers/xstorage.hpp>
+
+#include "vc/core/util/xtensor_include.hpp"
+#include XTENSORINCLUDE(containers, xarray.hpp)
+#include XTENSORINCLUDE(containers, xstorage.hpp)
+
 
 static std::ostream& operator<< (std::ostream& out, const std::vector<int> &v) {
     if ( !v.empty() ) {
