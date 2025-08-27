@@ -69,6 +69,12 @@ static QString resolveFlatboiScript()
 
     // Last resort: relative to binary
     QDir bin(QCoreApplication::applicationDirPath());
+
+
+    if (QFileInfo::exists(bin.filePath("flatboi.py"))) {
+        return bin.filePath("flatboi.py");
+    }
+
     return QDir(bin.filePath("../scripts")).filePath("flatboi.py");
 }
 // ---------------------------------------------------------------------------
