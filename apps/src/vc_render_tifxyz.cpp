@@ -471,8 +471,6 @@ int main(int argc, char *argv[])
         }
     }
 
-    const float tgt_scale_eff = (tgt_scale * ds_scale * scale_seg * affine_scale_iso);
-
     z5::filesystem::handle::Group group(vol_path, z5::FileMode::FileMode::r);
     z5::filesystem::handle::Dataset ds_handle(group, std::to_string(group_idx), json::parse(std::ifstream(vol_path/std::to_string(group_idx)/".zarray")).value<std::string>("dimension_separator","."));
     std::unique_ptr<z5::Dataset> ds = z5::filesystem::openDataset(ds_handle);
@@ -522,7 +520,7 @@ int main(int argc, char *argv[])
     cv::Rect crop = {0,0,tgt_size.width, tgt_size.height};
     
     std::cout << "downsample level " << group_idx << " (ds_scale=" << ds_scale
-              << "), effective render scale " << tgt_scale_eff << std::endl;
+              << ")";
 
     // Handle crop parameters
     int crop_x = parsed["crop-x"].as<int>();
@@ -549,7 +547,7 @@ int main(int argc, char *argv[])
     if ((tgt_size.width >= 10000 || tgt_size.height >= 10000) && num_slices > 1)
         slice_gen = true;
     else {
-        surf->gen(&points, &normals, tgt_size, cv::Vec3f(0,0,0), tgt_scale_eff, {-full_size.width/2+crop.x,-full_size.height/2+crop.y,0});
+        surf->gen(&points, &normals, tgt_size, cv::Vec3f(0,0,0), 1.0f, {-full_size.width/2+crop.x,-full_size.height/2+crop.y,0});
     }
 
     cv::Mat_<uint8_t> img;
@@ -604,7 +602,7 @@ int main(int argc, char *argv[])
                 for(int x=crop.x;x<crop.x+crop.width;x+=1024) {
                     int w = std::min(tgt_size.width+crop.x-x, 1024);
                     // Apply effective scale in chunked generation
-                    surf->gen(&points, &normals, {w,crop.height}, cv::Vec3f(0,0,0), tgt_scale_eff, {-full_size.width/2+x,-full_size.height/2+crop.y,0});
+                    surf->gen(&points, &normals, {w,crop.height}, cv::Vec3f(0,0,0), 1.0f, {-full_size.width/2+x,-full_size.height/2+crop.y,0});
 
                     // Scale the segmentation points if requested
                     points *= scale_seg;
@@ -642,11 +640,10 @@ int main(int argc, char *argv[])
                     applyNormalOrientation(normals, globalFlipDecision);
                     applyNormalOrientation(stepDirs, globalFlipDecision);
 
-                    const float stepScale = ds_scale * scale_seg;
                     cv::Mat_<uint8_t> slice;
                     readInterpolated3D(slice, ds.get(),
-                        points*ds_scale + off*stepDirs*stepScale, &chunk_cache);
-                    debugPrintPointBounds(points*ds_scale + off*stepDirs*stepScale,
+                        points*ds_scale + off*stepDirs*ds_scale, &chunk_cache);
+                    debugPrintPointBounds(points*ds_scale + off*stepDirs*ds_scale,
                                           ds.get(), "chunk/post-affine+ds");
                     slice.copyTo(img(cv::Rect(x-crop.x,0,w,crop.height)));
                 }
@@ -686,9 +683,7 @@ int main(int argc, char *argv[])
                     applyNormalOrientation(stepDirs, globalFlipDecision);
                     // Apply downsample scaling AFTER affine so translation is scaled too
                     basePoints *= ds_scale;
-                    // Add slice offset in dataset units
-                    const float stepScale = ds_scale * scale_seg;
-                    cv::Mat_<cv::Vec3f> offsetPoints = basePoints + off * stepDirs * stepScale;
+                    cv::Mat_<cv::Vec3f> offsetPoints = basePoints + off * stepDirs * ds_scale;
                     readInterpolated3D(img, ds.get(), offsetPoints, &chunk_cache);
                     debugPrintPointBounds(offsetPoints, ds.get(),
                                           "noslice/post-affine+ds");
@@ -714,8 +709,7 @@ int main(int argc, char *argv[])
                     applyNormalOrientation(stepDirs, globalFlipDecision);
                     // Apply downsample scaling AFTER (no affine)
                     basePoints *= ds_scale;
-                    const float stepScale = ds_scale * scale_seg;
-                    cv::Mat_<cv::Vec3f> offsetPoints = basePoints + off * stepDirs * stepScale;
+                    cv::Mat_<cv::Vec3f> offsetPoints = basePoints + off * stepDirs * ds_scale;
                     readInterpolated3D(img, ds.get(), offsetPoints, &chunk_cache);
                 }
             }
