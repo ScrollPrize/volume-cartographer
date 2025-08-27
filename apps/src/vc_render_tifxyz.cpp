@@ -20,10 +20,10 @@ using json = nlohmann::json;
  * @brief Structure to hold affine transform data
  */
 struct AffineTransform {
-    cv::Mat_<float> matrix;  // 4x4 matrix in XYZ format
+    cv::Mat_<double> matrix;  // 4x4 matrix in XYZ format
     
     AffineTransform() {
-        matrix = cv::Mat_<float>::eye(4, 4);
+        matrix = cv::Mat_<double>::eye(4, 4);
     }
 };
 
@@ -47,17 +47,28 @@ AffineTransform loadAffineTransform(const std::string& filename) {
         
         if (j.contains("transformation_matrix")) {
             auto mat = j["transformation_matrix"];
-            if (mat.size() != 3) {
-                throw std::runtime_error("Affine matrix must have 3 rows");
+            if (mat.size() != 3 && mat.size() != 4) {
+                throw std::runtime_error("Affine matrix must have 3 or 4 rows");
             }
-            
-            for (int row = 0; row < 3; row++) {
+
+            for (int row = 0; row < (int)mat.size(); row++) {
                 if (mat[row].size() != 4) {
                     throw std::runtime_error("Each row of affine matrix must have 4 elements");
                 }
                 for (int col = 0; col < 4; col++) {
-                    transform.matrix.at<float>(row, col) = mat[row][col].get<float>();
+                    transform.matrix.at<double>(row, col) = mat[row][col].get<double>();
                 }
+            }
+            // If 3x4 provided, bottom row remains [0 0 0 1] from identity ctor.
+            if (mat.size() == 4) {
+                // Optional: sanity-check bottom row is [0 0 0 1] within tolerance
+                const double a30 = transform.matrix(3,0);
+                const double a31 = transform.matrix(3,1);
+                const double a32 = transform.matrix(3,2);
+                const double a33 = transform.matrix(3,3);
+                if (std::abs(a30) > 1e-12 || std::abs(a31) > 1e-12 ||
+                    std::abs(a32) > 1e-12 || std::abs(a33 - 1.0) > 1e-12)
+                    throw std::runtime_error("Bottom affine row must be [0,0,0,1]");
             }
         }
     } catch (json::parse_error&) {
@@ -68,6 +79,46 @@ AffineTransform loadAffineTransform(const std::string& filename) {
 }
 
 /**
+ * @brief Print bounds and in-bounds coverage of a point field against a dataset
+ */
+static void debugPrintPointBounds(const cv::Mat_<cv::Vec3f>& pts,
+                                  const z5::Dataset* ds,
+                                  const std::string& tag)
+{
+    if (pts.empty()) return;
+    double minx=std::numeric_limits<double>::infinity(),
+           miny=std::numeric_limits<double>::infinity(),
+           minz=std::numeric_limits<double>::infinity();
+    double maxx=-std::numeric_limits<double>::infinity(),
+           maxy=-std::numeric_limits<double>::infinity(),
+           maxz=-std::numeric_limits<double>::infinity();
+    size_t total=0, inb=0;
+    const auto shape = ds->shape(); // [Z, Y, X]
+    const double Xmax = static_cast<double>(shape[2]-1);
+    const double Ymax = static_cast<double>(shape[1]-1);
+    const double Zmax = static_cast<double>(shape[0]-1);
+    for (int r=0; r<pts.rows; ++r) {
+        for (int c=0; c<pts.cols; ++c) {
+            const cv::Vec3f& p = pts(r,c);
+            if (std::isnan(p[0]) || std::isnan(p[1]) || std::isnan(p[2])) continue;
+            minx = std::min(minx, (double)p[0]); maxx = std::max(maxx, (double)p[0]);
+            miny = std::min(miny, (double)p[1]); maxy = std::max(maxy, (double)p[1]);
+            minz = std::min(minz, (double)p[2]); maxz = std::max(maxz, (double)p[2]);
+            ++total;
+            if (p[0] >= 0.0 && p[0] <= Xmax &&
+                p[1] >= 0.0 && p[1] <= Ymax &&
+                p[2] >= 0.0 && p[2] <= Zmax) ++inb;
+        }
+    }
+    const double pct = total ? (100.0 * (double)inb / (double)total) : 0.0;
+    std::cout << std::fixed << std::setprecision(2)
+              << "[bounds:" << tag << "] X[" << minx << "," << maxx << "]  "
+              << "Y[" << miny << "," << maxy << "]  Z[" << minz << "," << maxz << "]  "
+              << "in-bounds " << pct << "% of " << total << " pts\n";
+}
+
+
+/**
  * @brief Apply affine transform to a single point
  * 
  * @param point Point to transform
@@ -75,16 +126,19 @@ AffineTransform loadAffineTransform(const std::string& filename) {
  * @return cv::Vec3f Transformed point
  */
 cv::Vec3f applyAffineTransformToPoint(const cv::Vec3f& point, const AffineTransform& transform) {
-    float ptx = point[0];
-    float pty = point[1];
-    float ptz = point[2];
+    const double ptx = static_cast<double>(point[0]);
+    const double pty = static_cast<double>(point[1]);
+    const double ptz = static_cast<double>(point[2]);
     
     // Apply affine transform (note: matrix is in XYZ format)
-    float ptx_new = transform.matrix(0, 0) * ptx + transform.matrix(0, 1) * pty + transform.matrix(0, 2) * ptz + transform.matrix(0, 3);
-    float pty_new = transform.matrix(1, 0) * ptx + transform.matrix(1, 1) * pty + transform.matrix(1, 2) * ptz + transform.matrix(1, 3);
-    float ptz_new = transform.matrix(2, 0) * ptx + transform.matrix(2, 1) * pty + transform.matrix(2, 2) * ptz + transform.matrix(2, 3);
+    const double ptx_new = transform.matrix(0, 0) * ptx + transform.matrix(0, 1) * pty + transform.matrix(0, 2) * ptz + transform.matrix(0, 3);
+    const double pty_new = transform.matrix(1, 0) * ptx + transform.matrix(1, 1) * pty + transform.matrix(1, 2) * ptz + transform.matrix(1, 3);
+    const double ptz_new = transform.matrix(2, 0) * ptx + transform.matrix(2, 1) * pty + transform.matrix(2, 2) * ptz + transform.matrix(2, 3);
     
-    return cv::Vec3f(ptx_new, pty_new, ptz_new);
+    return cv::Vec3f(
+        static_cast<float>(ptx_new),
+        static_cast<float>(pty_new),
+        static_cast<float>(ptz_new));
 }
 
 /**
@@ -97,6 +151,15 @@ cv::Vec3f applyAffineTransformToPoint(const cv::Vec3f& point, const AffineTransf
 void applyAffineTransform(cv::Mat_<cv::Vec3f>& points, 
                          cv::Mat_<cv::Vec3f>& normals, 
                          const AffineTransform& transform) {
+    // Precompute linear part A and its inverse-transpose for proper normal transform
+    const cv::Matx33d A(
+        transform.matrix(0,0), transform.matrix(0,1), transform.matrix(0,2),
+        transform.matrix(1,0), transform.matrix(1,1), transform.matrix(1,2),
+        transform.matrix(2,0), transform.matrix(2,1), transform.matrix(2,2)
+    );
+    // Use double precision for inversion; normals will be renormalized afterwards.
+    const cv::Matx33d invAT = A.inv().t();
+
     // Apply transform to each point
     for (int y = 0; y < points.rows; y++) {
         for (int x = 0; x < points.cols; x++) {
@@ -111,31 +174,26 @@ void applyAffineTransform(cv::Mat_<cv::Vec3f>& points,
         }
     }
     
-    // Apply transform to normals (rotation only, no translation)
+    // Apply correct normal transform: n' ∝ (A^{-1})^T * n (then normalize)
     for (int y = 0; y < normals.rows; y++) {
         for (int x = 0; x < normals.cols; x++) {
             cv::Vec3f& n = normals(y, x);
-            
-            // Skip NaN normals
             if (std::isnan(n[0]) || std::isnan(n[1]) || std::isnan(n[2])) {
                 continue;
             }
-            
-            float nx = n[0];
-            float ny = n[1];
-            float nz = n[2];
-            
-            // Apply rotation part of affine transform
-            float nx_new = transform.matrix(0, 0) * nx + transform.matrix(0, 1) * ny + transform.matrix(0, 2) * nz;
-            float ny_new = transform.matrix(1, 0) * nx + transform.matrix(1, 1) * ny + transform.matrix(1, 2) * nz;
-            float nz_new = transform.matrix(2, 0) * nx + transform.matrix(2, 1) * ny + transform.matrix(2, 2) * nz;
-            
-            // Normalize the transformed normal
-            float norm = std::sqrt(nx_new * nx_new + ny_new * ny_new + nz_new * nz_new);
-            if (norm > 0) {
-                n[0] = nx_new / norm;
-                n[1] = ny_new / norm;
-                n[2] = nz_new / norm;
+
+            const double nx_new =
+                invAT(0,0) * static_cast<double>(n[0]) + invAT(0,1) * static_cast<double>(n[1]) + invAT(0,2) * static_cast<double>(n[2]);
+            const double ny_new =
+                invAT(1,0) * static_cast<double>(n[0]) + invAT(1,1) * static_cast<double>(n[1]) + invAT(1,2) * static_cast<double>(n[2]);
+            const double nz_new =
+                invAT(2,0) * static_cast<double>(n[0]) + invAT(2,1) * static_cast<double>(n[1]) + invAT(2,2) * static_cast<double>(n[2]);
+
+            const double norm = std::sqrt(nx_new * nx_new + ny_new * ny_new + nz_new * nz_new);
+            if (norm > 0.0) {
+                n[0] = static_cast<float>(nx_new / norm);
+                n[1] = static_cast<float>(ny_new / norm);
+                n[2] = static_cast<float>(nz_new / norm);
             }
         }
     }
@@ -330,7 +388,9 @@ int main(int argc, char *argv[])
         ("crop-height", po::value<int>()->default_value(0),
             "Crop region height (0 = no crop)")
         ("affine-transform", po::value<std::string>(),
-            "Path to affine transform file (JSON or text format)")
+            "Path to affine transform file (JSON; key 'transformation_matrix' 3x4 or 4x4)")
+        ("invert-affine", po::bool_switch()->default_value(false),
+            "Invert the given affine before applying (useful if JSON is voxel->world)")
         ("scale-segmentation", po::value<float>()->default_value(1.0),
             "Scale segmentation to target scale")
         ("rotate", po::value<double>()->default_value(0.0),
@@ -368,9 +428,14 @@ int main(int argc, char *argv[])
     float tgt_scale = parsed["scale"].as<float>();
     int group_idx = parsed["group-idx"].as<int>();
     int num_slices = parsed["num-slices"].as<int>();
+    // Downsample factor for this OME-Zarr pyramid level: g=0 -> 1, g=1 -> 0.5, ...
+    const float ds_scale = std::ldexp(1.0f, -group_idx);  // 2^(-group_idx)
+    // Effective render scale for UV sampling: shrink sampling density with ds level
+    const float tgt_scale_eff = tgt_scale * ds_scale;
     float scale_seg = parsed["scale-segmentation"].as<float>();
     // Transformation parameters
     double rotate_angle = parsed["rotate"].as<double>();
+    const bool invert_affine = parsed["invert-affine"].as<bool>();
     int flip_axis = parsed["flip"].as<int>();
     
     // Load affine transform if provided
@@ -383,6 +448,16 @@ int main(int argc, char *argv[])
             affineTransform = loadAffineTransform(affineFile);
             hasAffine = true;
             std::cout << "Loaded affine transform from: " << affineFile << std::endl;
+            if (invert_affine) {
+                // Invert full 4x4 (double precision)
+                cv::Mat inv = cv::Mat(affineTransform.matrix).inv();
+                if (inv.empty()) {
+                    std::cerr << "Error: affine matrix is non-invertible.\n";
+                    return EXIT_FAILURE;
+                }
+                inv.copyTo(affineTransform.matrix);
+                std::cout << "Note: Inverting affine as requested (--invert-affine).\n";
+            }
         } catch (const std::exception& e) {
             std::cerr << "Error loading affine transform: " << e.what() << std::endl;
             return EXIT_FAILURE;
@@ -425,12 +500,21 @@ int main(int argc, char *argv[])
                 (*raw_points)(j,i) = {NAN,NAN,NAN};
     
     cv::Size full_size = raw_points->size();
-    full_size.width *= tgt_scale/surf->_scale[0];
-    full_size.height *= tgt_scale/surf->_scale[1];
+    // Auto-scale the canvas by the pyramid level, so -g N shrinks by 2^N.
+    // Use rounding to avoid truncation bias.
+    {
+        const double sx = (static_cast<double>(tgt_scale) / surf->_scale[0]) * ds_scale;
+        const double sy = (static_cast<double>(tgt_scale) / surf->_scale[1]) * ds_scale;
+        full_size.width  = static_cast<int>(std::lround(full_size.width  * sx));
+        full_size.height = static_cast<int>(std::lround(full_size.height * sy));
+    }
     
     cv::Size tgt_size = full_size;
     cv::Rect crop = {0,0,tgt_size.width, tgt_size.height};
     
+    std::cout << "downsample level " << group_idx << " (ds_scale=" << ds_scale
+              << "), effective render scale " << tgt_scale_eff << std::endl;
+
     // Handle crop parameters
     int crop_x = parsed["crop-x"].as<int>();
     int crop_y = parsed["crop-y"].as<int>();
@@ -456,27 +540,11 @@ int main(int argc, char *argv[])
     if (tgt_size.width >= 10000 && num_slices > 1)
         slice_gen = true;
     else {
-        surf->gen(&points, &normals, tgt_size, cv::Vec3f(0,0,0), tgt_scale, {-full_size.width/2+crop.x,-full_size.height/2+crop.y,0});
-
-        // Calculate the actual mesh centroid
-        meshCentroid = calculateMeshCentroid(points);
-
-        globalFlipDecision = shouldFlipNormals(points, normals, meshCentroid);
-        orientationDetermined = true;
-        if (globalFlipDecision) {
-            std::cout << "Orienting normals to point consistently (flipped)" << std::endl;
-        } else {
-            std::cout << "Orienting normals to point consistently (not flipped)" << std::endl;
-        }
-        applyNormalOrientation(normals, globalFlipDecision);
+        // Use effective scale so UV sampling spans the same world area at lower canvas res
+        surf->gen(&points, &normals, tgt_size, cv::Vec3f(0,0,0), tgt_scale_eff, {-full_size.width/2+crop.x,-full_size.height/2+crop.y,0});
     }
 
     cv::Mat_<uint8_t> img;
-
-    float ds_scale = pow(2,-group_idx);
-    if (group_idx && !slice_gen) {
-        points *= ds_scale;
-    }
 
     if (num_slices == 1) {
         // Scale the segmentation points if requested
@@ -488,7 +556,23 @@ int main(int argc, char *argv[])
             applyAffineTransform(points, normals, affineTransform);
         }
 
+        // Apply downsample scaling AFTER affine so translation is scaled too
+        points *= ds_scale;
+
+        // Decide global orientation after full transform (once)
+        if (!orientationDetermined) {
+            meshCentroid = calculateMeshCentroid(points);
+            globalFlipDecision = shouldFlipNormals(points, normals, meshCentroid);
+            orientationDetermined = true;
+            std::cout << "Orienting normals to point consistently ("
+                      << (globalFlipDecision ? "flipped" : "not flipped") << ")" << std::endl;
+        }
+        applyNormalOrientation(normals, globalFlipDecision);
+
         readInterpolated3D(img, ds.get(), points, &chunk_cache);
+
+        // Debug: where did we sample?
+        debugPrintPointBounds(points, ds.get(), "single-slice/post-affine+ds");
 
         // Apply transformations
         if (std::abs(rotate_angle) > 1e-6) {
@@ -503,7 +587,7 @@ int main(int argc, char *argv[])
     else {
         char buf[1024];
         for(int i=0;i<num_slices;i++) {
-            float off = i-num_slices/2;
+            float off = i - 0.5f * (num_slices - 1);
             if (slice_gen) {
                 img.create(tgt_size);
 
@@ -511,8 +595,9 @@ int main(int argc, char *argv[])
                 // or a representative sample to ensure consistency
                 for(int x=crop.x;x<crop.x+crop.width;x+=1024) {
                     int w = std::min(tgt_size.width+crop.x-x, 1024);
-                    surf->gen(&points, &normals, {w,crop.height}, cv::Vec3f(0,0,0), tgt_scale, {-full_size.width/2+x,-full_size.height/2+crop.y,0});
-                    
+                    // Apply effective scale in chunked generation
+                    surf->gen(&points, &normals, {w,crop.height}, cv::Vec3f(0,0,0), tgt_scale_eff, {-full_size.width/2+x,-full_size.height/2+crop.y,0});
+
                     // Scale the segmentation points if requested
                     points *= scale_seg;
 
@@ -521,6 +606,17 @@ int main(int argc, char *argv[])
                         std::cout << "Applying affine transform to points and normals for slice " << i << std::endl;
                         applyAffineTransform(points, normals, affineTransform);
                     }
+                    // Build forward step vectors: use the already-correct transformed normals
+                    // (n' ∝ inv(A)^T * n, normalized inside applyAffineTransform).
+                    cv::Mat_<cv::Vec3f> stepDirs = normals.clone();
+                    // Ensure unit length even when hasAffine == false.
+                    for (int yy = 0; yy < stepDirs.rows; ++yy)
+                        for (int xx = 0; xx < stepDirs.cols; ++xx) {
+                            cv::Vec3f &v = stepDirs(yy,xx);
+                            if (std::isnan(v[0]) || std::isnan(v[1]) || std::isnan(v[2])) continue;
+                            float L = std::sqrt(v[0]*v[0] + v[1]*v[1] + v[2]*v[2]);
+                            if (L > 0) v /= L;
+                        }
                     // Determine orientation from first chunk if not yet determined
                     if (!orientationDetermined) {
                         meshCentroid = calculateMeshCentroid(points);
@@ -536,24 +632,84 @@ int main(int argc, char *argv[])
 
                     // Apply the consistent orientation decision to all chunks
                     applyNormalOrientation(normals, globalFlipDecision);
+                    applyNormalOrientation(stepDirs, globalFlipDecision);
 
+                    const float stepScale = ds_scale * scale_seg;
                     cv::Mat_<uint8_t> slice;
-                    readInterpolated3D(slice, ds.get(), points*ds_scale+off*normals*ds_scale, &chunk_cache);
+                    readInterpolated3D(slice, ds.get(),
+                        points*ds_scale + off*stepDirs*stepScale, &chunk_cache);
+                    debugPrintPointBounds(points*ds_scale + off*stepDirs*stepScale,
+                                          ds.get(), "chunk/post-affine+ds");
                     slice.copyTo(img(cv::Rect(x-crop.x,0,w,crop.height)));
                 }
             }
             else {
-                cv::Mat_<cv::Vec3f> offsetPoints = points + off*ds_scale*normals;
-                // Scale the segmentation points if requested
-                offsetPoints *= scale_seg;
+                // Build base coordinates in dataset space: scale_seg -> affine -> ds_scale
+                cv::Mat_<cv::Vec3f> basePoints = points.clone();
 
-                // Apply affine transform if provided (for non-slice_gen case)
+                // Scale segmentation points
+                basePoints *= scale_seg;
+
+                // Apply affine to points and normals
                 if (hasAffine) {
                     std::cout << "Applying affine transform to points and normals for slice " << i << " for non-slice_gen case" << std::endl;
-                    cv::Mat_<cv::Vec3f> offsetNormals = normals.clone();
-                    applyAffineTransform(offsetPoints, offsetNormals, affineTransform);
+                    cv::Mat_<cv::Vec3f> tmpNormals = normals.clone();
+                    applyAffineTransform(basePoints, tmpNormals, affineTransform);
+                    // Decide/apply consistent normal orientation once
+                    if (!orientationDetermined) {
+                        meshCentroid = calculateMeshCentroid(basePoints);
+                        globalFlipDecision = shouldFlipNormals(basePoints, tmpNormals, meshCentroid);
+                        orientationDetermined = true;
+                        std::cout << "Orienting normals to point consistently ("
+                                  << (globalFlipDecision ? "flipped" : "not flipped")
+                                  << ") - determined from first slice" << std::endl;
+                    }
+                    applyNormalOrientation(tmpNormals, globalFlipDecision);
+                    // Compute forward step directions from the corrected normals
+                    cv::Mat_<cv::Vec3f> stepDirs = tmpNormals.clone();
+                    // Ensure unit length and orientation are consistent
+                    for (int yy = 0; yy < stepDirs.rows; ++yy)
+                        for (int xx = 0; xx < stepDirs.cols; ++xx) {
+                            cv::Vec3f &v = stepDirs(yy,xx);
+                            if (std::isnan(v[0]) || std::isnan(v[1]) || std::isnan(v[2])) continue;
+                            float L = std::sqrt(v[0]*v[0] + v[1]*v[1] + v[2]*v[2]);
+                            if (L > 0) v /= L;
+                        }
+                    applyNormalOrientation(stepDirs, globalFlipDecision);
+                    // Apply downsample scaling AFTER affine so translation is scaled too
+                    basePoints *= ds_scale;
+                    // Add slice offset in dataset units
+                    const float stepScale = ds_scale * scale_seg;
+                    cv::Mat_<cv::Vec3f> offsetPoints = basePoints + off * stepDirs * stepScale;
+                    readInterpolated3D(img, ds.get(), offsetPoints, &chunk_cache);
+                    debugPrintPointBounds(offsetPoints, ds.get(),
+                                          "noslice/post-affine+ds");
+                } else {
+                    // No affine: decide/apply consistent normal orientation once here if needed
+                    if (!orientationDetermined) {
+                        meshCentroid = calculateMeshCentroid(basePoints);
+                        globalFlipDecision = shouldFlipNormals(basePoints, normals, meshCentroid);
+                        orientationDetermined = true;
+                        std::cout << "Orienting normals to point consistently ("
+                                  << (globalFlipDecision ? "flipped" : "not flipped")
+                                  << ") - determined without affine" << std::endl;
+                    }
+                    // Forward step = raw normals (normalize + orient)
+                    cv::Mat_<cv::Vec3f> stepDirs = normals.clone();
+                    for (int yy = 0; yy < stepDirs.rows; ++yy)
+                        for (int xx = 0; xx < stepDirs.cols; ++xx) {
+                            cv::Vec3f &v = stepDirs(yy,xx);
+                            if (std::isnan(v[0]) || std::isnan(v[1]) || std::isnan(v[2])) continue;
+                            float L = std::sqrt(v[0]*v[0] + v[1]*v[1] + v[2]*v[2]);
+                            if (L > 0) v /= L;
+                        }
+                    applyNormalOrientation(stepDirs, globalFlipDecision);
+                    // Apply downsample scaling AFTER (no affine)
+                    basePoints *= ds_scale;
+                    const float stepScale = ds_scale * scale_seg;
+                    cv::Mat_<cv::Vec3f> offsetPoints = basePoints + off * stepDirs * stepScale;
+                    readInterpolated3D(img, ds.get(), offsetPoints, &chunk_cache);
                 }
-                readInterpolated3D(img, ds.get(), offsetPoints, &chunk_cache);
             }
             
             // Apply transformations
