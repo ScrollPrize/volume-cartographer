@@ -114,10 +114,11 @@ if (${VC_INSTALL_APPS})
     )
 
     install(
-            PROGRAMS ${CMAKE_SOURCE_DIR}/scripts/vc_sync.py
+            PROGRAMS ${CMAKE_SOURCE_DIR}/scripts/vc_sync.py ${CMAKE_SOURCE_DIR}/scripts/flatboi.py
             DESTINATION ${CMAKE_INSTALL_BINDIR}
             COMPONENT Programs
     )
+
 
     qt_generate_deploy_app_script(
         TARGET ${target}
