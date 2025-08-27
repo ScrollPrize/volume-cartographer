@@ -423,11 +423,6 @@ int main(int argc, char *argv[])
     // Downsample factor for this OME-Zarr pyramid level: g=0 -> 1, g=1 -> 0.5, ...
     const float ds_scale = std::ldexp(1.0f, -group_idx);  // 2^(-group_idx)
     float scale_seg = parsed["scale-segmentation"].as<float>();
-    // Effective render scale for UV sampling:
-    // If the seg mesh is in volume A (downscaled /2 vox) and we later scale coordinates by 'scale_seg'
-    // (to get to A full res), we must counterbalance here so pixel density stays constant.
-    const float inv_scale_seg_sq = 1.0f / (scale_seg * scale_seg * affine_scale_iso * affine_scale_iso);
-    const float tgt_scale_eff = (tgt_scale * ds_scale) * inv_scale_seg_sq;
     // Transformation parameters
     double rotate_angle = parsed["rotate"].as<double>();
     const bool invert_affine = parsed["invert-affine"].as<bool>();
@@ -475,6 +470,12 @@ int main(int argc, char *argv[])
             return EXIT_FAILURE;
         }
     }
+
+    // Effective render scale for UV sampling:
+    // If the seg mesh is in volume A (downscaled /2 vox) and we later scale coordinates by 'scale_seg'
+    // (to get to A full res), we must counterbalance here so pixel density stays constant.
+    const float inv_scale_seg_sq = 1.0f / (scale_seg * scale_seg * affine_scale_iso * affine_scale_iso);
+    const float tgt_scale_eff = (tgt_scale * ds_scale) * inv_scale_seg_sq;
 
     z5::filesystem::handle::Group group(vol_path, z5::FileMode::FileMode::r);
     z5::filesystem::handle::Dataset ds_handle(group, std::to_string(group_idx), json::parse(std::ifstream(vol_path/std::to_string(group_idx)/".zarray")).value<std::string>("dimension_separator","."));
