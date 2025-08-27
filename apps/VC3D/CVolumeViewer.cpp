@@ -913,18 +913,7 @@ void CVolumeViewer::renderVisible(bool force)
     fBaseImageItem->setOffset(curr_img_area.topLeft());
 }
 
-struct vec3f_hash {
-    size_t operator()(cv::Vec3f p) const
-    {
-        size_t hash1 = std::hash<float>{}(p[0]);
-        size_t hash2 = std::hash<float>{}(p[1]);
-        size_t hash3 = std::hash<float>{}(p[2]);
-        
-        //magic numbers from boost. should be good enough
-        size_t hash = hash1  ^ (hash2 + 0x9e3779b9 + (hash1 << 6) + (hash1 >> 2));
-        return hash  ^ (hash3 + 0x9e3779b9 + (hash << 6) + (hash >> 2));
-    }
-};
+
 
 void CVolumeViewer::renderIntersections()
 {

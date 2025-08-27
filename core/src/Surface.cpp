@@ -4,8 +4,6 @@
 #include "vc/core/util/Slicing.hpp"
 #include "vc/core/types/ChunkedTensor.hpp"
 
-#include "SurfaceHelpers.hpp"
-
 #include <opencv2/imgproc.hpp>
 #include <opencv2/calib3d.hpp>
 //TODO remove

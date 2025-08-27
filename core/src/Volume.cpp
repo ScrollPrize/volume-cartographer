@@ -123,7 +123,6 @@ void Volume::setMin(double m) { metadata_.set("min", m); }
 void Volume::setMax(double m) { metadata_.set("max", m); }
 
 
-
 z5::Dataset *Volume::zarrDataset(int level)
 {
     if (level >= zarrDs_.size())

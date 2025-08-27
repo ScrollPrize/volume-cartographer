@@ -4,29 +4,14 @@
 #include XTENSORINCLUDE(containers, xarray.hpp)
 #include <opencv2/core.hpp>
 
+#include <vc/core/util/HashFunctions.hpp>
+
 #include <shared_mutex>
 
 namespace z5
 {
     class Dataset;
 }
-
-struct vec4i_hash {
-    static inline size_t operator()(cv::Vec4i p)
-    {
-        size_t hash1 = std::hash<int>{}(p[0]);
-        size_t hash2 = std::hash<int>{}(p[1]);
-        size_t hash3 = std::hash<int>{}(p[2]);
-        size_t hash4 = std::hash<int>{}(p[3]);
-
-        //magic numbers from boost. should be good enough
-        size_t hash = hash1  ^ (hash2 + 0x9e3779b9 + (hash1 << 6) + (hash1 >> 2));
-        hash =  hash  ^ (hash3 + 0x9e3779b9 + (hash << 6) + (hash >> 2));
-        hash =  hash  ^ (hash4 + 0x9e3779b9 + (hash << 6) + (hash >> 2));
-
-        return hash;
-    }
-};
 
 //TODO generation overrun
 //TODO groupkey overrun

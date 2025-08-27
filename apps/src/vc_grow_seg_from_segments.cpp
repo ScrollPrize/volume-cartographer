@@ -1,10 +1,7 @@
 #include <nlohmann/json.hpp>
 
 #include "vc/core/util/xtensor_include.hpp"
-#include XTENSORINCLUDE(containers, xarray.hpp)
-#include XTENSORINCLUDE(views, xaxis_slice_iterator.hpp)
 #include XTENSORINCLUDE(io, xio.hpp)
-#include XTENSORINCLUDE(generators, xbuilder.hpp)
 #include XTENSORINCLUDE(views, xview.hpp)
 
 #include "z5/factory.hxx"
@@ -20,8 +17,8 @@
 
 #include <filesystem>
 
-#include "../../core/src/SurfaceHelpers.hpp"
 #include "vc/core/types/ChunkedTensor.hpp"
+#include "vc/core/util/DateTime.hpp"
 #include "vc/core/util/StreamOperators.hpp"
 
 
@@ -33,31 +30,6 @@ using json = nlohmann::json;
 
 
 
-class MeasureLife
-{
-public:
-    MeasureLife(std::string msg)
-    {
-        std::cout << msg << std::flush;
-        start = std::chrono::high_resolution_clock::now();
-    }
-    ~MeasureLife()
-    {
-        auto end = std::chrono::high_resolution_clock::now();
-        std::cout << " took " << std::chrono::duration<double>(end-start).count() << " s" << std::endl;
-    }
-private:
-    std::chrono::time_point<std::chrono::high_resolution_clock> start;
-};
-
-
-
-template <typename T, typename I>
-float get_val(I &interp, cv::Vec3d l) {
-    T v;
-    interp.Evaluate(l[2], l[1], l[0], &v);
-    return v;
-}
 
 int main(int argc, char *argv[])
 {
