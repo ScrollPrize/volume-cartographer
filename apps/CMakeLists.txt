@@ -129,6 +129,15 @@ target_link_libraries(vc_render_bench
     VC::slicing
 )
 
+add_executable(vc_surface_diff src/vc_surface_diff.cpp)
+target_link_libraries(vc_surface_diff
+        z5
+        opencv_core
+        VC::slicing
+        VC::surface
+        Boost::program_options
+)
+
 ## experiements for flattening ##
 # add_executable(vc_zarralphacomp src/ZarrAlphaComp.cpp)
 # target_link_libraries(vc_zarralphacomp
