@@ -21,6 +21,8 @@
 #include "vc/core/util/Slicing.hpp"
 #include "vc/core/util/Surface.hpp"
 #include "vc/core/io/PointSetIO.hpp"
+#include "vc/core/util/StreamOperators.hpp"
+
 
 #include <unordered_map>
 #include <filesystem>
@@ -31,15 +33,7 @@ namespace fs = std::filesystem;
 
 using json = nlohmann::json;
 
-std::ostream& operator<< (std::ostream& out, const xt::svector<size_t> &v) {
-    if ( !v.empty() ) {
-        out << '[';
-        for(auto &v : v)
-            out << v << ",";
-        out << "\b]"; // use ANSI backspace character '\b' to overwrite final ", "
-    }
-    return out;
-}
+
 
 cv::Vec3f parse_vec3f(std::string line, std::string type = "")
 {

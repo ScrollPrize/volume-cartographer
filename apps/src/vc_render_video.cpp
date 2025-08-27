@@ -27,6 +27,7 @@
 #include <omp.h>
 
 #include "vc/core/types/ChunkedTensor.hpp"
+#include "vc/core/util/StreamOperators.hpp"
 
 using shape = z5::types::ShapeType;
 using namespace xt::placeholders;
@@ -34,15 +35,7 @@ namespace fs = std::filesystem;
 
 using json = nlohmann::json;
 
-std::ostream& operator<< (std::ostream& out, const xt::svector<size_t> &v) {
-    if ( !v.empty() ) {
-        out << '[';
-        for(auto &v : v)
-            out << v << ",";
-        out << "\b]"; // use ANSI backspace character '\b' to overwrite final ", "
-    }
-    return out;
-}
+
 
 class MeasureLife
 {

@@ -1,6 +1,7 @@
 #include "vc/core/util/Slicing.hpp"
 #include "vc/core/util/Surface.hpp"
 #include "vc/core/types/ChunkedTensor.hpp"
+#include "vc/core/util/StreamOperators.hpp"
 
 #include "z5/factory.hxx"
 #include <nlohmann/json.hpp>
@@ -346,15 +347,7 @@ void flipImage(cv::Mat& img, int flipType)
     }
 }
 
-std::ostream& operator<< (std::ostream& out, const xt::svector<size_t> &v) {
-    if ( !v.empty() ) {
-        out << '[';
-        for(auto &v : v)
-            out << v << ",";
-        out << "\b]";
-    }
-    return out;
-}
+
 
 
 int main(int argc, char *argv[])
