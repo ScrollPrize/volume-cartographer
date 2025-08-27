@@ -471,7 +471,7 @@ int main(int argc, char *argv[])
         }
     }
 
-    const float tgt_scale_eff = (tgt_scale * ds_scale);
+    const float tgt_scale_eff = (tgt_scale * ds_scale * scale_seg * affine_scale_iso);
 
     z5::filesystem::handle::Group group(vol_path, z5::FileMode::FileMode::r);
     z5::filesystem::handle::Dataset ds_handle(group, std::to_string(group_idx), json::parse(std::ifstream(vol_path/std::to_string(group_idx)/".zarray")).value<std::string>("dimension_separator","."));
@@ -549,8 +549,6 @@ int main(int argc, char *argv[])
     if ((tgt_size.width >= 10000 || tgt_size.height >= 10000) && num_slices > 1)
         slice_gen = true;
     else {
-        // Use effective scale so UV sampling spans the same world area even though
-        // canvas is different by scale_seg (FOV stays constant).
         surf->gen(&points, &normals, tgt_size, cv::Vec3f(0,0,0), tgt_scale_eff, {-full_size.width/2+crop.x,-full_size.height/2+crop.y,0});
     }
 
