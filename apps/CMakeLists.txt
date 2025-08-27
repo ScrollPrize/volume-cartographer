@@ -116,8 +116,8 @@ target_link_libraries(vc_calc_surface_metrics
     Boost::program_options
 )
 
-add_executable(vc_tiffxyz_gengt src/vc_tiffxyz_gengt.cpp)
-target_link_libraries(vc_tiffxyz_gengt
+add_executable(vc_tifxyz_gengt src/vc_tifxyz_gengt.cpp)
+target_link_libraries(vc_tifxyz_gengt
     VC::metrics
     VC::surface
     Boost::program_options
@@ -127,6 +127,15 @@ add_executable(vc_render_bench src/ZarrExtract.cpp)
 target_link_libraries(vc_render_bench
     VC::surface
     VC::slicing
+)
+
+add_executable(vc_surface_diff src/vc_surface_diff.cpp)
+target_link_libraries(vc_surface_diff
+        z5
+        opencv_core
+        VC::slicing
+        VC::surface
+        Boost::program_options
 )
 
 ## experiements for flattening ##
@@ -151,6 +160,7 @@ install(
         vc_tifxyz2obj
         vc_obj2tifxyz
         vc_tifxyz_winding
+        vc_tifxyz_gengt
         vc_fill_quadmesh
         vc_calc_surface_metrics
         ${extra_apps}

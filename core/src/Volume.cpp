@@ -1,10 +1,8 @@
 #include "vc/core/types/Volume.hpp"
 
 #include <iomanip>
-#include <sstream>
 
 #include <opencv2/imgcodecs.hpp>
-#include <opencv2/imgproc.hpp>
 
 #include "z5/attributes.hxx"
 #include "z5/dataset.hxx"
@@ -12,9 +10,6 @@
 #include "z5/metadata.hxx"
 #include "z5/handle.hxx"
 #include "z5/types/types.hxx"
-#include "z5/util/util.hxx"
-#include "z5/util/blocking.hxx"
-#include "z5/util/format_data.hxx"
 #include "z5/factory.hxx"
 #include "z5/multiarray/xtensor_access.hxx"
 
@@ -35,20 +30,17 @@ Volume::Volume(fs::path path) : DiskBasedObjectBaseClass(std::move(path))
     width_ = metadata_.get<int>("width");
     height_ = metadata_.get<int>("height");
     slices_ = metadata_.get<int>("slices");
-    numSliceCharacters_ = std::to_string(slices_).size();
 
     std::vector<std::mutex> init_mutexes(slices_);
 
-    slice_mutexes_.swap(init_mutexes);
-    
+
     zarrOpen();
 }
 
 // Setup a Volume from a folder of slices
 Volume::Volume(fs::path path, std::string uuid, std::string name)
     : DiskBasedObjectBaseClass(
-          std::move(path), std::move(uuid), std::move(name)),
-          slice_mutexes_(slices_)
+          std::move(path), std::move(uuid), std::move(name))
 {
     metadata_.set("type", "vol");
     metadata_.set("width", width_);
@@ -123,7 +115,6 @@ void Volume::setSliceHeight(int h)
 void Volume::setNumberOfSlices(std::size_t numSlices)
 {
     slices_ = numSlices;
-    numSliceCharacters_ = std::to_string(numSlices).size();
     metadata_.set("slices", numSlices);
 }
 
@@ -131,39 +122,6 @@ void Volume::setVoxelSize(double s) { metadata_.set("voxelsize", s); }
 void Volume::setMin(double m) { metadata_.set("min", m); }
 void Volume::setMax(double m) { metadata_.set("max", m); }
 
-auto Volume::bounds() const -> Volume::Bounds
-{
-    return {
-        {0, 0, 0},
-        {static_cast<double>(width_), static_cast<double>(height_),
-         static_cast<double>(slices_)}};
-}
-
-auto Volume::isInBounds(double x, double y, double z) const -> bool
-{
-    return x >= 0 && x < width_ && y >= 0 && y < height_ && z >= 0 &&
-           z < slices_;
-}
-
-auto Volume::isInBounds(const cv::Vec3d& v) const -> bool
-{
-    return isInBounds(v(0), v(1), v(2));
-}
-
-void throw_run_path(const fs::path &path, const std::string msg)
-{
-    throw std::runtime_error(msg + " for " + path.string());
-}
-
-std::ostream& operator<< (std::ostream& out, const xt::xarray<uint8_t>::shape_type &v) {
-    if ( !v.empty() ) {
-        out << '[';
-        for(auto &v : v)
-            out << v << ",";
-        out << "\b\b]"; // use two ANSI backspace characters '\b' to overwrite final ", "
-    }
-    return out;
-}
 
 z5::Dataset *Volume::zarrDataset(int level)
 {

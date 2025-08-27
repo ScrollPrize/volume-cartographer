@@ -3,6 +3,8 @@
 #include <QObject>
 #include <opencv2/core.hpp>
 
+#include <vc/core/util/HashFunctions.hpp>
+
 class Surface;
 
 namespace ChaoVis
@@ -20,16 +22,7 @@ struct Intersection
     std::vector<std::vector<cv::Vec3f>> lines;
 };
 
-struct string_pair_hash {
-    size_t operator()(const std::pair<std::string,std::string>& p) const
-    {
-        size_t hash1 = std::hash<std::string>{}(p.first);
-        size_t hash2 = std::hash<std::string>{}(p.second);
-        
-        //magic numbers from boost. should be good enough
-        return hash1  ^ (hash2 + 0x9e3779b9 + (hash1 << 6) + (hash1 >> 2));
-    }
-};
+
 
 // This class shall handle all the (GUI) interactions for its stored objects but does not itself provide the GUI
 // Slices: all the defined slices of all kinds

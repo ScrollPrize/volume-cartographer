@@ -6,10 +6,8 @@
 #include <iostream>
 
 #include <nlohmann/json.hpp>
-#include <opencv2/core.hpp>
 
 #include <filesystem>
-#include "vc/core/util/Json.hpp"
 
 namespace volcart
 {

@@ -4,8 +4,6 @@
 #include "vc/core/util/Slicing.hpp"
 #include "vc/core/types/ChunkedTensor.hpp"
 
-#include "SurfaceHelpers.hpp"
-
 #include <opencv2/imgproc.hpp>
 #include <opencv2/calib3d.hpp>
 //TODO remove
@@ -42,12 +40,6 @@ std::set<std::string> read_overlapping_json(const fs::path& seg_path) {
 }
 
 namespace fs = std::filesystem;
-
-cv::Vec2f offsetPoint2d(const cv::Vec3f &ptr, const cv::Vec3f &offset)
-{
-    cv::Vec3f p = ptr + offset;
-    return {p[0], p[1]};
-}
 
 //NOTE we have 3 coordiante systems. Nominal (voxel volume) coordinates, internal relative (ptr) coords (where _center is at 0/0) and internal absolute (_points) coordinates where the upper left corner is at 0/0.
 static cv::Vec3f internal_loc(const cv::Vec3f &nominal, const cv::Vec3f &internal, const cv::Vec2f &scale)
@@ -99,7 +91,7 @@ float PlaneSurface::pointDist(cv::Vec3f wp)
 }
 
 //given origin and normal, return the normalized vector v which describes a point : origin + v which lies in the plane and maximizes v.x at the cost of v.y,v.z
-cv::Vec3f vx_from_orig_norm(const cv::Vec3f &o, const cv::Vec3f &n)
+static cv::Vec3f vx_from_orig_norm(const cv::Vec3f &o, const cv::Vec3f &n)
 {
     //impossible
     if (n[1] == 0 && n[2] == 0)
@@ -134,7 +126,7 @@ cv::Vec3f vx_from_orig_norm(const cv::Vec3f &o, const cv::Vec3f &n)
     return v;
 }
 
-cv::Vec3f vy_from_orig_norm(const cv::Vec3f &o, const cv::Vec3f &n)
+static cv::Vec3f vy_from_orig_norm(const cv::Vec3f &o, const cv::Vec3f &n)
 {
     cv::Vec3f v = vx_from_orig_norm({o[1],o[0],o[2]}, {n[1],n[0],n[2]});
     return {v[1],v[0],v[2]};
@@ -251,7 +243,7 @@ cv::Vec3f PlaneSurface::normal(const cv::Vec3f &ptr, const cv::Vec3f &offset)
     return _normal;
 }
 
-QuadSurface::QuadSurface(const cv::Mat_<cv::Vec3f> &points, const cv::Vec2f &scale) : 
+QuadSurface::QuadSurface(const cv::Mat_<cv::Vec3f> &points, const cv::Vec2f &scale) :
     QuadSurface(new cv::Mat_<cv::Vec3f>(points.clone()), scale)
 {
 }
@@ -275,10 +267,10 @@ QuadSurface::~QuadSurface()
 QuadSurface *smooth_vc_segmentation(QuadSurface *src)
 {
     cv::Mat_<cv::Vec3f> points = smooth_vc_segmentation(src->rawPoints());
-    
+
     double sx, sy;
     vc_segmentation_scales(points, sx, sy);
-    
+
     return new QuadSurface(points, {sx,sy});
 }
 
@@ -306,7 +298,7 @@ cv::Vec3f QuadSurface::coord(const cv::Vec3f &ptr, const cv::Vec3f &offset)
     cv::Rect bounds = {0,0,_points->cols-2,_points->rows-2};
     if (!bounds.contains(cv::Point(p[0],p[1])))
         return {-1,-1,-1};
-        
+
     return at_int((*_points), {p[0],p[1]});
 }
 
@@ -486,28 +478,28 @@ static float search_min_loc(const cv::Mat_<E> &points, cv::Vec2f &loc, cv::Vec3f
         out = {-1,-1,-1};
         return -1;
     }
-    
+
     bool changed = true;
     E val = at_int(points, loc);
     out = val;
     float best = sdist(val, tgt);
     float res;
-    
+
     //TODO check maybe add more search patterns, compare motion estimatino for video compression, x264/x265, ...
     std::vector<cv::Vec2f> search = {{0,-1},{0,1},{-1,-1},{-1,0},{-1,1},{1,-1},{1,0},{1,1}};
     // std::vector<cv::Vec2f> search = {{0,-1},{0,1},{-1,0},{1,0}};
     cv::Vec2f step = init_step;
-    
+
     while (changed) {
         changed = false;
-        
+
         for(auto &off : search) {
             cv::Vec2f cand = loc+mul(off,step);
-            
+
             //just skip if out of bounds
             if (!boundary.contains(cv::Point(cand)))
                 continue;
-            
+
             val = at_int(points, cand);
             res = sdist(val, tgt);
             if (res < best) {
@@ -517,13 +509,13 @@ static float search_min_loc(const cv::Mat_<E> &points, cv::Vec2f &loc, cv::Vec3f
                 out = val;
             }
         }
-        
+
         if (changed)
             continue;
-        
+
         step *= 0.5;
         changed = true;
-        
+
         if (step[0] < min_step_x)
             break;
     }
@@ -531,105 +523,42 @@ static float search_min_loc(const cv::Mat_<E> &points, cv::Vec2f &loc, cv::Vec3f
     return sqrt(best);
 }
 
-static float dot_s(const cv::Vec3f &p)
-{
-    return p[0]*p[0] + p[1]*p[1] + p[2]*p[2];
-}
-
-template <typename E>
-float ldist(const E &p, const cv::Vec3f &tgt_o, const cv::Vec3f &tgt_v)
-{
-    return cv::norm((p-tgt_o).cross(p-tgt_o-tgt_v))/cv::norm(tgt_v);
-}
-
-template <typename E>
-static float search_min_line(const cv::Mat_<E> &points, cv::Vec2f &loc, cv::Vec3f &out, cv::Vec3f tgt_o, cv::Vec3f tgt_v, cv::Vec2f init_step, float min_step_x)
-{
-    cv::Rect boundary(1,1,points.cols-2,points.rows-2);
-    if (!boundary.contains(cv::Point(loc))) {
-        out = {-1,-1,-1};
-        return -1;
-    }
-    
-    bool changed = true;
-    E val = at_int(points, loc);
-    out = val;
-    float best = ldist(val, tgt_o, tgt_v);
-    float res;
-    
-    //TODO check maybe add more search patterns, compare motion estimatino for video compression, x264/x265, ...
-    std::vector<cv::Vec2f> search = {{0,-1},{0,1},{-1,-1},{-1,0},{-1,1},{1,-1},{1,0},{1,1}};
-    // std::vector<cv::Vec2f> search = {{0,-1},{0,1},{-1,0},{1,0}};
-    cv::Vec2f step = init_step;
-    
-    while (changed) {
-        changed = false;
-        
-        for(auto &off : search) {
-            cv::Vec2f cand = loc+mul(off,step);
-            
-            //just skip if out of bounds
-            if (!boundary.contains(cv::Point(cand)))
-                continue;
-                
-                val = at_int(points, cand);
-                res = ldist(val, tgt_o, tgt_v);
-                if (res < best) {
-                    changed = true;
-                    best = res;
-                    loc = cand;
-                    out = val;
-                }
-        }
-        
-        if (changed)
-            continue;
-        
-        step *= 0.5;
-        changed = true;
-        
-        if (step[0] < min_step_x)
-            break;
-    }
-    
-    return best;
-}
 
 //search the surface point that is closest to th tgt coord
 template <typename E>
-float _pointTo(cv::Vec2f &loc, const cv::Mat_<E> &points, const cv::Vec3f &tgt, float th, int max_iters, float scale)
+static float pointTo_(cv::Vec2f &loc, const cv::Mat_<E> &points, const cv::Vec3f &tgt, float th, int max_iters, float scale)
 {
     loc = cv::Vec2f(points.cols/2,points.rows/2);
     cv::Vec3f _out;
-    
+
     cv::Vec2f step_small = {std::max(1.0f,scale),std::max(1.0f,scale)};
     float min_mul = std::min(0.1*points.cols/scale,0.1*points.rows/scale);
     cv::Vec2f step_large = {min_mul*scale,min_mul*scale};
-    
+
     float dist = search_min_loc(points, loc, _out, tgt, step_small, scale*0.1);
-    
+
     if (dist < th && dist >= 0) {
         return dist;
     }
-    
+
     cv::Vec2f min_loc = loc;
     float min_dist = dist;
     if (min_dist < 0)
         min_dist = 10*(points.cols/scale+points.rows/scale);
-    
+
     //FIXME is this excessive?
     int r_full = 0;
     for(int r=0;r<10*max_iters && r_full < max_iters;r++) {
         //FIXME skipn invalid init locs!
         loc = {1 + (rand() % points.cols-3), 1 + (rand() % points.rows-3)};
-        
+
         if (points(loc[1],loc[0])[0] == -1)
             continue;
-        
+
         r_full++;
-        
+
         float dist = search_min_loc(points, loc, _out, tgt, step_large, scale*0.1);
-        
+
         if (dist < th && dist >= 0) {
             dist = search_min_loc(points, loc, _out, tgt, step_small, scale*0.1);
             return dist;
@@ -645,12 +574,12 @@ float _pointTo(cv::Vec2f &loc, const cv::Mat_<E> &points, const cv::Vec3f &tgt, 
 
 float pointTo(cv::Vec2f &loc, const cv::Mat_<cv::Vec3d> &points, const cv::Vec3f &tgt, float th, int max_iters, float scale)
 {
-    return _pointTo(loc, points, tgt, th, max_iters, scale);
+    return pointTo_(loc, points, tgt, th, max_iters, scale);
 }
 
 float pointTo(cv::Vec2f &loc, const cv::Mat_<cv::Vec3f> &points, const cv::Vec3f &tgt, float th, int max_iters, float scale)
 {
-    return _pointTo(loc, points, tgt, th, max_iters, scale);
+    return pointTo_(loc, points, tgt, th, max_iters, scale);
 }
 
 //search the surface point that is closest to th tgt coord
@@ -700,242 +629,6 @@ float QuadSurface::pointTo(cv::Vec3f &ptr, const cv::Vec3f &tgt, float th, int m
     return min_dist;
 }
 
-QuadSurface *load_quad_from_vcps(const std::string &path)
-{    
-    volcart::OrderedPointSet<cv::Vec3d> segment_raw = volcart::PointSetIO<cv::Vec3d>::ReadOrderedPointSet(path);
-    
-    cv::Mat src(segment_raw.height(), segment_raw.width(), CV_64FC3, (void*)const_cast<cv::Vec3d*>(&segment_raw[0]));
-    cv::Mat_<cv::Vec3f> points;
-    src.convertTo(points, CV_32F);    
-    
-    double sx, sy;
-    
-    vc_segmentation_scales(points, sx, sy);
-    
-    return new QuadSurface(points, {sx,sy});
-}
-
-bool face_contains_vertex(cv::Vec3i face, int vertex)
-{
-    if (face[0] == vertex)
-        return true;
-    if (face[1] == vertex)
-        return true;
-    if (face[2] == vertex)
-        return true;
-    return false;
-}
-
-//load quad surface from OBJ file using texture coordinates to determine grid structure
-QuadSurface *load_quad_from_obj(const std::string &path)
-{
-    // vertex ID to 3d location (1-indexed in OBJ)
-    std::unordered_map<int,cv::Vec3f> vertices;
-    // texture coordinate ID to UV (1-indexed in OBJ)
-    std::unordered_map<int,cv::Vec2f> texcoords;
-    // Store faces with vertex and texture coordinate indices
-    struct Face {
-        std::vector<int> v_indices;
-        std::vector<int> vt_indices;
-    };
-    std::vector<Face> faces;
-
-    std::ifstream obj(path);
-    if (!obj.is_open()) {
-        std::cerr << "Cannot open OBJ file: " << path << std::endl;
-        return nullptr;
-    }
-
-    std::string line;
-    while (std::getline(obj, line))
-    {
-        if (line.empty())
-            continue;
-        
-        if (line[0] == 'v' && (line.size() < 2 || line[1] == ' ')) {
-            // Parse vertex
-            std::istringstream iss(line);
-            float x, y, z;
-            char v;
-            if (!(iss >> v >> x >> y >> z)) {
-                continue;
-            }
-            vertices[vertices.size() + 1] = {x,y,z}; // OBJ uses 1-based indexing
-        }
-        else if (line[0] == 'v' && line[1] == 't' && (line.size() < 3 || line[2] == ' ')) {
-            // Parse texture coordinate
-            std::istringstream iss(line);
-            float u, v;
-            char vt1, vt2;
-            if (!(iss >> vt1 >> vt2 >> u >> v)) {
-                continue;
-            }
-            texcoords[texcoords.size() + 1] = {u,v}; // OBJ uses 1-based indexing
-        }
-        else if (line[0] == 'f' && (line.size() < 2 || line[1] == ' ')) {
-            // Parse face
-            std::istringstream iss(line.substr(2));
-            Face face;
-            std::string vertex_str;
-            
-            while (iss >> vertex_str) {
-                // Handle f v/vt/vn or f v/vt format
-                std::vector<std::string> parts;
-                size_t pos = 0;
-                while ((pos = vertex_str.find('/')) != std::string::npos) {
-                    parts.push_back(vertex_str.substr(0, pos));
-                    vertex_str.erase(0, pos + 1);
-                }
-                parts.push_back(vertex_str);
-                
-                if (parts.size() >= 2) {
-                    face.v_indices.push_back(std::stoi(parts[0]));
-                    if (!parts[1].empty()) {
-                        face.vt_indices.push_back(std::stoi(parts[1]));
-                    }
-                } else if (parts.size() == 1) {
-                    face.v_indices.push_back(std::stoi(parts[0]));
-                }
-            }
-            
-            if (!face.v_indices.empty()) {
-                faces.push_back(face);
-            }
-        }
-    }
-    obj.close();
-
-    if (vertices.empty() || texcoords.empty() || faces.empty()) {
-        std::cerr << "Missing vertices, texture coordinates, or faces in OBJ file" << std::endl;
-        return nullptr;
-    }
-
-    // Infer grid dimensions from texture coordinates
-    float min_u = 1.0f, max_u = 0.0f;
-    float min_v = 1.0f, max_v = 0.0f;
-    std::set<float> unique_u, unique_v;
-    
-    for (const auto& [idx, uv] : texcoords) {
-        min_u = std::min(min_u, uv[0]);
-        max_u = std::max(max_u, uv[0]);
-        min_v = std::min(min_v, uv[1]);
-        max_v = std::max(max_v, uv[1]);
-        unique_u.insert(uv[0]);
-        unique_v.insert(uv[1]);
-    }
-
-    // Try to determine grid dimensions from unique UV values
-    int width = unique_u.size();
-    int height = unique_v.size();
-    
-    // If we have too many unique values, try a different approach
-    if (width * height > vertices.size() * 2) {
-        // Estimate based on assuming normalized UVs with regular spacing
-        // Find minimum spacing between unique values
-        float min_u_spacing = 1.0f;
-        float min_v_spacing = 1.0f;
-        
-        auto u_it = unique_u.begin();
-        if (unique_u.size() > 1) {
-            float prev_u = *u_it++;
-            for (; u_it != unique_u.end(); ++u_it) {
-                float spacing = *u_it - prev_u;
-                if (spacing > 0.0001f) {
-                    min_u_spacing = std::min(min_u_spacing, spacing);
-                }
-                prev_u = *u_it;
-            }
-        }
-        
-        auto v_it = unique_v.begin();
-        if (unique_v.size() > 1) {
-            float prev_v = *v_it++;
-            for (; v_it != unique_v.end(); ++v_it) {
-                float spacing = *v_it - prev_v;
-                if (spacing > 0.0001f) {
-                    min_v_spacing = std::min(min_v_spacing, spacing);
-                }
-                prev_v = *v_it;
-            }
-        }
-        
-        width = std::round((max_u - min_u) / min_u_spacing) + 1;
-        height = std::round((max_v - min_v) / min_v_spacing) + 1;
-    }
-
-    std::cout << "Inferred grid dimensions: " << width << "x" << height << std::endl;
-    std::cout << "UV range: u[" << min_u << ", " << max_u << "], v[" << min_v << ", " << max_v << "]" << std::endl;
-
-    // Create the points matrix
-    cv::Mat_<cv::Vec3f>* points = new cv::Mat_<cv::Vec3f>(height, width, cv::Vec3f(-1, -1, -1));
-
-    // Map vertices to grid positions using texture coordinates
-    std::set<cv::Vec2i, std::function<bool(const cv::Vec2i&, const cv::Vec2i&)>> used_cells(
-        [](const cv::Vec2i& a, const cv::Vec2i& b) {
-            return a[1] < b[1] || (a[1] == b[1] && a[0] < b[0]);
-        }
-    );
-    
-    for (const auto& face : faces) {
-        for (size_t i = 0; i < face.v_indices.size() && i < face.vt_indices.size(); i++) {
-            int v_idx = face.v_indices[i];
-            int vt_idx = face.vt_indices[i];
-            
-            if (vertices.find(v_idx) != vertices.end() && texcoords.find(vt_idx) != texcoords.end()) {
-                cv::Vec3f vertex = vertices[v_idx];
-                cv::Vec2f uv = texcoords[vt_idx];
-                
-                // Map UV to grid position
-                int grid_x = std::round((uv[0] - min_u) / (max_u - min_u) * (width - 1));
-                int grid_y = std::round((uv[1] - min_v) / (max_v - min_v) * (height - 1));
-                
-                // Clamp to valid range
-                grid_x = std::max(0, std::min(width - 1, grid_x));
-                grid_y = std::max(0, std::min(height - 1, grid_y));
-                
-                cv::Vec2i cell(grid_x, grid_y);
-                
-                // Only set if this cell hasn't been used yet (taking the first)
-                if (used_cells.find(cell) == used_cells.end()) {
-                    (*points)(grid_y, grid_x) = vertex;
-                    used_cells.insert(cell);
-                }
-            }
-        }
-    }
-
-    // Calculate scale based on average edge lengths
-    double sx = 1.0, sy = 1.0;
-    int count_x = 0, count_y = 0;
-    double sum_x = 0.0, sum_y = 0.0;
-    
-    for (int j = 0; j < height; j++) {
-        for (int i = 0; i < width - 1; i++) {
-            if ((*points)(j, i)[0] != -1 && (*points)(j, i + 1)[0] != -1) {
-                sum_x += cv::norm((*points)(j, i) - (*points)(j, i + 1));
-                count_x++;
-            }
-        }
-    }
-    
-    for (int j = 0; j < height - 1; j++) {
-        for (int i = 0; i < width; i++) {
-            if ((*points)(j, i)[0] != -1 && (*points)(j + 1, i)[0] != -1) {
-                sum_y += cv::norm((*points)(j, i) - (*points)(j + 1, i));
-                count_y++;
-            }
-        }
-    }
-    
-    if (count_x > 0) sx = sum_x / count_x;
-    if (count_y > 0) sy = sum_y / count_y;
-    
-    std::cout << "Calculated scale: sx=" << sx << ", sy=" << sy << std::endl;
-    std::cout << "Grid fill rate: " << used_cells.size() << "/" << (width * height) << " cells" << std::endl;
-    
-    return new QuadSurface(points, {static_cast<float>(sx), static_cast<float>(sy)});
-}
-
 
 SurfaceControlPoint::SurfaceControlPoint(Surface *base, const cv::Vec3f &ptr_, const cv::Vec3f &control)
 {
@@ -947,7 +640,7 @@ SurfaceControlPoint::SurfaceControlPoint(Surface *base, const cv::Vec3f &ptr_, c
 
 DeltaSurface::DeltaSurface(Surface *base) : _base(base)
 {
-    
+
 }
 
 void DeltaSurface::setBase(Surface *base)
@@ -1041,9 +734,9 @@ void ControlPointSurface::gen(cv::Mat_<cv::Vec3f> *coords_, cv::Mat_<cv::Vec3f> 
 void ControlPointSurface::setBase(Surface *base)
 {
     DeltaSurface::setBase(base);
-    
+
     assert(dynamic_cast<QuadSurface*>(base));
-    
+
     //FIXME reset control points?
     std::cout << "ERROR implement search for ControlPointSurface::setBase()" << std::endl;
 }
@@ -1106,7 +799,7 @@ void RefineCompSurface::gen(cv::Mat_<cv::Vec3f> *coords_, cv::Mat_<cv::Vec3f> *n
 }
 
 //TODO check if this actually works?!
-void set_block(cv::Mat_<uint8_t> &block, const cv::Vec3f &last_loc, const cv::Vec3f &loc, const cv::Rect &roi, float step)
+static void set_block(cv::Mat_<uint8_t> &block, const cv::Vec3f &last_loc, const cv::Vec3f &loc, const cv::Rect &roi, float step)
 {
     int x1 = (loc[0]-roi.x)/step;
     int y1 = (loc[1]-roi.y)/step;
@@ -1124,7 +817,7 @@ void set_block(cv::Mat_<uint8_t> &block, const cv::Vec3f &last_loc, const cv::Ve
         cv::line(block, {x1,y1},{x2,y2}, 3);
 }
 
-uint8_t get_block(const cv::Mat_<uint8_t> &block, const cv::Vec3f &loc, const cv::Rect &roi, float step)
+static uint8_t get_block(const cv::Mat_<uint8_t> &block, const cv::Vec3f &loc, const cv::Rect &roi, float step)
 {
     int x = (loc[0]-roi.x)/step;
     int y = (loc[1]-roi.y)/step;
@@ -1135,41 +828,6 @@ uint8_t get_block(const cv::Mat_<uint8_t> &block, const cv::Vec3f &loc, const cv
     return block(y, x);
 }
 
-template<typename T, int C>
-//l is [y, x]!
-bool area_valid(const cv::Mat_<cv::Vec<T,C>> &m, cv::Vec2f l)
-{
-    if (l[0] == -1)
-        return false;
-
-    cv::Rect bounds = {1, 1, m.rows-3,m.cols-3};
-    cv::Vec2i li = {floor(l[0]),floor(l[1])};
-
-    if (!bounds.contains(cv::Point(li)))
-        return false;
-
-    if (m(li[0],li[1])[0] == -1)
-        return false;
-    if (m(li[0]+1,li[1])[0] == -1)
-        return false;
-    if (m(li[0],li[1]+1)[0] == -1)
-        return false;
-    if (m(li[0]+1,li[1]+1)[0] == -1)
-        return false;
-
-    l -= cv::Vec2f(1,1);
-
-    if (m(li[0],li[1])[0] == -1)
-        return false;
-    if (m(li[0]+3,li[1])[0] == -1)
-        return false;
-    if (m(li[0],li[1]+3)[0] == -1)
-        return false;
-    if (m(li[0]+3,li[1]+3)[0] == -1)
-        return false;
-
-    return true;
-}
 
 void find_intersect_segments(std::vector<std::vector<cv::Vec3f>> &seg_vol, std::vector<std::vector<cv::Vec2f>> &seg_grid, const cv::Mat_<cv::Vec3f> &points, PlaneSurface *plane, const cv::Rect &plane_roi, float step, int min_tries)
 {
@@ -1363,17 +1021,6 @@ struct DSReader
 };
 
 
-float clampsigned(float val, float limit)
-{
-    if (val >= limit)
-        return limit;
-    if (val <= -limit)
-        return -limit;
-
-    return val;
-}
-
-
 void QuadSurface::save(std::filesystem::path &path_)
 {
     if (path_.filename().empty())
@@ -1386,7 +1033,7 @@ void QuadSurface::save(std::filesystem::path &path_)
 void QuadSurface::save(const std::string &path_, const std::string &uuid)
 {
     path = path_;
-    
+
     if (!fs::create_directories(path)) {
         if (fs::exists(path))
             throw std::runtime_error("dir already exists => cannot run QuadSurface::save(): " + path.string());
@@ -1426,7 +1073,7 @@ void QuadSurface::save_meta()
 
     std::ofstream o(path/"meta.json.tmp");
     o << std::setw(4) << (*meta) << std::endl;
-    
+
     //rename to make creation atomic
     fs::rename(path/"meta.json.tmp", path/"meta.json");
 }
@@ -1466,7 +1113,7 @@ QuadSurface *load_quad_from_tifxyz(const std::string &path)
             if ((*points)(j,i)[2] <= 0) {
                 (*points)(j,i) = {-1,-1,-1};
             }
-            
+
     if (fs::exists(path+"/mask.tif")) {
         std::vector<cv::Mat> layers;
         cv::imreadmulti(path+"/mask.tif", layers, cv::IMREAD_GRAYSCALE);
@@ -1477,13 +1124,13 @@ QuadSurface *load_quad_from_tifxyz(const std::string &path)
                 if (!mask(j,i))
                     (*points)(j,i) = {-1,-1,-1};
     }
-    
+
     QuadSurface *surf = new QuadSurface(points, scale);
-    
+
     surf->path = path;
     surf->id   = metadata["uuid"];
     surf->meta = new nlohmann::json(metadata);
-    
+
     return surf;
 }
 
@@ -1511,7 +1158,7 @@ bool intersect(const Rect3D &a, const Rect3D &b)
     return true;
 }
 
-Rect3D rect_from_json(const nlohmann::json &json)
+static Rect3D rect_from_json(const nlohmann::json &json)
 {
     return {{json[0][0],json[0][1],json[0][2]},{json[1][0],json[1][1],json[1][2]}};
 }
@@ -1554,7 +1201,7 @@ bool contains(SurfaceMeta &a, const std::vector<cv::Vec3f> &locs)
     for(auto &p : locs)
         if (!contains(a, p))
             return false;
-    
+
     return true;
 }
 
@@ -1581,7 +1228,7 @@ SurfaceMeta::SurfaceMeta(const std::filesystem::path &path_) : path(path_)
     if (!meta_f.is_open() || !meta_f.good()) {
         throw std::runtime_error("Cannot open meta.json file at: " + path_.string());
     }
-    
+
     meta = new nlohmann::json;
     try {
         *meta = nlohmann::json::parse(meta_f);
@@ -1590,7 +1237,7 @@ SurfaceMeta::SurfaceMeta(const std::filesystem::path &path_) : path(path_)
         meta = nullptr;
         throw std::runtime_error("Invalid JSON in meta.json at: " + path_.string() + " - " + e.what());
     }
-    
+
     if (meta->contains("bbox"))
         bbox = rect_from_json((*meta)["bbox"]);
 }
@@ -1632,4 +1279,132 @@ void SurfaceMeta::setSurface(QuadSurface *surf)
 std::string SurfaceMeta::name()
 {
     return path.filename();
+}
+
+
+QuadSurface* surface_diff(QuadSurface* a, QuadSurface* b, float tolerance) {
+    cv::Mat_<cv::Vec3f>* diff_points = new cv::Mat_<cv::Vec3f>(a->rawPoints().clone());
+
+    int width = diff_points->cols;
+    int height = diff_points->rows;
+
+    if (!intersect(a->bbox(), b->bbox())) {
+        return new QuadSurface(diff_points, a->scale());
+    }
+
+    int removed_count = 0;
+    int total_valid = 0;
+
+    #pragma omp parallel for reduction(+:removed_count,total_valid)
+    for (int j = 0; j < height; j++) {
+        for (int i = 0; i < width; i++) {
+            cv::Vec3f point = (*diff_points)(j, i);
+
+            if (point[0] == -1 && point[1] == -1 && point[2] == -1) {
+                continue;
+            }
+
+            total_valid++;
+
+            cv::Vec3f ptr = {0,0,0};
+            float dist = b->pointTo(ptr, point, tolerance, 100);
+
+            if (dist >= 0 && dist <= tolerance) {
+                (*diff_points)(j, i) = {-1, -1, -1};
+                removed_count++;
+            }
+        }
+    }
+
+    std::cout << "Surface diff: removed " << removed_count
+              << " points out of " << total_valid << " valid points" << std::endl;
+
+    QuadSurface* result = new QuadSurface(diff_points, a->scale());
+    return result;
+}
+
+QuadSurface* surface_union(QuadSurface* a, QuadSurface* b, float tolerance) {
+    cv::Mat_<cv::Vec3f>* union_points = new cv::Mat_<cv::Vec3f>(a->rawPoints().clone());
+
+    cv::Mat_<cv::Vec3f> b_points = b->rawPoints();
+
+    int added_count = 0;
+
+    // Add points from b that don't exist in a
+    for (int j = 0; j < b_points.rows; j++) {
+        for (int i = 0; i < b_points.cols; i++) {
+            cv::Vec3f point_b = b_points(j, i);
+
+            // Skip invalid points
+            if (point_b[0] == -1) {
+                continue;
+            }
+
+            // Check if this point exists in a
+            cv::Vec2f loc_a;
+            float dist = pointTo(loc_a, *union_points, point_b, tolerance, 10, a->scale()[0]);
+
+            // If point is not found in a, we need to add it
+            if (dist < 0 || dist > tolerance) {
+                int grid_x = std::round(i * b->scale()[0] / a->scale()[0]);
+                int grid_y = std::round(j * b->scale()[1] / a->scale()[1]);
+
+                if (grid_x >= 0 && grid_x < union_points->cols &&
+                    grid_y >= 0 && grid_y < union_points->rows) {
+
+                    if ((*union_points)(grid_y, grid_x)[0] == -1) {
+                        (*union_points)(grid_y, grid_x) = point_b;
+                        added_count++;
+                    }
+                }
+            }
+        }
+    }
+
+    std::cout << "Surface union: added " << added_count << " points from surface b" << std::endl;
+
+    return new QuadSurface(union_points, a->scale());
+}
+
+QuadSurface* surface_intersection(QuadSurface* a, QuadSurface* b, float tolerance) {
+    cv::Mat_<cv::Vec3f>* intersect_points = new cv::Mat_<cv::Vec3f>(a->rawPoints().clone());
+
+    int width = intersect_points->cols;
+    int height = intersect_points->rows;
+
+    cv::Mat_<cv::Vec3f> b_points = b->rawPoints();
+
+    int kept_count = 0;
+    int total_valid = 0;
+
+    // Keep only points that exist in both surfaces
+    for (int j = 0; j < height; j++) {
+        for (int i = 0; i < width; i++) {
+            cv::Vec3f point_a = (*intersect_points)(j, i);
+
+            // Skip invalid points
+            if (point_a[0] == -1) {
+                continue;
+            }
+
+            total_valid++;
+
+            // Check if this point exists in b
+            cv::Vec2f loc_b;
+            float dist = pointTo(loc_b, b_points, point_a, tolerance, 10, b->scale()[0]);
+
+            if (dist >= 0 && dist <= tolerance) {
+                // Point exists in both - keep it
+                kept_count++;
+            } else {
+                // Point doesn't exist in b - remove it
+                (*intersect_points)(j, i) = {-1, -1, -1};
+            }
+        }
+    }
+
+    std::cout << "Surface intersection: kept " << kept_count
+              << " points out of " << total_valid << " valid points" << std::endl;
+
+    return new QuadSurface(intersect_points, a->scale());
 }

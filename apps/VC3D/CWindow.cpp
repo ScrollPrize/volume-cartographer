@@ -4,14 +4,12 @@
 
 #include <QKeySequence>
 #include <QKeyEvent>
-#include <QProgressBar>
 #include <QSettings>
 #include <QMdiArea>
 #include <QMenu>
 #include <QAction>
 #include <QApplication>
 #include <QClipboard>
-#include <QTimer>
 #include <QDateTime>
 #include <QFileDialog>
 #include <QTextStream>
@@ -41,13 +39,10 @@
 #include "OpsList.hpp"
 #include "OpsSettings.hpp"
 #include "SurfaceTreeWidget.hpp"
-#include "CSegmentationEditorWindow.hpp"
 #include "SeedingWidget.hpp"
 #include "DrawingWidget.hpp"
 
-#include "vc/core/types/Color.hpp"
 #include "vc/core/types/Exceptions.hpp"
-#include "vc/core/util/Iteration.hpp"
 #include "vc/core/util/Logging.hpp"
 #include "vc/core/types/Volume.hpp"
 #include "vc/core/types/VolumePkg.hpp"
@@ -77,7 +72,7 @@ CWindow::CWindow() :
     ui.setupUi(this);
     // setAttribute(Qt::WA_DeleteOnClose);
 
-    chunk_cache = new ChunkCache(CHUNK_CACHE_SIZE_GB*1024*1024*1024);
+    chunk_cache = new ChunkCache(CHUNK_CACHE_SIZE_GB*1024ULL*1024ULL*1024ULL);
     std::cout << "chunk cache size is " << CHUNK_CACHE_SIZE_GB << " gigabytes " << std::endl;
     
     _surf_col = new CSurfaceCollection();
@@ -1213,7 +1208,7 @@ void CWindow::LoadSurfaces(bool reload)
         _opchains.clear();
     }
 
-    SurfaceID id;
+    std::string id;
     if (treeWidgetSurfaces->currentItem()) {
         id = treeWidgetSurfaces->currentItem()->data(SURFACE_ID_COLUMN, Qt::UserRole).toString().toStdString();
     }
@@ -1485,7 +1480,7 @@ void CWindow::onOpChainChanged(OpChain *chain)
     _surf_col->setSurface("segmentation", chain);
 }
 
-void sync_tag(nlohmann::json &dict, bool checked, std::string name, const std::string& username = "")
+static void sync_tag(nlohmann::json &dict, bool checked, std::string name, const std::string& username = "")
 {
     if (checked && !dict.count(name)) {
         dict[name] = nlohmann::json::object();
@@ -1658,14 +1653,6 @@ void CWindow::onSurfaceSelected()
         }
         else {
             auto seg = fVpkg->segmentation(_surfID);
-            if (seg->metadata().hasKey("vcps"))
-                _opchains[_surfID] = new OpChain(load_quad_from_vcps(seg->path()/seg->metadata().get<std::string>("vcps")));
-            //TODO fix these
-            // else if (fs::path(surf_path).extension() == ".obj") {
-            //     QuadSurface *quads = load_quad_from_obj(surf_path);
-            //     if (quads)
-            //         _opchains[surf_path] = new OpChain(quads);
-            // }
         }
     }
 
@@ -2052,13 +2039,13 @@ void CWindow::onSurfaceContextMenuRequested(const QPoint& pos)
     
     // Get all selected segments
     QList<QTreeWidgetItem*> selectedItems = treeWidgetSurfaces->selectedItems();
-    std::vector<SurfaceID> selectedSegmentIds;
+    std::vector<std::string> selectedSegmentIds;
     for (auto* selectedItem : selectedItems) {
         selectedSegmentIds.push_back(selectedItem->data(SURFACE_ID_COLUMN, Qt::UserRole).toString().toStdString());
     }
     
     // Use the first selected segment for single-segment operations
-    SurfaceID segmentId = selectedSegmentIds.empty() ? 
+    std::string segmentId = selectedSegmentIds.empty() ?
         item->data(SURFACE_ID_COLUMN, Qt::UserRole).toString().toStdString() : 
         selectedSegmentIds.front();
     
@@ -2406,7 +2393,6 @@ void CWindow::onGenerateReviewReport()
     
     // Iterate through all surfaces
     for (const auto& pair : _vol_qsurfs) {
-        const std::string& surfaceId = pair.first;
         SurfaceMeta* surfMeta = pair.second;
         
         if (!surfMeta || !surfMeta->surface() || !surfMeta->surface()->meta) {

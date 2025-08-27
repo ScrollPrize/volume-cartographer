@@ -158,7 +158,10 @@ CVolumeViewer::CVolumeViewer(CSurfaceCollection *col, QWidget* parent)
     // fScrollSpeed = settings.value("viewer/scroll_speed", false).toInt();
     fSkipImageFormatConv = settings.value("perf/chkSkipImageFormatConvExp", false).toBool();
     _downscale_override = settings.value("perf/downscale_override", 0).toInt();
-
+    _useFastInterpolation = settings.value("perf/fast_interpolation", false).toBool();
+    if (_useFastInterpolation) {
+        std::cout << "using nearest neighbor interpolation" << std::endl;
+    }
     QVBoxLayout* aWidgetLayout = new QVBoxLayout;
     aWidgetLayout->addWidget(fGraphicsView);
 
@@ -834,7 +837,7 @@ cv::Mat CVolumeViewer::render_area(const cv::Rect &roi)
             float z_step = z * _ds_scale;  // Scale the step to maintain consistent physical distance
             _surf->gen(&slice_coords, nullptr, roi.size(), _ptr, _scale, {-roi.width/2, -roi.height/2, _z_off + z_step});
             
-            readInterpolated3D(slice_img, volume->zarrDataset(_ds_sd_idx), slice_coords*_ds_scale, cache);
+            readInterpolated3D(slice_img, volume->zarrDataset(_ds_sd_idx), slice_coords*_ds_scale, cache, _useFastInterpolation);
             
             // Convert to float for accumulation
             cv::Mat_<float> slice_float;
@@ -932,7 +935,7 @@ cv::Mat CVolumeViewer::render_area(const cv::Rect &roi)
             _surf->gen(&coords, nullptr, roi.size(), _ptr, _scale, {-roi.width/2, -roi.height/2, _z_off});
         }
 
-        readInterpolated3D(img, volume->zarrDataset(_ds_sd_idx), coords*_ds_scale, cache);
+        readInterpolated3D(img, volume->zarrDataset(_ds_sd_idx), coords*_ds_scale, cache, _useFastInterpolation);
         return img;
     }
 }
@@ -990,18 +993,7 @@ void CVolumeViewer::renderVisible(bool force)
     fBaseImageItem->setOffset(curr_img_area.topLeft());
 }
 
-struct vec3f_hash {
-    size_t operator()(cv::Vec3f p) const
-    {
-        size_t hash1 = std::hash<float>{}(p[0]);
-        size_t hash2 = std::hash<float>{}(p[1]);
-        size_t hash3 = std::hash<float>{}(p[2]);
-        
-        //magic numbers from boost. should be good enough
-        size_t hash = hash1  ^ (hash2 + 0x9e3779b9 + (hash1 << 6) + (hash1 >> 2));
-        return hash  ^ (hash3 + 0x9e3779b9 + (hash << 6) + (hash >> 2));
-    }
-};
+
 
 void CVolumeViewer::renderIntersections()
 {

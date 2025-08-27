@@ -1,15 +1,11 @@
 #include "SeedingWidget.hpp"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
-#include <QGroupBox>
 #include <QMessageBox>
-#include <QThread>
 #include <QProcess>
 #include <QApplication>
 #include <QCoreApplication>
 #include <QFileInfo>
-#include <QProcessEnvironment>
-
 
 #include <opencv2/imgproc.hpp>
 

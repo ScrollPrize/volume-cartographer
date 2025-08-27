@@ -6,8 +6,6 @@
 #include "z5/factory.hxx"
 #include <nlohmann/json.hpp>
 
-#include <opencv2/highgui.hpp>
-
 #include <filesystem>
 #include <fstream>
 #include <iomanip>

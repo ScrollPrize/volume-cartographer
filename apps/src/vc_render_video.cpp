@@ -2,15 +2,11 @@
 
 #include "vc/core/util/xtensor_include.hpp"
 #include XTENSORINCLUDE(containers, xarray.hpp)
-#include XTENSORINCLUDE(views, xaxis_slice_iterator.hpp)
 #include XTENSORINCLUDE(io, xio.hpp)
-#include XTENSORINCLUDE(generators, xbuilder.hpp)
 #include XTENSORINCLUDE(views, xview.hpp)
 
 #include "z5/factory.hxx"
 #include "z5/filesystem/handle.hxx"
-#include "z5/filesystem/dataset.hxx"
-#include "z5/common.hxx"
 #include "z5/multiarray/xtensor_access.hxx"
 #include "z5/attributes.hxx"
 
@@ -22,11 +18,11 @@
 #include "vc/core/util/Surface.hpp"
 #include "vc/core/io/PointSetIO.hpp"
 
-#include <unordered_map>
 #include <filesystem>
 #include <omp.h>
 
 #include "vc/core/types/ChunkedTensor.hpp"
+#include "vc/core/util/StreamOperators.hpp"
 
 using shape = z5::types::ShapeType;
 using namespace xt::placeholders;
@@ -34,15 +30,7 @@ namespace fs = std::filesystem;
 
 using json = nlohmann::json;
 
-std::ostream& operator<< (std::ostream& out, const xt::svector<size_t> &v) {
-    if ( !v.empty() ) {
-        out << '[';
-        for(auto &v : v)
-            out << v << ",";
-        out << "\b]"; // use ANSI backspace character '\b' to overwrite final ", "
-    }
-    return out;
-}
+
 
 class MeasureLife
 {

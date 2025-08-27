@@ -7,7 +7,6 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QCoreApplication>
-#include <QDateTime>
 
 #include "vc/core/types/VolumePkg.hpp"
 #include "vc/core/util/Surface.hpp"
@@ -67,14 +66,22 @@ static QString resolveFlatboiScript()
     if (QFileInfo::exists("/src/scripts/flatboi.py"))
         return "/src/scripts/flatboi.py";
 
+    if (QFileInfo::exists("/usr/bin/flatboi.py"))
+        return "/usr/bin/flatboi.py";
+
     // Last resort: relative to binary
     QDir bin(QCoreApplication::applicationDirPath());
+
+    if (QFileInfo::exists(bin.filePath("flatboi.py"))) {
+        return bin.filePath("flatboi.py");
+    }
+
     return QDir(bin.filePath("../scripts")).filePath("flatboi.py");
 }
 // ---------------------------------------------------------------------------
 
 
-void CWindow::onRenderSegment(const SurfaceID& segmentId)
+void CWindow::onRenderSegment(const std::string& segmentId)
 {
     if (currentVolume == nullptr || !_vol_qsurfs.count(segmentId)) {
         QMessageBox::warning(this, tr("Error"), tr("Cannot render segment: No volume or invalid segment selected"));
@@ -132,7 +139,7 @@ void CWindow::onRenderSegment(const SurfaceID& segmentId)
     statusBar()->showMessage(tr("Rendering segment: %1").arg(QString::fromStdString(segmentId)), 5000);
 }
 
-void CWindow::onSlimFlattenAndRender(const SurfaceID& segmentId)
+void CWindow::onSlimFlattenAndRender(const std::string& segmentId)
 {
     if (currentVolume == nullptr || !_vol_qsurfs.count(segmentId)) {
         QMessageBox::warning(this, tr("Error"), tr("Cannot SLIM-flatten: No volume or invalid segment selected"));
@@ -241,7 +248,7 @@ void CWindow::onSlimFlattenAndRender(const SurfaceID& segmentId)
 }
 
 
-void CWindow::onGrowSegmentFromSegment(const SurfaceID& segmentId)
+void CWindow::onGrowSegmentFromSegment(const std::string& segmentId)
 {
     if (currentVolume == nullptr || !_vol_qsurfs.count(segmentId)) {
         QMessageBox::warning(this, tr("Error"), tr("Cannot grow segment: No volume or invalid segment selected"));
@@ -303,7 +310,7 @@ void CWindow::onGrowSegmentFromSegment(const SurfaceID& segmentId)
     statusBar()->showMessage(tr("Growing segment from: %1").arg(QString::fromStdString(segmentId)), 5000);
 }
 
-void CWindow::onAddOverlap(const SurfaceID& segmentId)
+void CWindow::onAddOverlap(const std::string& segmentId)
 {
     if (currentVolume == nullptr || !_vol_qsurfs.count(segmentId)) {
         QMessageBox::warning(this, tr("Error"), tr("Cannot add overlap: No volume or invalid segment selected"));
@@ -337,7 +344,7 @@ void CWindow::onAddOverlap(const SurfaceID& segmentId)
     statusBar()->showMessage(tr("Adding overlap for segment: %1").arg(QString::fromStdString(segmentId)), 5000);
 }
 
-void CWindow::onConvertToObj(const SurfaceID& segmentId)
+void CWindow::onConvertToObj(const std::string& segmentId)
 {
     if (currentVolume == nullptr || !_vol_qsurfs.count(segmentId)) {
         QMessageBox::warning(this, tr("Error"), tr("Cannot convert to OBJ: No volume or invalid segment selected"));
@@ -372,7 +379,7 @@ void CWindow::onConvertToObj(const SurfaceID& segmentId)
     statusBar()->showMessage(tr("Converting segment to OBJ: %1").arg(QString::fromStdString(segmentId)), 5000);
 }
 
-void CWindow::onGrowSeeds(const SurfaceID& segmentId, bool isExpand, bool isRandomSeed)
+void CWindow::onGrowSeeds(const std::string& segmentId, bool isExpand, bool isRandomSeed)
 {
     if (currentVolume == nullptr) {
         QMessageBox::warning(this, tr("Error"), tr("Cannot grow seeds: No volume loaded"));
@@ -480,7 +487,7 @@ bool CWindow::initializeCommandLineRunner()
     return true;
 }
 
-void CWindow::onDeleteSegments(const std::vector<SurfaceID>& segmentIds)
+void CWindow::onDeleteSegments(const std::vector<std::string>& segmentIds)
 {
     if (segmentIds.empty()) {
         return;

@@ -3,7 +3,6 @@
 #pragma once
 
 #include <QtWidgets>
-#include <opencv2/core/core.hpp>
 
 #include <set>
 #include <unordered_map>
@@ -246,6 +245,9 @@ protected:
     QGraphicsRectItem* _bboxRectItem = nullptr;
     struct Selection { QRectF surfRect; QColor color; QGraphicsRectItem* item; };
     std::vector<Selection> _selections;
+
+    bool _useFastInterpolation;
+
 
 };  // class CVolumeViewer
 

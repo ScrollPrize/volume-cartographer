@@ -8,7 +8,6 @@
 #include "ui_VCMain.h"
 
 #include "CommandLineToolRunner.hpp"
-#include "vc/core/util/SurfaceDef.hpp"
 #include "vc/core/util/VCCollection.hpp"
 
 #include <QShortcut>
@@ -75,14 +74,14 @@ public slots:
     void onOpChainChanged(OpChain *chain);
     void onTagChanged(void);
     void onSurfaceContextMenuRequested(const QPoint& pos);
-    void onRenderSegment(const SurfaceID& segmentId);
-    void onGrowSegmentFromSegment(const SurfaceID& segmentId);
-    void onAddOverlap(const SurfaceID& segmentId);
-    void onConvertToObj(const SurfaceID& segmentId);
-    void onSlimFlattenAndRender(const SurfaceID& segmentId);
-    void onGrowSeeds(const SurfaceID& segmentId, bool isExpand, bool isRandomSeed = false);
+    void onRenderSegment(const std::string& segmentId);
+    void onGrowSegmentFromSegment(const std::string& segmentId);
+    void onAddOverlap(const std::string& segmentId);
+    void onConvertToObj(const std::string& segmentId);
+    void onSlimFlattenAndRender(const std::string& segmentId);
+    void onGrowSeeds(const std::string& segmentId, bool isExpand, bool isRandomSeed = false);
     void onToggleConsoleOutput();
-    void onDeleteSegments(const std::vector<SurfaceID>& segmentIds);
+    void onDeleteSegments(const std::vector<std::string>& segmentIds);
     void onVoxelizePaths();
    void onFocusPOIChanged(std::string name, POI* poi);
     void onPointDoubleClicked(uint64_t pointId);
@@ -226,7 +225,7 @@ private:
     QCheckBox* _chkReviewed;
     QCheckBox* _chkRevisit;
     QuadSurface *_surf;
-    SurfaceID _surfID;
+    std::string _surfID;
     
   
     SeedingWidget* _seedingWidget;
