@@ -426,7 +426,8 @@ int main(int argc, char *argv[])
     // Effective render scale for UV sampling:
     // If the seg mesh is in volume A (downscaled /2 vox) and we later scale coordinates by 'scale_seg'
     // (to get to A full res), we must counterbalance here so pixel density stays constant.
-    const float tgt_scale_eff = (tgt_scale * ds_scale) / std::max(1.0f, scale_seg);
+    const float inv_scale_seg_sq = 1.0f / (scale_seg * scale_seg);
+    const float tgt_scale_eff = (tgt_scale * ds_scale) * inv_scale_seg_sq;
     // Transformation parameters
     double rotate_angle = parsed["rotate"].as<double>();
     const bool invert_affine = parsed["invert-affine"].as<bool>();
@@ -497,12 +498,10 @@ int main(int argc, char *argv[])
     // Auto-scale the canvas by the pyramid level, so -g N shrinks by 2^N.
     // Use rounding to avoid truncation bias.
     {
-        // Keep FOV consistent when the mesh will be scaled in coordinates by 'scale_seg':
-        // compensate the canvas scaling by dividing by 'scale_seg'.
-        const double sx = (static_cast<double>(tgt_scale) / (surf->_scale[0] * std::max(1.0f, scale_seg))) * ds_scale;
-        const double sy = (static_cast<double>(tgt_scale) / (surf->_scale[1] * std::max(1.0f, scale_seg))) * ds_scale;
-        full_size.width  = static_cast<int>(std::lround(full_size.width  * sx));
-        full_size.height = static_cast<int>(std::lround(full_size.height * sy));
+        const double sx = (static_cast<double>(tgt_scale) /  surf->_scale[0]) * ds_scale * scale_seg;
+        const double sy = (static_cast<double>(tgt_scale) /  surf->_scale[1]) * ds_scale * scale_seg;
+        full_size.width  = std::max(1, static_cast<int>(std::lround(full_size.width  * sx)));
+        full_size.height = std::max(1, static_cast<int>(std::lround(full_size.height * sy)));
     }
     
     cv::Size tgt_size = full_size;
@@ -536,7 +535,8 @@ int main(int argc, char *argv[])
     if ((tgt_size.width >= 10000 || tgt_size.height >= 10000) && num_slices > 1)
         slice_gen = true;
     else {
-        // Use effective scale so UV sampling spans the same world area at lower canvas res
+        // Use effective scale so UV sampling spans the same world area even though
+        // canvas is different by scale_seg (FOV stays constant).
         surf->gen(&points, &normals, tgt_size, cv::Vec3f(0,0,0), tgt_scale_eff, {-full_size.width/2+crop.x,-full_size.height/2+crop.y,0});
     }
 
