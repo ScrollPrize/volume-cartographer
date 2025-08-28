@@ -81,11 +81,17 @@ static QString resolveFlatboiScript()
 }
 // ---------------------------------------------------------------------------
 
-
 void CWindow::onRenderSegment(const std::string& segmentId)
 {
-    if (currentVolume == nullptr || !_vol_qsurfs.count(segmentId)) {
-        QMessageBox::warning(this, tr("Error"), tr("Cannot render segment: No volume or invalid segment selected"));
+    if (currentVolume == nullptr || !fVpkg) {
+        QMessageBox::warning(this, tr("Error"), tr("Cannot render segment: No volume package loaded"));
+        return;
+    }
+
+    // Get surface from VolumePkg
+    auto surfMeta = fVpkg->getSurface(segmentId);
+    if (!surfMeta) {
+        QMessageBox::warning(this, tr("Error"), tr("Cannot render segment: Invalid segment or segment not loaded"));
         return;
     }
 
@@ -96,8 +102,8 @@ void CWindow::onRenderSegment(const std::string& segmentId)
     int resolution = settings.value("rendering/resolution", 0).toInt();
     int layers = settings.value("rendering/layers", 31).toInt();
 
-    QString segmentPath = QString::fromStdString(_vol_qsurfs[segmentId]->path.string());
-    QString segmentOutDir = QString::fromStdString(_vol_qsurfs[segmentId]->path.string());
+    QString segmentPath = QString::fromStdString(surfMeta->path.string());
+    QString segmentOutDir = QString::fromStdString(surfMeta->path.string());
     QString outputPattern = outputFormat.replace("%s", segmentOutDir);
 
     // Initialize command line tool runner if needed
@@ -142,17 +148,25 @@ void CWindow::onRenderSegment(const std::string& segmentId)
 
 void CWindow::onSlimFlattenAndRender(const std::string& segmentId)
 {
-    if (currentVolume == nullptr || !_vol_qsurfs.count(segmentId)) {
-        QMessageBox::warning(this, tr("Error"), tr("Cannot SLIM-flatten: No volume or invalid segment selected"));
+    if (currentVolume == nullptr || !fVpkg) {
+        QMessageBox::warning(this, tr("Error"), tr("Cannot SLIM-flatten: No volume package loaded"));
         return;
     }
+
+    // Get surface from VolumePkg
+    auto surfMeta = fVpkg->getSurface(segmentId);
+    if (!surfMeta) {
+        QMessageBox::warning(this, tr("Error"), tr("Cannot SLIM-flatten: Invalid segment or segment not loaded"));
+        return;
+    }
+
     if (_cmdRunner && _cmdRunner->isRunning()) {
         QMessageBox::warning(this, tr("Warning"), tr("A command line tool is already running."));
         return;
     }
 
     // Paths
-    const std::filesystem::path segDirFs = _vol_qsurfs[segmentId]->path;           // tifxyz folder
+    const std::filesystem::path segDirFs = surfMeta->path;           // tifxyz folder
     const QString  segDir   = QString::fromStdString(segDirFs.string());
     const QString  objPath  = QDir(segDir).filePath(QString::fromStdString(segmentId) + ".obj");
     const QString  flatObj  = QDir(segDir).filePath(QString::fromStdString(segmentId) + "_flatboi.obj");
@@ -249,10 +263,19 @@ void CWindow::onSlimFlattenAndRender(const std::string& segmentId)
 }
 
 
+
+
 void CWindow::onGrowSegmentFromSegment(const std::string& segmentId)
 {
-    if (currentVolume == nullptr || !_vol_qsurfs.count(segmentId)) {
-        QMessageBox::warning(this, tr("Error"), tr("Cannot grow segment: No volume or invalid segment selected"));
+    if (currentVolume == nullptr || !fVpkg) {
+        QMessageBox::warning(this, tr("Error"), tr("Cannot grow segment: No volume package loaded"));
+        return;
+    }
+
+    // Get surface from VolumePkg
+    auto surfMeta = fVpkg->getSurface(segmentId);
+    if (!surfMeta) {
+        QMessageBox::warning(this, tr("Error"), tr("Cannot grow segment: Invalid segment or segment not loaded"));
         return;
     }
 
@@ -268,7 +291,7 @@ void CWindow::onGrowSegmentFromSegment(const std::string& segmentId)
     }
 
     // Get paths
-    QString srcSegment = QString::fromStdString(_vol_qsurfs[segmentId]->path.string());
+    QString srcSegment = QString::fromStdString(surfMeta->path.string());
 
     // Get the volpkg path and create traces directory if it doesn't exist
     std::filesystem::path volpkgPath = std::filesystem::path(fVpkgPath.toStdString());
@@ -313,8 +336,15 @@ void CWindow::onGrowSegmentFromSegment(const std::string& segmentId)
 
 void CWindow::onAddOverlap(const std::string& segmentId)
 {
-    if (currentVolume == nullptr || !_vol_qsurfs.count(segmentId)) {
-        QMessageBox::warning(this, tr("Error"), tr("Cannot add overlap: No volume or invalid segment selected"));
+    if (currentVolume == nullptr || !fVpkg) {
+        QMessageBox::warning(this, tr("Error"), tr("Cannot add overlap: No volume package loaded"));
+        return;
+    }
+
+    // Get surface from VolumePkg
+    auto surfMeta = fVpkg->getSurface(segmentId);
+    if (!surfMeta) {
+        QMessageBox::warning(this, tr("Error"), tr("Cannot add overlap: Invalid segment or segment not loaded"));
         return;
     }
 
@@ -332,7 +362,7 @@ void CWindow::onAddOverlap(const std::string& segmentId)
     // Get paths
     std::filesystem::path volpkgPath = std::filesystem::path(fVpkgPath.toStdString());
     std::filesystem::path pathsDir = volpkgPath / "paths";
-    QString tifxyzPath = QString::fromStdString(_vol_qsurfs[segmentId]->path.string());
+    QString tifxyzPath = QString::fromStdString(surfMeta->path.string());
 
     // Set up parameters and execute the tool
     _cmdRunner->setAddOverlapParams(
@@ -347,8 +377,15 @@ void CWindow::onAddOverlap(const std::string& segmentId)
 
 void CWindow::onConvertToObj(const std::string& segmentId)
 {
-    if (currentVolume == nullptr || !_vol_qsurfs.count(segmentId)) {
-        QMessageBox::warning(this, tr("Error"), tr("Cannot convert to OBJ: No volume or invalid segment selected"));
+    if (currentVolume == nullptr || !fVpkg) {
+        QMessageBox::warning(this, tr("Error"), tr("Cannot convert to OBJ: No volume package loaded"));
+        return;
+    }
+
+    // Get surface from VolumePkg
+    auto surfMeta = fVpkg->getSurface(segmentId);
+    if (!surfMeta) {
+        QMessageBox::warning(this, tr("Error"), tr("Cannot convert to OBJ: Invalid segment or segment not loaded"));
         return;
     }
 
@@ -364,7 +401,7 @@ void CWindow::onConvertToObj(const std::string& segmentId)
     }
 
     // Get source tifxyz path (this is a directory containing the TIFXYZ files)
-    std::filesystem::path tifxyzPath = _vol_qsurfs[segmentId]->path;
+    std::filesystem::path tifxyzPath = surfMeta->path;
 
     // Generate output OBJ path inside the TIFXYZ directory with segment ID as filename
     std::filesystem::path objPath = tifxyzPath / (segmentId + ".obj");
@@ -450,6 +487,7 @@ void CWindow::onGrowSeeds(const std::string& segmentId, bool isExpand, bool isRa
     statusBar()->showMessage(tr("Growing segment using %1 in %2").arg(jsonFileName).arg(modeDesc), 5000);
 }
 
+
 // Helper method to initialize command line runner
 bool CWindow::initializeCommandLineRunner()
 {
@@ -487,6 +525,7 @@ bool CWindow::initializeCommandLineRunner()
     }
     return true;
 }
+
 
 void CWindow::onDeleteSegments(const std::vector<std::string>& segmentIds)
 {

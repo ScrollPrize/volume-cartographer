@@ -433,3 +433,166 @@ void VolumePkg::refreshSegmentations()
         }
     }
 }
+
+bool VolumePkg::isSurfaceLoaded(const std::string& id) const
+{
+    return loadedSurfaces_.count(id) > 0;
+}
+
+std::shared_ptr<SurfaceMeta> VolumePkg::loadSurface(const std::string& id)
+{
+    // Check if already loaded
+    if (auto it = loadedSurfaces_.find(id); it != loadedSurfaces_.end()) {
+        return it->second;
+    }
+
+    // Check if segmentation exists
+    auto segIt = segmentations_.find(id);
+    if (segIt == segmentations_.end()) {
+        throw std::runtime_error("Segmentation not found: " + id);
+    }
+
+    auto seg = segIt->second;
+
+    // Check if it's the right format
+    if (!seg->metadata().hasKey("format") ||
+        seg->metadata().get<std::string>("format") != "tifxyz") {
+        return nullptr;
+    }
+
+    // Load the surface
+    try {
+        auto sm = std::make_shared<SurfaceMeta>(seg->path());
+        sm->surface();
+        sm->readOverlapping();
+        loadedSurfaces_[id] = sm;
+        return sm;
+    } catch (const std::exception& e) {
+        Logger()->error("Failed to load surface {}: {}", id, e.what());
+        return nullptr;
+    }
+}
+
+std::shared_ptr<SurfaceMeta> VolumePkg::getSurface(const std::string& id)
+{
+    if (auto it = loadedSurfaces_.find(id); it != loadedSurfaces_.end()) {
+        return it->second;
+    }
+    return nullptr;
+}
+
+void VolumePkg::loadSurfacesForDirectory(const std::string& dirName)
+{
+    std::string targetDir = dirName.empty() ? currentSegmentationDir_ : dirName;
+
+    std::vector<std::pair<std::string, std::shared_ptr<SurfaceMeta>>> toLoad;
+
+    // Prepare list of surfaces to load
+    for (const auto& [id, seg] : segmentations_) {
+        // Only load from the target directory
+        if (segmentationDirectories_[id] != targetDir) {
+            continue;
+        }
+
+        // Skip if already loaded
+        if (loadedSurfaces_.count(id)) {
+            continue;
+        }
+
+        // Check format
+        if (seg->metadata().hasKey("format") &&
+            seg->metadata().get<std::string>("format") == "tifxyz") {
+            toLoad.push_back({id, nullptr});
+        }
+    }
+
+    // Parallel loading
+    #pragma omp parallel for
+    for (size_t i = 0; i < toLoad.size(); i++) {
+        try {
+            auto seg = segmentations_[toLoad[i].first];
+            auto sm = std::make_shared<SurfaceMeta>(seg->path());
+            sm->surface();
+            sm->readOverlapping();
+            toLoad[i].second = sm;
+        } catch (const std::exception& e) {
+            Logger()->error("Failed to load surface {}: {}",
+                          toLoad[i].first, e.what());
+        }
+    }
+
+    // Store loaded surfaces
+    for (const auto& [id, surface] : toLoad) {
+        if (surface) {
+            loadedSurfaces_[id] = surface;
+        }
+    }
+}
+
+
+std::vector<std::string> VolumePkg::getLoadedSurfaceIDs() const
+{
+    std::vector<std::string> ids;
+    ids.reserve(loadedSurfaces_.size());
+    for (const auto& [id, _] : loadedSurfaces_) {
+        ids.push_back(id);
+    }
+    return ids;
+}
+
+void VolumePkg::unloadAllSurfaces()
+{
+    loadedSurfaces_.clear();
+}
+
+bool VolumePkg::unloadSurface(const std::string& id)
+{
+    auto it = loadedSurfaces_.find(id);
+    if (it != loadedSurfaces_.end()) {
+        loadedSurfaces_.erase(it);
+        Logger()->debug("Unloaded surface: {}", id);
+        return true;
+    }
+    return false;
+}
+
+
+void VolumePkg::loadSurfacesBatch(const std::vector<std::string>& ids)
+{
+    std::vector<std::pair<std::string, std::shared_ptr<SurfaceMeta>>> toLoad;
+
+    // Determine which surfaces need loading
+    for (const auto& id : ids) {
+        if (!isSurfaceLoaded(id)) {
+            auto segIt = segmentations_.find(id);
+            if (segIt != segmentations_.end() &&
+                segIt->second->metadata().hasKey("format") &&
+                segIt->second->metadata().get<std::string>("format") == "tifxyz") {
+                toLoad.push_back({id, nullptr});
+                }
+        }
+    }
+
+    // Parallel loading
+#pragma omp parallel for
+    for (size_t i = 0; i < toLoad.size(); i++) {
+        try {
+            auto seg = segmentations_.at(toLoad[i].first);
+            auto sm = std::make_shared<SurfaceMeta>(seg->path());
+            sm->surface();
+            sm->readOverlapping();
+            toLoad[i].second = sm;
+        } catch (const std::exception& e) {
+            Logger()->error("Failed to load surface {}: {}", toLoad[i].first, e.what());
+        }
+    }
+
+    // Store loaded surfaces
+    {
+        for (const auto& [id, surface] : toLoad) {
+            if (surface) {
+                loadedSurfaces_[id] = surface;
+            }
+        }
+    }
+}
