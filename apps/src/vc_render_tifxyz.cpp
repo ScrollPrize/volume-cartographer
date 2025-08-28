@@ -629,10 +629,8 @@ int main(int argc, char *argv[])
         slice_gen = true;
     else {
         // Center at pixel centers: -(W-1)/2, -(H-1)/2  (avoid integer division & half-pixel drift)
-        const float u0 = -0.5f * (static_cast<float>(full_size.width)  - 1.0f)
-                       + static_cast<float>(crop.x);
-        const float v0 = -0.5f * (static_cast<float>(full_size.height) - 1.0f)
-                       + static_cast<float>(crop.y);
+        const float u0 = -0.5f * (static_cast<float>(tgt_size.width)  - 1.0f);
+        const float v0 = -0.5f * (static_cast<float>(tgt_size.height) - 1.0f);
         surf->gen(&points, &normals, tgt_size, cv::Vec3f(0,0,0), tgt_scale, cv::Vec3f(u0, v0, 0.0f));
     }
 
@@ -689,10 +687,9 @@ int main(int argc, char *argv[])
                     int w = std::min(tgt_size.width+crop.x-x, 1024);
                     // Apply effective scale in chunked generation
                     // Center at pixel centers and then offset by the chunk's x and crop.y
-                    const float u0 = -0.5f * (static_cast<float>(full_size.width)  - 1.0f)
-                                   + static_cast<float>(x);
-                    const float v0 = -0.5f * (static_cast<float>(full_size.height) - 1.0f)
-                                   + static_cast<float>(crop.y);
+                    const float u0 = -0.5f * (static_cast<float>(tgt_size.width)  - 1.0f)
+                                + static_cast<float>(x - crop.x);
+                    const float v0 = -0.5f * (static_cast<float>(tgt_size.height) - 1.0f);
                     surf->gen(&points, &normals, cv::Size(w, crop.height),
                               cv::Vec3f(0,0,0), tgt_scale, cv::Vec3f(u0, v0, 0.0f));
 
