@@ -540,7 +540,7 @@ int main(int argc, char *argv[])
     fs::path output_path(tgt_ptn);
     fs::create_directories(output_path.parent_path());
     
-    ChunkCache chunk_cache(16e9);
+    ChunkCache chunk_cache(16ull * 1024 * 1024 * 1024);
 
     QuadSurface *surf = nullptr;
     try {
@@ -609,16 +609,14 @@ int main(int argc, char *argv[])
     
     cv::Mat_<cv::Vec3f> points, normals;
     
-    bool slice_gen = false;
+    bool slice_gen = (tgt_size.width >= 10000 || tgt_size.height >= 10000);
     
     // Global normal orientation decision (for consistency across chunks)
     bool globalFlipDecision = false;
     bool orientationDetermined = false;
     cv::Vec3f meshCentroid;
 
-    if ((tgt_size.width >= 10000 || tgt_size.height >= 10000) && num_slices > 1)
-        slice_gen = true;
-    else {
+    if (slice_gen = false) {
         // Center at pixel centers: -(W-1)/2, -(H-1)/2
         const float u0 = -0.5f * (static_cast<float>(tgt_size.width)  - 1.0f);
         const float v0 = -0.5f * (static_cast<float>(tgt_size.height) - 1.0f);
@@ -630,7 +628,7 @@ int main(int argc, char *argv[])
 
     cv::Mat_<uint8_t> img;
 
-    if (num_slices == 1) {
+    if (slice_gen = false && num_slices == 1) {
         // Scale the segmentation points if requested
         points *= scale_seg;
 
