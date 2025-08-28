@@ -1,11 +1,5 @@
 #pragma once
 
-/** @file */
-
-#include <cstddef>
-#include <cstdint>
-#include <mutex>
-
 #include <filesystem>
 #include <z5/dataset.hxx>
 #include <z5/filesystem/handle.hxx>
@@ -28,13 +22,13 @@ public:
 
     static std::shared_ptr<Volume> New(std::filesystem::path path, std::string uuid, std::string name);
 
-    int sliceWidth() const;
-    int sliceHeight() const;
-    int numSlices() const;
-    double voxelSize() const;
+    [[nodiscard]] int sliceWidth() const;
+    [[nodiscard]] int sliceHeight() const;
+    [[nodiscard]] int numSlices() const;
+    [[nodiscard]] double voxelSize() const;
 
-    z5::Dataset *zarrDataset(int level = 0);
-    size_t numScales();
+    [[nodiscard]] z5::Dataset *zarrDataset(int level = 0) const;
+    [[nodiscard]] size_t numScales() const;
     
 protected:
     int _width{0};

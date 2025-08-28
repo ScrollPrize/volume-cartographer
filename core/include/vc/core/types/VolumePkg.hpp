@@ -13,50 +13,39 @@
 class VolumePkg
 {
 public:
-    VolumePkg(std::filesystem::path fileLocation, int version);
     explicit VolumePkg(const std::filesystem::path& fileLocation);
-    static std::shared_ptr<VolumePkg> New(std::filesystem::path fileLocation, int version);
     static std::shared_ptr<VolumePkg> New(std::filesystem::path fileLocation);
     [[nodiscard]] std::string name() const;
     [[nodiscard]] int version() const;
     [[nodiscard]] double materialThickness() const;
     [[nodiscard]] Metadata metadata() const;
-    template <typename T>
-    void setMetadata(const std::string& key, T value)
-    {
-        config_.set<T>(key, value);
-    }
     void saveMetadata();
     void saveMetadata(const std::filesystem::path& filePath);
-    bool hasVolumes() const;
+    [[nodiscard]] bool hasVolumes() const;
     [[nodiscard]] bool hasVolume(const std::string& id) const;
-    auto numberOfVolumes() const -> std::size_t;
-    [[nodiscard]] auto volumeIDs() const -> std::vector<std::string>;
-    [[nodiscard]] auto volumeNames() const -> std::vector<std::string>;
-    auto newVolume(std::string name = "") -> std::shared_ptr<Volume>;
-    [[nodiscard]] auto volume() const -> const std::shared_ptr<Volume>;
-    auto volume() -> std::shared_ptr<Volume>;
-    [[nodiscard]] auto volume(const std::string& id) const -> const std::shared_ptr<Volume>;
-    auto volume(const std::string& id) -> std::shared_ptr<Volume>;
-    auto hasSegmentations() const -> bool;
-    auto numberOfSegmentations() const -> std::size_t;
-    [[nodiscard]] auto segmentationIDs() const -> std::vector<std::string>;
-    [[nodiscard]] auto segmentationNames() const -> std::vector<std::string>;
-    [[nodiscard]] auto segmentation(const std::string& id) const -> const std::shared_ptr<Segmentation>;
+    [[nodiscard]] std::size_t numberOfVolumes() const;
+    [[nodiscard]] std::vector<std::string> volumeIDs() const;
+    [[nodiscard]] std::vector<std::string> volumeNames() const;
+    std::shared_ptr<Volume> newVolume(std::string name = "");
+    [[nodiscard]] const std::shared_ptr<Volume> volume() const;
+    std::shared_ptr<Volume> volume();
+    [[nodiscard]] const std::shared_ptr<Volume> volume(const std::string& id) const;
+    std::shared_ptr<Volume> volume(const std::string& id);
+    [[nodiscard]] bool hasSegmentations() const;
+    [[nodiscard]] std::size_t numberOfSegmentations() const;
+    [[nodiscard]] std::vector<std::string> segmentationIDs() const;
+    [[nodiscard]] std::vector<std::string> segmentationNames() const;
+    [[nodiscard]] const std::shared_ptr<Segmentation> segmentation(const std::string& id) const;
 
     std::vector<std::filesystem::path> segmentationFiles();
 
-    auto segmentation(const std::string& id) -> std::shared_ptr<Segmentation>;
+    std::shared_ptr<Segmentation> segmentation(const std::string& id);
     void removeSegmentation(const std::string& id);
     void setSegmentationDirectory(const std::string& dirName);
-    [[nodiscard]] auto getSegmentationDirectory() const -> std::string;
-    [[nodiscard]] auto getAvailableSegmentationDirectories() const -> std::vector<std::string>;
+    [[nodiscard]] std::string getSegmentationDirectory() const;
+    [[nodiscard]] std::vector<std::string> getAvailableSegmentationDirectories() const;
 
     void refreshSegmentations();
-    static void Upgrade(
-        const std::filesystem::path& path,
-        int version = VOLPKG_VERSION_LATEST,
-        bool force = false);
 
 private:
     Metadata config_;
@@ -67,7 +56,6 @@ private:
     std::string currentSegmentationDir_ = "paths";
     std::map<std::string, std::string> segmentationDirectories_;
 
-    static auto InitConfig(const Dictionary& dict, int version) -> Metadata;
     void loadSegmentationsFromDirectory(const std::string& dirName);
 };
 

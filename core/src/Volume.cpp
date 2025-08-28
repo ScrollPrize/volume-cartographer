@@ -1,26 +1,16 @@
 #include "vc/core/types/Volume.hpp"
 
-#include <iomanip>
-
 #include <opencv2/imgcodecs.hpp>
 
 #include "z5/attributes.hxx"
 #include "z5/dataset.hxx"
 #include "z5/filesystem/handle.hxx"
-#include "z5/metadata.hxx"
 #include "z5/handle.hxx"
 #include "z5/types/types.hxx"
 #include "z5/factory.hxx"
 #include "z5/multiarray/xtensor_access.hxx"
 
-#include "vc/core/util/xtensor_include.hpp"
-#include XTENSORINCLUDE(containers, xarray.hpp)
 
-
-
-
-
-// Load a Volume from disk
 Volume::Volume(std::filesystem::path path) : DiskBasedObjectBaseClass(std::move(path))
 {
     if (metadata_.get<std::string>("type") != "vol") {
@@ -76,35 +66,31 @@ void Volume::zarrOpen()
     }
 }
 
-// Load a Volume from disk, return a pointer
 std::shared_ptr<Volume> Volume::New(std::filesystem::path path)
 {
     return std::make_shared<Volume>(path);
 }
 
-// Set a Volume from a folder of slices, return a pointer
 std::shared_ptr<Volume> Volume::New(std::filesystem::path path, std::string uuid, std::string name)
 {
     return std::make_shared<Volume>(path, uuid, name);
 }
 
-auto Volume::sliceWidth() const -> int { return _width; }
-auto Volume::sliceHeight() const -> int { return _height; }
-auto Volume::numSlices() const -> int { return _slices; }
-auto Volume::voxelSize() const -> double
+int Volume::sliceWidth() const { return _width; }
+int Volume::sliceHeight() const { return _height; }
+int Volume::numSlices() const { return _slices; }
+double Volume::voxelSize() const
 {
     return metadata_.get<double>("voxelsize");
 }
 
-z5::Dataset *Volume::zarrDataset(int level)
-{
+z5::Dataset *Volume::zarrDataset(int level) const {
     if (level >= zarrDs_.size())
         return nullptr;
 
     return zarrDs_[level].get();
 }
 
-size_t Volume::numScales()
-{
+size_t Volume::numScales() const {
     return zarrDs_.size();
 }
