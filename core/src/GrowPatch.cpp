@@ -198,10 +198,13 @@ static int gen_space_line_loss(ceres::Problem &problem, const cv::Vec2i &p, cons
 }
 
 int gen_fiber_loss(ceres::Problem &problem, const cv::Vec2i &p, const int u_off, cv::Mat_<uint8_t> &state,
-    cv::Mat_<cv::Vec3d> &loc, Chunked3dVec3fFromUint8 &h_fiber_dirs, float w = 1.f)
+    cv::Mat_<cv::Vec3d> &loc, std::optional<Chunked3dVec3fFromUint8> &h_fiber_dirs, float w = 1.f)
 {
     // Add a loss saying that if loc(p) is on a horizontal fiber, then the vector toward the adjacent point along
     // the U-axis should be aligned with the fiber direction
+
+    if (!h_fiber_dirs)
+        return 0;
 
     cv::Vec2i const p_off{p[0], p[1] + u_off};
 
@@ -210,7 +213,7 @@ int gen_fiber_loss(ceres::Problem &problem, const cv::Vec2i &p, const int u_off,
     if (!loc_valid(state(p_off)))
         return 0;
 
-    problem.AddResidualBlock(HorizontalFiberLoss::Create(h_fiber_dirs, w), nullptr, &loc(p)[0], &loc(p_off)[0]);
+    problem.AddResidualBlock(HorizontalFiberLoss::Create(*h_fiber_dirs, w), nullptr, &loc(p)[0], &loc(p_off)[0]);
 
     return 1;
 }
@@ -218,7 +221,7 @@ int gen_fiber_loss(ceres::Problem &problem, const cv::Vec2i &p, const int u_off,
 //create all valid losses for this point
 template <typename I, typename T, typename C>
 static int emptytrace_create_centered_losses(ceres::Problem &problem, const cv::Vec2i &p, cv::Mat_<uint8_t> &state,
-    cv::Mat_<cv::Vec3d> &loc, const I &interp, Chunked3d<T,C> &t, Chunked3dVec3fFromUint8 &h_fiber_dirs,
+    cv::Mat_<cv::Vec3d> &loc, const I &interp, Chunked3d<T,C> &t, std::optional<Chunked3dVec3fFromUint8> &h_fiber_dirs,
     float unit, int flags = 0)
 {
     //generate losses for point p
@@ -272,7 +275,7 @@ static int conditional_spaceline_loss(int bit, const cv::Vec2i &p, const cv::Vec
 };
 
 static int conditional_fiber_loss(int bit, const cv::Vec2i &p, const int u_off, cv::Mat_<uint16_t> &loss_status,
-    ceres::Problem &problem, cv::Mat_<uint8_t> &state, cv::Mat_<cv::Vec3d> &loc, Chunked3dVec3fFromUint8 &h_fiber_dirs)
+    ceres::Problem &problem, cv::Mat_<uint8_t> &state, cv::Mat_<cv::Vec3d> &loc, std::optional<Chunked3dVec3fFromUint8> &h_fiber_dirs)
 {
     int set = 0;
     cv::Vec2i const off{0, u_off};
@@ -284,7 +287,7 @@ static int conditional_fiber_loss(int bit, const cv::Vec2i &p, const int u_off, 
 //create only missing losses so we can optimize the whole problem
 template <typename I, typename T, typename C>
 static int emptytrace_create_missing_centered_losses(ceres::Problem &problem, cv::Mat_<uint16_t> &loss_status, const cv::Vec2i &p,
-    cv::Mat_<uint8_t> &state, cv::Mat_<cv::Vec3d> &loc, const I &interp, Chunked3d<T,C> &t, Chunked3dVec3fFromUint8 &h_fiber_dirs,
+    cv::Mat_<uint8_t> &state, cv::Mat_<cv::Vec3d> &loc, const I &interp, Chunked3d<T,C> &t, std::optional<Chunked3dVec3fFromUint8> &h_fiber_dirs,
     float unit, int flags = SPACE_LOSS | OPTIMIZE_ALL)
 {
     //generate losses for point p
@@ -337,7 +340,7 @@ static int emptytrace_create_missing_centered_losses(ceres::Problem &problem, cv
 //optimize within a radius, setting edge points to constant
 template <typename I, typename T, typename C>
 static float local_optimization(int radius, const cv::Vec2i &p, cv::Mat_<uint8_t> &state, cv::Mat_<cv::Vec3d> &locs,
-    const I &interp, Chunked3d<T,C> &t, Chunked3dVec3fFromUint8 &h_fiber_dirs, float unit, bool quiet = false)
+    const I &interp, Chunked3d<T,C> &t, std::optional<Chunked3dVec3fFromUint8> &h_fiber_dirs, float unit, bool quiet = false)
 {
     ceres::Problem problem;
     cv::Mat_<uint16_t> loss_status(state.size());
@@ -520,7 +523,7 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *c
     Chunked3d<uint8_t,thresholdedDistance> proc_tensor(compute, ds, cache, cache_root);
 
     // Prepare a cached version of the fiber direction volume
-    Chunked3dVec3fFromUint8 h_fiber_dir_tensor(h_fiber_ds, fibers_scale, cache, cache_root, "h-fiber-dir");
+    auto h_fiber_dir_tensor = h_fiber_ds.size() > 0 ? std::make_optional<Chunked3dVec3fFromUint8>(h_fiber_ds, fibers_scale, cache, cache_root, "h-fiber-dir") : std::nullopt;
 
     // Debug: test the chunk cache by reading one voxel
     passTroughComputor pass;
