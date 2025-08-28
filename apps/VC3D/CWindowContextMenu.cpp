@@ -145,11 +145,13 @@ void CWindow::onRenderSegment(const std::string& segmentId)
     _cmdRunner->setSegmentPath(dlg.segmentPath());
     _cmdRunner->setOutputPattern(dlg.outputPattern());
     _cmdRunner->setRenderParams(static_cast<float>(dlg.scale()), dlg.groupIdx(), dlg.numSlices());
+    _cmdRunner->setOmpThreads(dlg.ompThreads());
     _cmdRunner->setVolumePath(dlg.volumePath());
     _cmdRunner->setRenderAdvanced(
         dlg.cropX(), dlg.cropY(), dlg.cropWidth(), dlg.cropHeight(),
         dlg.affinePath(), dlg.invertAffine(),
         static_cast<float>(dlg.scaleSegmentation()), dlg.rotateDegrees(), dlg.flipAxis());
+    _cmdRunner->setIncludeTifs(dlg.includeTifs());
 
     _cmdRunner->execute(CommandLineToolRunner::Tool::RenderTifXYZ);
 
@@ -353,6 +355,7 @@ void CWindow::onGrowSegmentFromSegment(const std::string& segmentId)
         dlg.tgtDir(),
         mergedJsonPath,
         dlg.srcSegment());
+    _cmdRunner->setOmpThreads(dlg.ompThreads());
 
     // Show console before executing to see any debug output
     _cmdRunner->showConsoleOutput();
@@ -429,6 +432,7 @@ void CWindow::onConvertToObj(const std::string& segmentId)
 
     // Set up parameters and execute the tool
     _cmdRunner->setToObjParams(dlg.tifxyzPath(), dlg.objPath());
+    _cmdRunner->setOmpThreads(dlg.ompThreads());
     _cmdRunner->setToObjOptions(dlg.normalizeUV(), dlg.alignGrid(), dlg.decimateIterations(), dlg.cleanSurface());
     _cmdRunner->execute(CommandLineToolRunner::Tool::tifxyz2obj);
     statusBar()->showMessage(tr("Converting segment to OBJ: %1").arg(QString::fromStdString(segmentId)), 5000);

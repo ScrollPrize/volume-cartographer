@@ -11,6 +11,8 @@
 #include <QFontMetrics>
 #include <QSizePolicy>
 #include <QList>
+#include <QRegularExpression>
+#include <QRegularExpressionValidator>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
@@ -72,10 +74,12 @@ RenderParamsDialog::RenderParamsDialog(QWidget* parent,
 
     QWidget* volPick = pathPicker(this, edtVolume_, "Select OME-Zarr volume", true);
     edtSegment_ = new QLineEdit(this);
-    QWidget* outPick = pathPicker(this, edtOutput_, "Select output pattern base", false);
+    QWidget* outPick = pathPicker(this, edtOutput_, "Select output (.zarr or tif pattern)", false);
     spScale_ = new QDoubleSpinBox(this); spScale_->setDecimals(3); spScale_->setRange(0.0001, 10000.0);
     spGroup_ = new QSpinBox(this); spGroup_->setRange(0, 10);
     spSlices_ = new QSpinBox(this); spSlices_->setRange(1, 1000);
+    edtThreads_ = new QLineEdit(this); edtThreads_->setPlaceholderText("optional");
+    edtThreads_->setValidator(new QRegularExpressionValidator(QRegularExpression("^\\s*\\d*\\s*$"), this));
 
     edtVolume_->setText(volumePath);
     edtSegment_->setText(segmentPath);
@@ -86,10 +90,15 @@ RenderParamsDialog::RenderParamsDialog(QWidget* parent,
 
     basic->addRow("Volume:", volPick);
     basic->addRow("Segmentation (tifxyz dir):", edtSegment_);
-    basic->addRow("Output pattern:", outPick);
+    chkIncludeTifs_ = new QCheckBox("Also write TIFF slices (Zarr)", this);
+    chkIncludeTifs_->setChecked(false);
+
+    basic->addRow("Output:", outPick);
+    basic->addRow("", chkIncludeTifs_);
     basic->addRow("Scale (Pg):", spScale_);
     basic->addRow("Group index:", spGroup_);
     basic->addRow("Num slices:", spSlices_);
+    basic->addRow("OMP threads:", edtThreads_);
 
     // Advanced
     auto advBox = new QGroupBox("Advanced (optional)", this);
@@ -131,6 +140,16 @@ RenderParamsDialog::RenderParamsDialog(QWidget* parent,
     main->addWidget(advBox);
     main->addWidget(btns);
 
+    // Enable TIFF export only when output seems to be a Zarr
+    auto updateIncludeTifsEnabled = [this]() {
+        const QString t = edtOutput_->text().trimmed();
+        const bool isZarr = t.endsWith(".zarr", Qt::CaseInsensitive);
+        chkIncludeTifs_->setEnabled(isZarr);
+        if (!isZarr) chkIncludeTifs_->setChecked(false);
+    };
+    updateIncludeTifsEnabled();
+    connect(edtOutput_, &QLineEdit::textChanged, this, [updateIncludeTifsEnabled](const QString&){ updateIncludeTifsEnabled(); });
+
     ensureDialogWidthForEdits(this, QList<QLineEdit*>{ edtVolume_, edtSegment_, edtOutput_, edtAffine_ });
 }
 
@@ -140,6 +159,11 @@ QString RenderParamsDialog::outputPattern() const { return edtOutput_->text(); }
 double RenderParamsDialog::scale() const { return spScale_->value(); }
 int RenderParamsDialog::groupIdx() const { return spGroup_->value(); }
 int RenderParamsDialog::numSlices() const { return spSlices_->value(); }
+int RenderParamsDialog::ompThreads() const {
+    const QString t = edtThreads_->text().trimmed();
+    if (t.isEmpty()) return -1;
+    bool ok=false; int v = t.toInt(&ok); return (ok && v>0) ? v : -1;
+}
 int RenderParamsDialog::cropX() const { return spCropX_->value(); }
 int RenderParamsDialog::cropY() const { return spCropY_->value(); }
 int RenderParamsDialog::cropWidth() const { return spCropW_->value(); }
@@ -149,6 +173,7 @@ bool RenderParamsDialog::invertAffine() const { return chkInvert_->isChecked(); 
 double RenderParamsDialog::scaleSegmentation() const { return spScaleSeg_->value(); }
 double RenderParamsDialog::rotateDegrees() const { return spRotate_->value(); }
 int RenderParamsDialog::flipAxis() const { return cmbFlip_->currentData().toInt(); }
+bool RenderParamsDialog::includeTifs() const { return chkIncludeTifs_->isChecked(); }
 
 // ================= TraceParamsDialog =================
 TraceParamsDialog::TraceParamsDialog(QWidget* parent,
@@ -172,6 +197,8 @@ TraceParamsDialog::TraceParamsDialog(QWidget* parent,
     QWidget* tgtPick = pathPicker(this, edtTgtDir_, "Select target directory (traces)", true);
     QWidget* jsonPick = pathPicker(this, edtJson_, "Select trace params JSON", false);
     QWidget* segPick = pathPicker(this, edtSrcSegment_, "Select source segment (tifxyz dir)", true);
+    edtThreads_ = new QLineEdit(this); edtThreads_->setPlaceholderText("optional");
+    edtThreads_->setValidator(new QRegularExpressionValidator(QRegularExpression("^\\s*\\d*\\s*$"), this));
 
     edtVolume_->setText(volumePath);
     edtSrcDir_->setText(srcDir);
@@ -184,6 +211,7 @@ TraceParamsDialog::TraceParamsDialog(QWidget* parent,
     paths->addRow("Target dir:", tgtPick);
     paths->addRow("JSON params:", jsonPick);
     paths->addRow("Source segment:", segPick);
+    paths->addRow("OMP threads:", edtThreads_);
 
     // Advanced params
     auto advBox = new QGroupBox("Tracing Parameters", this);
@@ -300,6 +328,11 @@ QString TraceParamsDialog::srcDir() const { return edtSrcDir_->text(); }
 QString TraceParamsDialog::tgtDir() const { return edtTgtDir_->text(); }
 QString TraceParamsDialog::jsonParams() const { return edtJson_->text(); }
 QString TraceParamsDialog::srcSegment() const { return edtSrcSegment_->text(); }
+int TraceParamsDialog::ompThreads() const {
+    const QString t = edtThreads_->text().trimmed();
+    if (t.isEmpty()) return -1;
+    bool ok=false; int v = t.toInt(&ok); return (ok && v>0) ? v : -1;
+}
 
 QJsonObject TraceParamsDialog::makeParamsJson() const {
     QJsonObject o;
@@ -418,6 +451,8 @@ ConvertToObjDialog::ConvertToObjDialog(QWidget* parent,
     chkAlign_ = new QCheckBox("Align grid (flatten Z per row)", this);
     spDecimate_ = new QSpinBox(this); spDecimate_->setRange(0, 10); spDecimate_->setValue(0);
     chkClean_ = new QCheckBox("Clean surface outliers", this);
+    edtThreads_ = new QLineEdit(this); edtThreads_->setPlaceholderText("optional");
+    edtThreads_->setValidator(new QRegularExpressionValidator(QRegularExpression("^\\s*\\d*\\s*$"), this));
 
     edtTifxyz_->setText(tifxyzPath);
     edtObj_->setText(objOutPath);
@@ -428,6 +463,7 @@ ConvertToObjDialog::ConvertToObjDialog(QWidget* parent,
     form->addRow("", chkNormalize_);
     form->addRow("", chkAlign_);
     form->addRow("", chkClean_);
+    form->addRow("OMP threads:", edtThreads_);
 
     auto btns = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
     connect(btns, &QDialogButtonBox::accepted, this, &QDialog::accept);
@@ -445,3 +481,8 @@ bool ConvertToObjDialog::normalizeUV() const { return chkNormalize_->isChecked()
 bool ConvertToObjDialog::alignGrid() const { return chkAlign_->isChecked(); }
 int ConvertToObjDialog::decimateIterations() const { return spDecimate_->value(); }
 bool ConvertToObjDialog::cleanSurface() const { return chkClean_->isChecked(); }
+int ConvertToObjDialog::ompThreads() const {
+    const QString t = edtThreads_->text().trimmed();
+    if (t.isEmpty()) return -1;
+    bool ok=false; int v = t.toInt(&ok); return (ok && v>0) ? v : -1;
+}

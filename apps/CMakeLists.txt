@@ -26,6 +26,13 @@ target_link_libraries(vc_render_tifxyz
     Boost::program_options
 )
 
+# Optional libtiff for fast tiled TIFF export
+find_package(TIFF)
+if (TIFF_FOUND)
+    target_link_libraries(vc_render_tifxyz TIFF::TIFF)
+    target_compile_definitions(vc_render_tifxyz PRIVATE VC_HAVE_TIFF=1)
+endif()
+
 add_executable(vc_objrefine src/ObjAlphaCompRefinement.cpp)
 target_link_libraries(vc_objrefine
     z5

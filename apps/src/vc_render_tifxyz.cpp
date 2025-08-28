@@ -4,12 +4,21 @@
 #include "vc/core/util/StreamOperators.hpp"
 
 #include "z5/factory.hxx"
+#include "z5/attributes.hxx"
 #include <nlohmann/json.hpp>
 
 #include <opencv2/highgui.hpp>
 #include <opencv2/imgproc.hpp>
 #include <fstream>
+#include <iomanip>
+#include <sstream>
+#include <algorithm>
+#include <atomic>
 #include <boost/program_options.hpp>
+#ifdef VC_HAVE_TIFF
+#include <tiffio.h>
+#include <mutex>
+#endif
 
 namespace fs = std::filesystem;
 namespace po = boost::program_options;
@@ -426,9 +435,7 @@ int main(int argc, char *argv[])
         ("volume,v", po::value<std::string>()->required(),
             "Path to the OME-Zarr volume")
         ("output,o", po::value<std::string>()->required(),
-            "Output path/pattern for rendered images")
-        ("segmentation,s", po::value<std::string>()->required(),
-            "Path to the segmentation file")
+            "Output path or name (Zarr: name without extension; TIF: filename or printf pattern)")
         ("scale", po::value<float>()->required(),
             "Pixels per level-g voxel (Pg)")
         ("group-idx,g", po::value<int>()->required(),
@@ -437,6 +444,12 @@ int main(int argc, char *argv[])
     po::options_description optional("Optional arguments");
     optional.add_options()
         ("help,h", "Show this help message")
+        ("segmentation,s", po::value<std::string>(),
+            "Path to a single tifxyz segmentation folder (ignored if --render-folder is set)")
+        ("render-folder", po::value<std::string>(),
+            "Folder containing tifxyz segmentation folders to batch render")
+        ("format", po::value<std::string>(),
+            "When using --render-folder, choose 'zarr' or 'tif' output")
         ("num-slices,n", po::value<int>()->default_value(1),
             "Number of slices to render")
         ("crop-x", po::value<int>()->default_value(0),
@@ -456,7 +469,9 @@ int main(int argc, char *argv[])
         ("rotate", po::value<double>()->default_value(0.0),
             "Rotate output image by angle in degrees (counterclockwise)")
         ("flip", po::value<int>()->default_value(-1),
-            "Flip output image. 0=Vertical, 1=Horizontal, 2=Both");
+            "Flip output image. 0=Vertical, 1=Horizontal, 2=Both")
+        ("include-tifs", po::bool_switch()->default_value(false),
+            "If output is Zarr, also export per-Z TIFF slices to layers_{zarrname}");
     // clang-format on
 
     po::options_description all("Usage");
@@ -483,8 +498,35 @@ int main(int argc, char *argv[])
 
     // Extract parsed arguments
     fs::path vol_path = parsed["volume"].as<std::string>();
-    std::string tgt_ptn = parsed["output"].as<std::string>();
-    fs::path seg_path = parsed["segmentation"].as<std::string>();
+    std::string base_output_arg = parsed["output"].as<std::string>();
+    const bool has_render_folder = parsed.count("render-folder") > 0;
+    fs::path render_folder_path;
+    std::string batch_format;
+    if (has_render_folder) {
+        render_folder_path = fs::path(parsed["render-folder"].as<std::string>());
+        if (parsed.count("format") == 0) {
+            std::cerr << "Error: --format is required when using --render-folder (zarr|tif).\n";
+            return EXIT_FAILURE;
+        }
+        batch_format = parsed["format"].as<std::string>();
+        std::transform(batch_format.begin(), batch_format.end(), batch_format.begin(), ::tolower);
+        if (batch_format != "zarr" && batch_format != "tif") {
+            std::cerr << "Error: --format must be 'zarr' or 'tif'.\n";
+            return EXIT_FAILURE;
+        }
+        if (!fs::exists(render_folder_path) || !fs::is_directory(render_folder_path)) {
+            std::cerr << "Error: --render-folder path is not a directory: " << render_folder_path << "\n";
+            return EXIT_FAILURE;
+        }
+    }
+    fs::path seg_path;
+    if (!has_render_folder) {
+        if (parsed.count("segmentation") == 0) {
+            std::cerr << "Error: --segmentation is required unless --render-folder is used.\n";
+            return EXIT_FAILURE;
+        }
+        seg_path = parsed["segmentation"].as<std::string>();
+    }
     float tgt_scale = parsed["scale"].as<float>();
     int group_idx = parsed["group-idx"].as<int>();
     int num_slices = parsed["num-slices"].as<int>();
@@ -495,6 +537,7 @@ int main(int argc, char *argv[])
     double rotate_angle = parsed["rotate"].as<double>();
     const bool invert_affine = parsed["invert-affine"].as<bool>();
     int flip_axis = parsed["flip"].as<int>();
+    const bool include_tifs = parsed["include-tifs"].as<bool>();
     
     // Load affine transform if provided
     AffineTransform affineTransform;
@@ -528,7 +571,7 @@ int main(int argc, char *argv[])
 
     std::cout << "zarr dataset size for scale group " << group_idx << ds->shape() << std::endl;
     std::cout << "chunk shape shape " << ds->chunking().blockShape() << std::endl;
-    std::cout << "saving output to " << tgt_ptn << std::endl;
+    std::cout << "output argument: " << base_output_arg << std::endl;
 
     if (std::abs(rotate_angle) > 1e-6) {
         std::cout << "Rotation: " << rotate_angle << " degrees" << std::endl;
@@ -537,19 +580,41 @@ int main(int argc, char *argv[])
         std::cout << "Flip: " << (flip_axis == 0 ? "Vertical" : flip_axis == 1 ? "Horizontal" : "Both") << std::endl;
     }
 
-    fs::path output_path(tgt_ptn);
-    fs::create_directories(output_path.parent_path());
+    // Prepare dataset handle (volume) shared across renders
     
     ChunkCache chunk_cache(16ull * 1024 * 1024 * 1024);
 
-    QuadSurface *surf = nullptr;
-    try {
-        surf = load_quad_from_tifxyz(seg_path);
-    }
-    catch (...) {
-        std::cout << "error when loading: " << seg_path << std::endl;
-        return EXIT_FAILURE;
-    }
+    auto process_one = [&](const fs::path& seg_folder, const std::string& out_arg, bool force_zarr){
+        fs::path output_path_local(out_arg);
+        if (force_zarr) {
+            // ensure .zarr extension
+            if (output_path_local.extension() != ".zarr")
+                output_path_local = output_path_local.string() + ".zarr";
+        }
+        bool output_is_zarr = force_zarr || (output_path_local.extension() == ".zarr");
+        if (!output_is_zarr) {
+            // May be a directory target (no printf pattern): create directory
+            if (output_path_local.string().find('%') == std::string::npos) {
+                fs::create_directories(output_path_local);
+            } else {
+                fs::create_directories(output_path_local.parent_path());
+            }
+        }
+
+        std::cout << "Rendering segmentation: "
+                  << seg_folder.string() << " -> "
+                  << output_path_local.string()
+                  << (output_is_zarr?" (zarr)":" (tif)")
+                  << std::endl;
+
+        QuadSurface *surf = nullptr;
+        try {
+            surf = load_quad_from_tifxyz(seg_folder);
+        }
+        catch (...) {
+            std::cout << "error when loading: " << seg_folder << std::endl;
+            return;
+        }
 
     cv::Mat_<cv::Vec3f> *raw_points = surf->rawPointsPtr();
     for(int j=0;j<raw_points->rows;j++)
@@ -616,7 +681,7 @@ int main(int argc, char *argv[])
     bool orientationDetermined = false;
     cv::Vec3f meshCentroid;
 
-    if ((tgt_size.width >= 10000 || tgt_size.height >= 10000) && num_slices > 1)
+    if ((tgt_size.width >= 25000 || tgt_size.height >= 25000) && num_slices > 1)
         slice_gen = true;
     else {
         // Center at pixel centers: -(W-1)/2, -(H-1)/2
@@ -629,6 +694,464 @@ int main(int argc, char *argv[])
     }
 
     cv::Mat_<uint8_t> img;
+
+    // If output is a Zarr, render directly into a multi-resolution OME-Zarr pyramid
+    if (output_is_zarr) {
+        // Use the same render_scale as TIF path to ensure identical XY mapping
+        const double render_scale_zarr = render_scale;
+
+        // Prepare geometry sizing (no rotation/flip for Zarr writing)
+        // and final canvas size (tgt_size)
+        cv::Mat_<cv::Vec3f> points, normals;
+
+        // Center at pixel centers for the full canvas
+        const float u0_full = -0.5f * (static_cast<float>(tgt_size.width)  - 1.0f);
+        const float v0_full = -0.5f * (static_cast<float>(tgt_size.height) - 1.0f);
+
+        // We'll generate tiles on-demand; determine orientation from the first tile we generate.
+
+        // Create OME-Zarr with 6 levels (0..5)
+        // Chunking: X/Y = 128; Z = number of rendered slices (baseZ)
+        const size_t CH = 128, CW = 128;
+        const size_t baseZ = std::max(1, num_slices);
+        const size_t CZ = baseZ;
+        // Match XY size to what the TIF path would output (accounts for rotation)
+        cv::Size zarr_xy_size = tgt_size;
+        if (std::abs(rotate_angle) > 1e-6) {
+            // Compute rotated bounding box dimensions without materializing an image
+            cv::RotatedRect rr(cv::Point2f(), cv::Size2f((float)zarr_xy_size.width, (float)zarr_xy_size.height), rotate_angle);
+            cv::Rect2f bbox = rr.boundingRect2f();
+            zarr_xy_size.width  = std::max(1, (int)std::lround(bbox.width));
+            zarr_xy_size.height = std::max(1, (int)std::lround(bbox.height));
+        }
+        const size_t baseY = static_cast<size_t>(zarr_xy_size.height);
+        const size_t baseX = static_cast<size_t>(zarr_xy_size.width);
+
+        z5::filesystem::handle::File outFile(output_path_local);
+        z5::createFile(outFile, true);
+
+        auto make_shape = [](size_t z, size_t y, size_t x){
+            return std::vector<size_t>{z, y, x};
+        };
+
+        auto make_chunks = [](size_t z, size_t y, size_t x){
+            return std::vector<size_t>{z, y, x};
+        };
+
+        // Create base dataset level 0
+        std::vector<size_t> shape0 = make_shape(baseZ, baseY, baseX);
+        std::vector<size_t> chunks0 = make_chunks(shape0[0], std::min(CH, shape0[1]), std::min(CW, shape0[2]));
+        // Compressor: blosc + zstd (no shuffle)
+        nlohmann::json compOpts0 = {
+            {"cname",   "zstd"},
+            {"clevel",  1},
+            {"shuffle", 0}
+        };
+        auto dsOut0 = z5::createDataset(outFile, "0", "uint8", shape0, chunks0, std::string("blosc"), compOpts0);
+
+        // Progress tracking across XY tiles
+        const size_t tilesY = (shape0[1] + CH - 1) / CH;
+        const size_t tilesX = (shape0[2] + CW - 1) / CW;
+        const size_t totalTiles = tilesY * tilesX;
+        std::atomic<size_t> tilesDone{0};
+
+        // Decide orientation once using a small sample tile (after applying transforms)
+        bool globalFlipDecision = false;
+        {
+            const size_t dx0 = std::min(CW, shape0[2]);
+            const size_t dy0 = std::min(CH, shape0[1]);
+            const float u0 = u0_full;
+            const float v0 = v0_full;
+            cv::Mat_<cv::Vec3f> _tp, _tn;
+            surf->gen(&_tp, &_tn,
+                      cv::Size(static_cast<int>(dx0), static_cast<int>(dy0)),
+                      cv::Vec3f(0,0,0),
+                      static_cast<float>(render_scale_zarr),
+                      cv::Vec3f(u0, v0, 0.0f));
+            // Apply transforms for orientation decision
+            _tp *= scale_seg;
+            if (hasAffine) {
+                applyAffineTransform(_tp, _tn, affineTransform);
+            }
+            meshCentroid = calculateMeshCentroid(_tp);
+            globalFlipDecision = shouldFlipNormals(_tp, _tn, meshCentroid);
+        }
+
+        // Iterate output chunks and render directly into them (parallel over XY tiles)
+        for (size_t z0 = 0; z0 < shape0[0]; z0 += CZ) {
+            const size_t dz = std::min(CZ, shape0[0] - z0);
+            #pragma omp parallel for schedule(dynamic) collapse(2)
+            for (long long y0 = 0; y0 < static_cast<long long>(shape0[1]); y0 += CH) {
+                for (long long x0 = 0; x0 < static_cast<long long>(shape0[2]); x0 += CW) {
+                    const size_t dy = std::min(CH, static_cast<size_t>(shape0[1] - y0));
+                    const size_t dx = std::min(CW, static_cast<size_t>(shape0[2] - x0));
+
+                    // Generate base coordinates and normals for this tile once (dx x dy)
+                    const float u0 = u0_full + static_cast<float>(x0);
+                    const float v0 = v0_full + static_cast<float>(y0);
+
+                    cv::Mat_<cv::Vec3f> tilePoints, tileNormals;
+                    surf->gen(&tilePoints, &tileNormals,
+                              cv::Size(static_cast<int>(dx), static_cast<int>(dy)),
+                              cv::Vec3f(0,0,0),
+                              static_cast<float>(render_scale_zarr),
+                              cv::Vec3f(u0, v0, 0.0f));
+                    // Transform points/normals to dataset space: scale_seg -> affine -> ds_scale
+                    cv::Mat_<cv::Vec3f> basePoints = tilePoints.clone();
+                    basePoints *= scale_seg;
+                    cv::Mat_<cv::Vec3f> nrm = tileNormals.clone();
+                    if (hasAffine) {
+                        applyAffineTransform(basePoints, nrm, affineTransform);
+                    }
+                    // Orientation
+                    applyNormalOrientation(nrm, globalFlipDecision);
+                    // Normalize normals to get step directions
+                    cv::Mat_<cv::Vec3f> stepDirs = nrm.clone();
+                    for (int yy = 0; yy < stepDirs.rows; ++yy)
+                        for (int xx = 0; xx < stepDirs.cols; ++xx) {
+                            cv::Vec3f &v = stepDirs(yy,xx);
+                            if (std::isnan(v[0]) || std::isnan(v[1]) || std::isnan(v[2])) continue;
+                            float L = std::sqrt(v[0]*v[0] + v[1]*v[1] + v[2]*v[2]);
+                            if (L > 0) v /= L;
+                        }
+                    basePoints *= ds_scale;
+
+                    // Allocate output chunk buffer [Z,Y,X]
+                    xt::xarray<uint8_t> outChunk = xt::empty<uint8_t>({dz, dy, dx});
+
+                    // Fill per-slice using cached interpolator
+                    // Reuse buffers across slices
+                    cv::Mat_<cv::Vec3f> coords(tilePoints.size());
+                    cv::Mat_<uint8_t> tileOut;
+                    for (size_t zi = 0; zi < dz; ++zi) {
+                        const size_t sliceIndex = z0 + zi;
+                        const float off = static_cast<float>(static_cast<double>(sliceIndex) - 0.5 * (static_cast<double>(baseZ) - 1.0));
+                        // Compute coords in-place to avoid temporary allocations (mesh already in dataset coords)
+                        for (int yy = 0; yy < coords.rows; ++yy) {
+                            for (int xx = 0; xx < coords.cols; ++xx) {
+                                const cv::Vec3f& p = basePoints(yy, xx);
+                                const cv::Vec3f& d = stepDirs(yy, xx);
+                                coords(yy, xx) = p + off * d * static_cast<float>(ds_scale);
+                            }
+                        }
+                        readInterpolated3D(tileOut, ds.get(), coords, &chunk_cache);
+
+                        // Copy to outChunk
+                        for (size_t yy = 0; yy < dy; ++yy) {
+                            for (size_t xx = 0; xx < dx; ++xx) {
+                                outChunk(zi, yy, xx) = tileOut(static_cast<int>(yy), static_cast<int>(xx));
+                            }
+                        }
+                    }
+
+                    // Write chunk to Zarr
+                    z5::types::ShapeType outOffset = {z0, static_cast<size_t>(y0), static_cast<size_t>(x0)};
+                    z5::multiarray::writeSubarray<uint8_t>(dsOut0, outChunk, outOffset.begin());
+
+                    size_t done = ++tilesDone;
+                    int pct = static_cast<int>(100.0 * double(done) / double(totalTiles));
+                    #pragma omp critical(progress_print)
+                    {
+                        std::cout << "\r[render L0] tile " << done << "/" << totalTiles
+                                  << " (" << pct << "%)" << std::flush;
+                    }
+                }
+            }
+        }
+
+        // After finishing L0 tiles, add newline for the progress line
+        std::cout << std::endl;
+
+        // Build multi-resolution pyramid levels 1..5 by averaging 2x blocks in Z, Y, and X
+        auto downsample_avg = [&](int targetLevel){
+            auto src = z5::openDataset(outFile, std::to_string(targetLevel - 1));
+            const auto& sShape = src->shape();
+            // Downsample Z, Y and X by 2 (handle odd sizes)
+            std::vector<size_t> dShape = {
+                (sShape[0] + 1) / 2,
+                (sShape[1] + 1) / 2,
+                (sShape[2] + 1) / 2
+            };
+            // Chunk Z equals number of slices at this level (full Z), XY = 128
+            std::vector<size_t> dChunks = make_chunks(dShape[0], std::min(CH, dShape[1]), std::min(CW, dShape[2]));
+            nlohmann::json compOpts = {
+                {"cname",   "zstd"},
+                {"clevel",  1},
+                {"shuffle", 0}
+            };
+            auto dst = z5::createDataset(outFile, std::to_string(targetLevel), "uint8", dShape, dChunks, std::string("blosc"), compOpts);
+
+            // Iterate in tiles respecting chunking: write whole Z at once
+            const size_t tileZ = dShape[0], tileY = CH, tileX = CW;
+            // Progress for this level
+            const size_t tilesY = (dShape[1] + tileY - 1) / tileY;
+            const size_t tilesX = (dShape[2] + tileX - 1) / tileX;
+            const size_t totalTiles = tilesY * tilesX;
+            std::atomic<size_t> tilesDone{0};
+
+            for (size_t z = 0; z < dShape[0]; z += tileZ) {
+                const size_t lz = std::min(tileZ, dShape[0] - z);
+                #pragma omp parallel for schedule(dynamic) collapse(2)
+                for (long long y = 0; y < static_cast<long long>(dShape[1]); y += tileY) {
+                    for (long long x = 0; x < static_cast<long long>(dShape[2]); x += tileX) {
+                        const size_t ly = std::min(tileY, static_cast<size_t>(dShape[1] - y));
+                        const size_t lx = std::min(tileX, static_cast<size_t>(dShape[2] - x));
+
+                        // Read source subarray for this output tile. 2x in Z and XY
+                        const size_t sz = std::min<size_t>(2*lz, sShape[0] - 2*z);
+                        const size_t sy = std::min<size_t>(2*ly, sShape[1] - y*2);
+                        const size_t sx = std::min<size_t>(2*lx, sShape[2] - x*2);
+
+                        xt::xarray<uint8_t> srcChunk = xt::empty<uint8_t>({sz, sy, sx});
+                        {
+                            z5::types::ShapeType sOff = {static_cast<size_t>(2*z), static_cast<size_t>(2*y), static_cast<size_t>(2*x)};
+                            z5::multiarray::readSubarray<uint8_t>(src, srcChunk, sOff.begin());
+                        }
+
+                        xt::xarray<uint8_t> dstChunk = xt::empty<uint8_t>({lz, ly, lx});
+                        for (size_t zz = 0; zz < lz; ++zz) {
+                            for (size_t yy = 0; yy < ly; ++yy) {
+                                for (size_t xx = 0; xx < lx; ++xx) {
+                                    // Average available neighbors in 2x2x2 window (handle odd sizes at edges)
+                                    int sum = 0;
+                                    int cnt = 0;
+                                    for (int dz2 = 0; dz2 < 2 && (2*zz + dz2) < sz; ++dz2)
+                                        for (int dy2 = 0; dy2 < 2 && (2*yy + dy2) < sy; ++dy2)
+                                            for (int dx2 = 0; dx2 < 2 && (2*xx + dx2) < sx; ++dx2) {
+                                                sum += srcChunk(2*zz + dz2, 2*yy + dy2, 2*xx + dx2);
+                                                cnt += 1;
+                                            }
+                                    dstChunk(zz, yy, xx) = static_cast<uint8_t>((sum + (cnt/2)) / std::max(1, cnt));
+                                }
+                            }
+                        }
+
+                        z5::types::ShapeType dOff = {z, static_cast<size_t>(y), static_cast<size_t>(x)};
+                        z5::multiarray::writeSubarray<uint8_t>(dst, dstChunk, dOff.begin());
+
+                        size_t done = ++tilesDone;
+                        int pct = static_cast<int>(100.0 * double(done) / double(totalTiles));
+                        #pragma omp critical(progress_print)
+                        {
+                            std::cout << "\r[render L" << targetLevel << "] tile " << done << "/" << totalTiles
+                                      << " (" << pct << "%)" << std::flush;
+                        }
+                    }
+                }
+            }
+            // newline after finishing this level
+            std::cout << std::endl;
+        };
+
+        for (int level = 1; level <= 5; ++level) {
+            downsample_avg(level);
+        }
+
+        // Root attributes including OME-NGFF multiscales
+        nlohmann::json attrs;
+        attrs["source_zarr"] = vol_path.string();
+        attrs["source_group"] = group_idx;
+        attrs["num_slices"] = baseZ;
+        {
+            cv::Size attr_xy = tgt_size;
+            if (std::abs(rotate_angle) > 1e-6) {
+                cv::RotatedRect rr(cv::Point2f(), cv::Size2f((float)attr_xy.width, (float)attr_xy.height), rotate_angle);
+                cv::Rect2f bbox = rr.boundingRect2f();
+                attr_xy.width  = std::max(1, (int)std::lround(bbox.width));
+                attr_xy.height = std::max(1, (int)std::lround(bbox.height));
+            }
+            attrs["canvas_size"] = {attr_xy.width, attr_xy.height};
+        }
+        attrs["chunk_size"] = {static_cast<int>(CZ), static_cast<int>(CH), static_cast<int>(CW)};
+        attrs["note_axes_order"] = "ZYX (slice, row, col)";
+
+        // OME-NGFF multiscales v0.4 metadata
+        nlohmann::json multiscale;
+        multiscale["version"] = "0.4";
+        multiscale["name"] = "render";
+        multiscale["axes"] = nlohmann::json::array({
+            nlohmann::json{{"name","z"},{"type","space"},{"unit","pixel"}},
+            nlohmann::json{{"name","y"},{"type","space"},{"unit","pixel"}},
+            nlohmann::json{{"name","x"},{"type","space"},{"unit","pixel"}}
+        });
+        multiscale["datasets"] = nlohmann::json::array();
+        for (int level = 0; level <= 5; ++level) {
+            const double s = std::pow(2.0, level);
+            nlohmann::json dset;
+            dset["path"] = std::to_string(level);
+            dset["coordinateTransformations"] = nlohmann::json::array({
+                // Z, Y and X scale by 2^level
+                nlohmann::json{{"type","scale"},{"scale", nlohmann::json::array({s, s, s})}},
+                nlohmann::json{{"type","translation"},{"translation", nlohmann::json::array({0.0, 0.0, 0.0})}}
+            });
+            multiscale["datasets"].push_back(dset);
+        }
+        multiscale["metadata"] = nlohmann::json{{"downsampling_method","mean"}};
+        attrs["multiscales"] = nlohmann::json::array({multiscale});
+
+        z5::writeAttributes(outFile, attrs);
+
+        // Optionally export per-Z TIFFs from level 0 into layers_{zarrname}
+        if (include_tifs) {
+            try {
+                auto dsL0 = z5::openDataset(outFile, "0");
+                const auto& shape0_check = dsL0->shape(); // [Z, Y, X]
+                const size_t Z = shape0_check[0];
+                const int Y = static_cast<int>(shape0_check[1]);
+                const int X = static_cast<int>(shape0_check[2]);
+
+                // Build output folder next to the .zarr directory
+                std::string zname = output_path_local.stem().string();
+                fs::path layers_dir = output_path_local.parent_path() / (std::string("layers_") + zname);
+                fs::create_directories(layers_dir);
+
+                // Zero padding width: at least 2 digits
+                int pad = 2;
+                size_t maxIndex = (Z > 0) ? (Z - 1) : 0;
+                while (maxIndex >= 100) { pad++; maxIndex /= 10; }
+
+                // If all expected TIFFs already exist, skip export
+                bool all_exist = true;
+                for (size_t z = 0; z < Z; ++z) {
+                    std::ostringstream fn;
+                    fn << std::setw(pad) << std::setfill('0') << z;
+                    fs::path outPath = layers_dir / (fn.str() + std::string(".tif"));
+                    if (!fs::exists(outPath)) { all_exist = false; break; }
+                }
+                if (all_exist) {
+                    std::cout << "[tif export] all slices exist in " << layers_dir.string() << ", skipping." << std::endl;
+                    // Nothing else to do
+                    delete surf;
+                    return;
+                }
+
+#ifdef VC_HAVE_TIFF
+                // Fast path: write tiled TIFFs directly per slice using libtiff.
+                const uint32_t tileW = static_cast<uint32_t>(CW);
+                const uint32_t tileH = static_cast<uint32_t>(CH);
+                const uint32_t tilesX = (static_cast<uint32_t>(X) + tileW - 1) / tileW;
+                const uint32_t tilesY = (static_cast<uint32_t>(Y) + tileH - 1) / tileH;
+                const size_t totalTiles = static_cast<size_t>(tilesX) * static_cast<size_t>(tilesY);
+                std::atomic<size_t> tilesDone{0};
+
+                std::vector<TIFF*> tiffs(Z, nullptr);
+                std::vector<std::mutex> tiffLocks(Z); // per-slice locks
+                for (size_t z = 0; z < Z; ++z) {
+                    std::ostringstream fn;
+                    fn << std::setw(pad) << std::setfill('0') << z;
+                    fs::path outPath = layers_dir / (fn.str() + std::string(".tif"));
+                    TIFF* tf = TIFFOpen(outPath.string().c_str(), "w8");
+                    if (!tf) throw std::runtime_error("failed to open TIFF for writing: " + outPath.string());
+                    TIFFSetField(tf, TIFFTAG_IMAGEWIDTH, static_cast<uint32_t>(X));
+                    TIFFSetField(tf, TIFFTAG_IMAGELENGTH, static_cast<uint32_t>(Y));
+                    TIFFSetField(tf, TIFFTAG_SAMPLESPERPIXEL, 1);
+                    TIFFSetField(tf, TIFFTAG_BITSPERSAMPLE, 8);
+                    TIFFSetField(tf, TIFFTAG_PHOTOMETRIC, PHOTOMETRIC_MINISBLACK);
+                    TIFFSetField(tf, TIFFTAG_PLANARCONFIG, PLANARCONFIG_CONTIG);
+                    TIFFSetField(tf, TIFFTAG_COMPRESSION, COMPRESSION_LZW);
+                    TIFFSetField(tf, TIFFTAG_PREDICTOR, 2);
+                    TIFFSetField(tf, TIFFTAG_TILEWIDTH, tileW);
+                    TIFFSetField(tf, TIFFTAG_TILELENGTH, tileH);
+                    tiffs[z] = tf;
+                }
+
+                // Per-thread tile buffer padded to tile size
+                #pragma omp parallel for schedule(dynamic) collapse(2)
+                for (long long ty = 0; ty < static_cast<long long>(tilesY); ++ty) {
+                    for (long long tx = 0; tx < static_cast<long long>(tilesX); ++tx) {
+                        const uint32_t x0 = static_cast<uint32_t>(tx) * tileW;
+                        const uint32_t y0 = static_cast<uint32_t>(ty) * tileH;
+                        const uint32_t dx = std::min<uint32_t>(tileW, static_cast<uint32_t>(X) - x0);
+                        const uint32_t dy = std::min<uint32_t>(tileH, static_cast<uint32_t>(Y) - y0);
+
+                        xt::xarray<uint8_t> tile = xt::empty<uint8_t>({Z, static_cast<size_t>(dy), static_cast<size_t>(dx)});
+                        {
+                            z5::types::ShapeType off = {0, static_cast<size_t>(y0), static_cast<size_t>(x0)};
+                            z5::multiarray::readSubarray<uint8_t>(dsL0, tile, off.begin());
+                        }
+
+                        std::vector<uint8_t> tileBuf(tileW * tileH, 0);
+                        for (size_t z = 0; z < Z; ++z) {
+                            // Fill pad buffer
+                            for (uint32_t yy = 0; yy < dy; ++yy) {
+                                uint8_t* dst = tileBuf.data() + yy * tileW;
+                                for (uint32_t xx = 0; xx < dx; ++xx) {
+                                    dst[xx] = tile(z, yy, xx);
+                                }
+                                // zero padding already present beyond dx
+                            }
+                            // Write tile to the corresponding TIFF (per-slice lock)
+                            {
+                                std::lock_guard<std::mutex> guard(tiffLocks[z]);
+                                TIFF* tf = tiffs[z];
+                                const uint32_t tileIndex = TIFFComputeTile(tf, x0, y0, 0, 0);
+                                if (TIFFWriteEncodedTile(tf, tileIndex, tileBuf.data(), static_cast<tmsize_t>(tileBuf.size())) < 0) {
+                                    // TODO: optional error handling/logging per tile
+                                }
+                            }
+                        }
+
+                        // Progress update per completed tile (all slices written for this tile)
+                        size_t done = ++tilesDone;
+                        int pct = static_cast<int>(100.0 * double(done) / double(totalTiles));
+                        #pragma omp critical(progress_print)
+                        {
+                            std::cout << "\r[tif export] tiles " << done << "/" << totalTiles
+                                      << " (" << pct << "%)" << std::flush;
+                        }
+                    }
+                }
+
+                for (auto* tf : tiffs) {
+                    TIFFClose(tf);
+                }
+
+                std::cout << std::endl;
+#else
+                // Fallback: assemble full images in memory (OpenCV) and write
+                // Allocate one full-size image per slice in memory
+                std::vector<cv::Mat> images;
+                images.reserve(Z);
+                for (size_t z = 0; z < Z; ++z) images.emplace_back(Y, X, CV_8UC1);
+
+                const size_t tilesY = (static_cast<size_t>(Y) + CH - 1) / CH;
+                const size_t tilesX = (static_cast<size_t>(X) + CW - 1) / CW;
+                #pragma omp parallel for schedule(dynamic) collapse(2)
+                for (long long ty = 0; ty < static_cast<long long>(tilesY); ++ty) {
+                    for (long long tx = 0; tx < static_cast<long long>(tilesX); ++tx) {
+                        const size_t y0 = static_cast<size_t>(ty) * CH;
+                        const size_t x0 = static_cast<size_t>(tx) * CW;
+                        const size_t dy = std::min(static_cast<size_t>(CH), static_cast<size_t>(Y) - y0);
+                        const size_t dx = std::min(static_cast<size_t>(CW), static_cast<size_t>(X) - x0);
+                        xt::xarray<uint8_t> tile = xt::empty<uint8_t>({Z, dy, dx});
+                        z5::types::ShapeType off = {0, y0, x0};
+                        z5::multiarray::readSubarray<uint8_t>(dsL0, tile, off.begin());
+                        for (size_t z = 0; z < Z; ++z) {
+                            cv::Mat roi = images[z](cv::Rect(static_cast<int>(x0), static_cast<int>(y0), static_cast<int>(dx), static_cast<int>(dy)));
+                            for (size_t yy = 0; yy < dy; ++yy) std::memcpy(roi.ptr<uint8_t>(static_cast<int>(yy)), &tile(z, yy, 0), dx);
+                        }
+                    }
+                }
+                std::atomic<size_t> done{0};
+                #pragma omp parallel for schedule(dynamic)
+                for (long long zi = 0; zi < static_cast<long long>(Z); ++zi) {
+                    std::ostringstream fn; fn << std::setw(pad) << std::setfill('0') << zi;
+                    fs::path outPath = layers_dir / (fn.str() + std::string(".tif"));
+                    cv::imwrite(outPath.string(), images[static_cast<size_t>(zi)]);
+                    size_t d = ++done;
+                    #pragma omp critical(progress_print)
+                    { std::cout << "\r[tif export] slice " << d << "/" << Z << std::flush; }
+                }
+                std::cout << std::endl;
+#endif
+            } catch (const std::exception& e) {
+                std::cerr << "[tif export] warning: failed to export TIFFs: " << e.what() << std::endl;
+            }
+        }
+
+        delete surf;
+        return;
+    }
 
     if (num_slices == 1) {
         // Scale the segmentation points if requested
@@ -666,7 +1189,18 @@ int main(int argc, char *argv[])
             flipImage(img, flip_axis);
         }
 
-        cv::imwrite(tgt_ptn.c_str(), img);
+        if (!output_is_zarr) {
+            if (output_path_local.string().find('%') == std::string::npos) {
+                // Default numeric name in directory: 00.tif
+                fs::path out_file = output_path_local / "00.tif";
+                cv::imwrite(out_file.string(), img);
+            } else {
+                cv::imwrite(output_path_local.string(), img);
+            }
+        } else {
+            // Not possible here because output_is_zarr branch above handles zarr
+            cv::imwrite(output_path_local.string(), img);
+        }
     }
     else {
         char buf[1024];
@@ -805,12 +1339,86 @@ int main(int argc, char *argv[])
             if (flip_axis >= 0) {
                 flipImage(img, flip_axis);
             }
-            snprintf(buf, 1024, tgt_ptn.c_str(), i);
-            cv::imwrite(buf, img);
+            if (!output_is_zarr && output_path_local.string().find('%') == std::string::npos) {
+                // Write into directory with default zero-padded names (min width 2)
+                int pad = 2;
+                int v = i;
+                while (v >= 100) { pad++; v /= 10; }
+                std::ostringstream fn;
+                fn << std::setw(pad) << std::setfill('0') << i;
+                fs::path out_file = output_path_local / (fn.str() + ".tif");
+                cv::imwrite(out_file.string(), img);
+            } else {
+                snprintf(buf, 1024, output_path_local.string().c_str(), i);
+                cv::imwrite(buf, img);
+            }
         }
     }
 
     delete surf;
+    };
 
-    return EXIT_SUCCESS;
+    if (has_render_folder) {
+        // Iterate subfolders and render those that look like tifxyz (contain x.tif, y.tif, z.tif)
+        size_t count = 0;
+        for (auto const& entry : fs::directory_iterator(render_folder_path)) {
+            if (!entry.is_directory()) continue;
+            fs::path f = entry.path();
+            if (!(fs::exists(f/"x.tif") && fs::exists(f/"y.tif") && fs::exists(f/"z.tif"))) continue;
+            // Compute output argument relative to this tifxyz folder
+            std::string out_arg;
+            bool force_zarr = false;
+            if (batch_format == "zarr") {
+                out_arg = (f / base_output_arg).string();
+                // zarr output path with enforced extension
+                fs::path zarr_path = out_arg;
+                if (zarr_path.extension() != ".zarr") zarr_path = zarr_path.string() + ".zarr";
+                if (fs::exists(zarr_path)) {
+                    std::cout << "[skip] exists: " << zarr_path << "\n";
+                    continue;
+                }
+                force_zarr = true;
+            } else { // tif
+                // If no printf pattern present, interpret -o as a directory name under the seg folder
+                // Default filenames will be 00.tif ...
+                out_arg = (f / base_output_arg).string();
+                if (out_arg.find('%') == std::string::npos) {
+                    fs::path out_dir(out_arg);
+                    // Determine last expected filename with width >= 2
+                    int pad = 2;
+                    size_t last = (num_slices > 0) ? (num_slices - 1) : 0;
+                    size_t t = last;
+                    while (t >= 100) { pad++; t /= 10; }
+                    std::ostringstream oss;
+                    oss << std::setw(pad) << std::setfill('0') << last;
+                    fs::path last_file = out_dir / (oss.str() + ".tif");
+                    if (fs::exists(last_file)) {
+                        std::cout << "[skip] exists: " << last_file << "\n";
+                        continue;
+                    }
+                } else {
+                    // Pattern present: test existence of the last file in the pattern
+                    char testbuf[1024];
+                    int pad = 2; // try to honor at least 2 digits even if pattern smaller
+                    size_t last = (num_slices > 0) ? (num_slices - 1) : 0;
+                    // Render into buffer
+                    snprintf(testbuf, sizeof(testbuf), out_arg.c_str(), (int)last);
+                    if (fs::exists(testbuf)) {
+                        std::cout << "[skip] exists: " << testbuf << "\n";
+                        continue;
+                    }
+                }
+            }
+            process_one(f, out_arg, force_zarr);
+            ++count;
+        }
+        if (count == 0) {
+            std::cout << "No tifxyz folders found in: " << render_folder_path << std::endl;
+        }
+        return EXIT_SUCCESS;
+    } else {
+        // Single segmentation path
+        process_one(seg_path, base_output_arg, false);
+        return EXIT_SUCCESS;
+    }
 }
