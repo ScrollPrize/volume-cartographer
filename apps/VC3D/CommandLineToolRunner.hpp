@@ -51,6 +51,21 @@ public:
     void setTraceParams(QString volumePath, QString srcDir, QString tgtDir, QString jsonParams, QString srcSegment);
     void setAddOverlapParams(QString tgtDir, QString tifxyzPath);
     void setToObjParams(QString tifxyzPath, QString objPath);
+    // optional parameters for vc_tifxyz2obj
+    void setToObjOptions(bool normalizeUV, bool alignGrid, int decimateIterations, bool cleanSurface);
+
+    // optional parameters for vc_render_tifxyz
+    void setRenderAdvanced(
+        int cropX,
+        int cropY,
+        int cropWidth,
+        int cropHeight,
+        const QString& affinePath,
+        bool invertAffine,
+        float scaleSegmentation,
+        double rotateDegrees,
+        int flipAxis // -1 none, 0 vertical, 1 horizontal, 2 both
+    );
 
     bool execute(Tool tool);
     void cancel();
@@ -106,7 +121,24 @@ private:
     bool _useRandomSeed;
     int _parallelProcesses;  // processes for xargs
     int _iterationCount;     // iterations for xargs
-    
+
+    // Advanced render options
+    int _cropX{0};
+    int _cropY{0};
+    int _cropWidth{0};
+    int _cropHeight{0};
+    QString _affinePath;
+    bool _invertAffine{false};
+    float _scaleSeg{1.0f};
+    double _rotateDeg{0.0};
+    int _flipAxis{-1};
+
+    // vc_tifxyz2obj options
+    bool _optNormalizeUV{false};
+    bool _optAlignGrid{false};
+    int  _optDecimateIter{0};
+    bool _optCleanSurface{false};
+
     Tool _currentTool;
 
     QFile* _logFile;

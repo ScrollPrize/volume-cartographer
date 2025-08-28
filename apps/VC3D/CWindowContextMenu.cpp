@@ -7,9 +7,13 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QCoreApplication>
+#include <QDateTime>
+#include <QJsonDocument>
+#include <QJsonObject>
 
 #include "vc/core/types/VolumePkg.hpp"
 #include "vc/core/util/Surface.hpp"
+#include "ToolDialogs.hpp"
 
 namespace vc = volcart;
 using namespace ChaoVis;
@@ -90,14 +94,22 @@ void CWindow::onRenderSegment(const std::string& segmentId)
 
     QSettings settings("VC.ini", QSettings::IniFormat);
 
-    QString outputFormat = settings.value("rendering/output_path_format", "%s/layers/%02d.tif").toString();
-    float scale = settings.value("rendering/scale", 1.0f).toFloat();
-    int resolution = settings.value("rendering/resolution", 0).toInt();
-    int layers = settings.value("rendering/layers", 31).toInt();
+    const QString volumePath = getCurrentVolumePath();
+    const QString segmentPath = QString::fromStdString(_vol_qsurfs[segmentId]->path.string());
+    const QString segmentOutDir = QString::fromStdString(_vol_qsurfs[segmentId]->path.string());
+    // Use code defaults; Settings dialog rendering options removed
+    const QString outputFormat = "%s/layers/%02d.tif";
+    const float scale = 1.0f;
+    const int resolution = 0;
+    const int layers = 31;
+    const QString outputPattern = QString(outputFormat).replace("%s", segmentOutDir);
 
-    QString segmentPath = QString::fromStdString(_vol_qsurfs[segmentId]->path.string());
-    QString segmentOutDir = QString::fromStdString(_vol_qsurfs[segmentId]->path.string());
-    QString outputPattern = outputFormat.replace("%s", segmentOutDir);
+    // Prompt user for parameters
+    RenderParamsDialog dlg(this, volumePath, segmentPath, outputPattern, scale, resolution, layers);
+    if (dlg.exec() != QDialog::Accepted) {
+        statusBar()->showMessage(tr("Render cancelled"), 3000);
+        return;
+    }
 
     // Initialize command line tool runner if needed
     if (!_cmdRunner) {
@@ -130,9 +142,14 @@ void CWindow::onRenderSegment(const std::string& segmentId)
     }
 
     // Set up parameters and execute the render tool
-    _cmdRunner->setSegmentPath(segmentPath);
-    _cmdRunner->setOutputPattern(outputPattern);
-    _cmdRunner->setRenderParams(scale, resolution, layers);
+    _cmdRunner->setSegmentPath(dlg.segmentPath());
+    _cmdRunner->setOutputPattern(dlg.outputPattern());
+    _cmdRunner->setRenderParams(static_cast<float>(dlg.scale()), dlg.groupIdx(), dlg.numSlices());
+    _cmdRunner->setVolumePath(dlg.volumePath());
+    _cmdRunner->setRenderAdvanced(
+        dlg.cropX(), dlg.cropY(), dlg.cropWidth(), dlg.cropHeight(),
+        dlg.affinePath(), dlg.invertAffine(),
+        static_cast<float>(dlg.scaleSegmentation()), dlg.rotateDegrees(), dlg.flipAxis());
 
     _cmdRunner->execute(CommandLineToolRunner::Tool::RenderTifXYZ);
 
@@ -232,11 +249,10 @@ void CWindow::onSlimFlattenAndRender(const std::string& segmentId)
         return;
     }
     {
-        QSettings settings("VC.ini", QSettings::IniFormat);
-        QString outputFormat = settings.value("rendering/output_path_format", "%s/layers/%02d.tif").toString();
-        float scale = settings.value("rendering/scale", 1.0f).toFloat();
-        int resolution = settings.value("rendering/resolution", 0).toInt();
-        int layers = settings.value("rendering/layers", 31).toInt();
+        QString outputFormat = "%s/layers/%02d.tif";
+        float scale = 1.0f;
+        int resolution = 0;
+        int layers = 31;
         const QString outPattern = outputFormat.replace("%s", outTifxyz);
 
         _cmdRunner->setSegmentPath(outTifxyz);
@@ -293,20 +309,54 @@ void CWindow::onGrowSegmentFromSegment(const std::string& segmentId)
         return;
     }
 
+    // Prompt user for parameters
+    TraceParamsDialog dlg(this,
+                          getCurrentVolumePath(),
+                          QString::fromStdString(pathsDir.string()),
+                          QString::fromStdString(tracesDir.string()),
+                          QString::fromStdString(jsonParamsPath.string()),
+                          srcSegment);
+    if (dlg.exec() != QDialog::Accepted) {
+        statusBar()->showMessage(tr("Run trace cancelled"), 3000);
+        return;
+    }
+
+    // Merge JSON from disk with UI overrides, write to a temp file inside target dir
+    QJsonObject base;
+    {
+        QFile f(dlg.jsonParams());
+        if (f.open(QIODevice::ReadOnly)) {
+            const auto doc = QJsonDocument::fromJson(f.readAll());
+            f.close();
+            if (doc.isObject()) base = doc.object();
+        }
+    }
+    const QJsonObject ui = dlg.makeParamsJson();
+    for (auto it = ui.begin(); it != ui.end(); ++it) base[it.key()] = it.value();
+
+    const QString ts = QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss");
+    const QString mergedJsonPath = QDir(dlg.tgtDir()).filePath(QString("trace_params_ui_%1.json").arg(ts));
+    {
+        QFile f(mergedJsonPath);
+        if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+            QMessageBox::warning(this, tr("Error"), tr("Failed to write params JSON: %1").arg(mergedJsonPath));
+            return;
+        }
+        f.write(QJsonDocument(base).toJson(QJsonDocument::Indented));
+        f.close();
+    }
+
     // Set up parameters and execute the tool
     _cmdRunner->setTraceParams(
-        QString(),  // Volume path will be set automatically in execute()
-        QString::fromStdString(pathsDir.string()),
-        QString::fromStdString(tracesDir.string()),
-        QString::fromStdString(jsonParamsPath.string()),
-        srcSegment
-    );
+        dlg.volumePath(),
+        dlg.srcDir(),
+        dlg.tgtDir(),
+        mergedJsonPath,
+        dlg.srcSegment());
 
     // Show console before executing to see any debug output
     _cmdRunner->showConsoleOutput();
-
     _cmdRunner->execute(CommandLineToolRunner::Tool::GrowSegFromSegment);
-
     statusBar()->showMessage(tr("Growing segment from: %1").arg(QString::fromStdString(segmentId)), 5000);
 }
 
@@ -368,14 +418,19 @@ void CWindow::onConvertToObj(const std::string& segmentId)
     // Generate output OBJ path inside the TIFXYZ directory with segment ID as filename
     fs::path objPath = tifxyzPath / (segmentId + ".obj");
 
+    // Prompt for parameters
+    ConvertToObjDialog dlg(this,
+                           QString::fromStdString(tifxyzPath.string()),
+                           QString::fromStdString(objPath.string()));
+    if (dlg.exec() != QDialog::Accepted) {
+        statusBar()->showMessage(tr("Convert to OBJ cancelled"), 3000);
+        return;
+    }
+
     // Set up parameters and execute the tool
-    _cmdRunner->setToObjParams(
-        QString::fromStdString(tifxyzPath.string()),
-        QString::fromStdString(objPath.string())
-    );
-
+    _cmdRunner->setToObjParams(dlg.tifxyzPath(), dlg.objPath());
+    _cmdRunner->setToObjOptions(dlg.normalizeUV(), dlg.alignGrid(), dlg.decimateIterations(), dlg.cleanSurface());
     _cmdRunner->execute(CommandLineToolRunner::Tool::tifxyz2obj);
-
     statusBar()->showMessage(tr("Converting segment to OBJ: %1").arg(QString::fromStdString(segmentId)), 5000);
 }
 

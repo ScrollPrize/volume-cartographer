@@ -16,7 +16,7 @@ class SettingsDialog : public QDialog, private Ui_VCSettingsDlg
         static std::vector<int> expandSettingToIntRange(const QString& setting);
         
         // Updates the default volume combobox with available volumes
-        void updateVolumeList(const QStringList& volumeIds);
+        // Rendering options removed from settings dialog; volume list no longer needed here.
 
     protected slots:
         void accept() override;
