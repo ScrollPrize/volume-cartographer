@@ -10,19 +10,6 @@ from collections import deque
 from torch_geometric.nn.unpool import knn_interpolate
 
 
-def max_downsample(x, factor):
-    # Downsample a 3D array by a factor, using max-pooling
-    assert x.ndim == 3
-    if factor == 1:
-        return x
-    x = np.pad(x, ((0, factor - x.shape[0] % factor), (0, factor - x.shape[1] % factor), (0, factor - x.shape[2] % factor)), mode='constant', constant_values=x.min())
-    x = x.reshape(x.shape[0] // factor, factor, x.shape[1] // factor, factor, x.shape[2] // factor, factor)
-    x = np.max(x, axis=5)
-    x = np.max(x, axis=3)
-    x = np.max(x, axis=1)
-    return x
-
-
 class StructureTensor:
 
     def __init__(self, prefilter_sigma=1.5, windowing_sigma=2.):
@@ -92,7 +79,6 @@ def comb_fiber(directions, mask):
         directions: (Z, Y, X, 3) array of 3D vectors
         mask: (Z, Y, X) boolean mask indicating valid positions
     """
-    # Get valid indices
     valid_coords = np.stack(np.where(mask), axis=-1)
     if len(valid_coords) == 0:
         return
@@ -137,7 +123,8 @@ def comb_fiber(directions, mask):
 def comb_global(fiber_points, fiber_directions, subsample_factor=10):
     """
     Globally orient fibers to be consistent with each other.
-    Uses nearest-neighbor propagation to ensure all fibers are processed.
+    Not perfect (mostly Claude-generated!) but we do not require complete
+    consistency since the loss in the tracer is not sensitive to sign.
     
     Args:
         fiber_points: List of (N_i, 3) arrays, each containing 3D points of a fiber
@@ -312,7 +299,7 @@ def main(
         dim_group = horizontal_group.create_group(dim)
         return dim_group.create_dataset(
             f'{output_ome_scale}',
-            dtype=np.uint8,  # TODO: check if this is precise enough; chosen due to ChunkedTensor support
+            dtype=np.uint8,  # chosen due to ChunkedTensor support (and size!)
             shape=(predictions_zarr_array.shape[0] // output_downsample, predictions_zarr_array.shape[1] // output_downsample, predictions_zarr_array.shape[2] // output_downsample),
             chunks=(128, 128, 128),
             compressor=zarr.Blosc(cname='zstd', clevel=1, shuffle=True),
