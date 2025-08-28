@@ -13,7 +13,6 @@
 
 #include "vc/core/util/Slicing.hpp"
 #include "vc/core/util/Surface.hpp"
-#include "vc/core/io/PointSetIO.hpp"
 
 #include <filesystem>
 

@@ -1,6 +1,5 @@
 #include "vc/core/types/Segmentation.hpp"
 
-#include "vc/core/io/PointSetIO.hpp"
 
 
 Segmentation::Segmentation(std::filesystem::path path)
