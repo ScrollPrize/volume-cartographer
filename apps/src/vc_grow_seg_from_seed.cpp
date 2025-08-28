@@ -83,7 +83,7 @@ static auto load_direction_fields(json const&params, ChunkCache *chunk_cache, st
         for (auto const& direction_field : params["direction_fields"]) {
             std::string const zarr_path = direction_field["zarr"];
             std::string const direction = direction_field["dir"];
-            if (!std::ranges::contains(std::vector{"horizontal", "vertical"}, direction)) {
+            if (!std::ranges::contains(std::vector{"horizontal", "vertical", "normal"}, direction)) {
                 std::cerr << "WARNING: invalid direction in direction_field " << zarr_path << "; skipping" << std::endl;
                 continue;
             }

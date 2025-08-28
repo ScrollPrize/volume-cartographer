@@ -433,3 +433,58 @@ struct FiberDirectionLoss {
         return new ceres::AutoDiffCostFunction<FiberDirectionLoss, 1, 3, 3>(new FiberDirectionLoss(fiber_dirs, w));
     }
 };
+
+struct NormalDirectionLoss {
+    NormalDirectionLoss(Chunked3dVec3fFromUint8 &normal_dirs, float w) : _normal_dirs(normal_dirs), _w(w) {};
+    template <typename E>
+    bool operator()(const E* const l_base, const E* const l_u_off, const E* const l_v_off, E* residual) const {
+
+        // All l_* are indexed xyz, while fiber_field zarr _normal_dirs is indexed zyx (and contains zyx-ordered vectors)
+
+        // Note this does *not* sample the direction volume differentiably, i.e. there is a gradient moving the points to
+        // be more-normal, but not moving the surface to be in a region where the normal field better matches the current
+        // surface orientation
+        cv::Vec3f target_normal_zyx_vec = _normal_dirs(unjet(l_base[2]), unjet(l_base[1]), unjet(l_base[0]));
+        E target_normal_zyx[3] = {E(target_normal_zyx_vec[0]), E(target_normal_zyx_vec[1]), E(target_normal_zyx_vec[2])};
+
+        E const patch_u_disp_zyx[3] {
+            l_u_off[2] - l_base[2],
+            l_u_off[1] - l_base[1],
+            l_u_off[0] - l_base[0],
+        };
+        E const patch_v_disp_zyx[3] {
+            l_v_off[2] - l_base[2],
+            l_v_off[1] - l_base[1],
+            l_v_off[0] - l_base[0],
+        };
+
+        // target_normal_zyx is a unit vector, hopefully pointing normal to the surface
+        // patch_*_disp are horizontal and vertical displacements in the surface plane, tangent at l_base
+        // patch_normal_zyx will be the cross of the above, i.e. actual normal of the surface
+        // we want patch_normal and target_normal to be aligned, modulo flips
+
+        E const patch_normal_zyx[3] {
+            patch_u_disp_zyx[1] * patch_v_disp_zyx[2] - patch_u_disp_zyx[2] * patch_v_disp_zyx[1],
+            patch_u_disp_zyx[2] * patch_v_disp_zyx[0] - patch_u_disp_zyx[0] * patch_v_disp_zyx[2],
+            patch_u_disp_zyx[0] * patch_v_disp_zyx[1] - patch_u_disp_zyx[1] * patch_v_disp_zyx[0],
+        };
+        E const patch_normal_length = sqrt(patch_normal_zyx[0] * patch_normal_zyx[0] + patch_normal_zyx[1] * patch_normal_zyx[1] + patch_normal_zyx[2] * patch_normal_zyx[2]);
+
+        E const abs_dot = abs(patch_normal_zyx[0] * target_normal_zyx[0] + patch_normal_zyx[1] * target_normal_zyx[1] + patch_normal_zyx[2] * target_normal_zyx[2]) / patch_normal_length;
+
+        residual[0] = E(_w) * (E(1) - abs_dot);
+
+        return true;
+    }
+
+    static double unjet(const double& v) { return v; }
+    template<typename JetT> static double unjet(const JetT& v) { return v.a; }
+
+    float _w;
+    Chunked3dVec3fFromUint8 &_normal_dirs;
+
+    static ceres::CostFunction* Create(Chunked3dVec3fFromUint8 &normal_dirs, float w = 1.0)
+    {
+        return new ceres::AutoDiffCostFunction<NormalDirectionLoss, 1, 3, 3, 3>(new NormalDirectionLoss(normal_dirs, w));
+    }
+};

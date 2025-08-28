@@ -218,6 +218,10 @@ int gen_direction_loss(ceres::Problem &problem, const cv::Vec2i &p, const int of
             if (!loc_valid(state(p_off_vert)))
                 continue;
             problem.AddResidualBlock(FiberDirectionLoss::Create(*field.field_ptr, w), nullptr, &loc(p)[0], &loc(p_off_vert)[0]);
+        } else if (field.direction == "normal") {
+            if (!loc_valid(state(p_off_horz)) || !loc_valid(state(p_off_vert)))
+                continue;
+            problem.AddResidualBlock(NormalDirectionLoss::Create(*field.field_ptr, w), nullptr, &loc(p)[0], &loc(p_off_horz)[0], &loc(p_off_vert)[0]);
         } else {
             assert(false);
         }
