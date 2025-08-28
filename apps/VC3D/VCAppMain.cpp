@@ -1,6 +1,3 @@
-// main.cpp
-// Chao Du 2014 Dec
-
 #include <qapplication.h>
 
 #include "CWindow.hpp"
@@ -9,9 +6,9 @@
 #include <opencv2/core.hpp>
 #include <thread>
 
-using namespace ChaoVis;
 
-namespace vc = volcart;
+
+
 
 auto main(int argc, char* argv[]) -> int
 {
@@ -21,7 +18,7 @@ auto main(int argc, char* argv[]) -> int
     QApplication::setOrganizationName("EduceLab");
     QApplication::setApplicationName("VC3D");
     QApplication::setWindowIcon(QIcon(":/images/logo.png"));
-    QApplication::setApplicationVersion(QString::fromStdString(vc::ProjectInfo::VersionString()));
+    QApplication::setApplicationVersion(QString::fromStdString(ProjectInfo::VersionString()));
 
     CWindow aWin;
     aWin.show();

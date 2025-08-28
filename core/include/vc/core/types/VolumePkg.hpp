@@ -12,8 +12,7 @@
 #include "vc/core/types/Volume.hpp"
 #include "vc/core/types/VolumePkgVersion.hpp"
 
-namespace volcart
-{
+
 
 /**
  * @class VolumePkg
@@ -84,7 +83,7 @@ public:
     /**
      * @brief Returns the VolumePkg version.
      *
-     * Use in conjunction with volcart::VERSION_LIBRARY to verify the presence
+     * Use in conjunction with VERSION_LIBRARY to verify the presence
      * of
      * specific VolumePkg metadata keys.
      *
@@ -162,20 +161,20 @@ public:
      * auto-generated Volume ID.
      * @return Pointer to the new Volume
      */
-    auto newVolume(std::string name = "") -> Volume::Pointer;
+    auto newVolume(std::string name = "") -> std::shared_ptr<Volume>;
 
     /** @brief Get the first Volume */
-    [[nodiscard]] auto volume() const -> const Volume::Pointer;
+    [[nodiscard]] auto volume() const -> const std::shared_ptr<Volume>;
 
     /** @copydoc volume() const */
-    auto volume() -> Volume::Pointer;
+    auto volume() -> std::shared_ptr<Volume>;
 
     /** @brief Get a Volume by uuid */
     [[nodiscard]] auto volume(const Volume::Identifier& id) const
-        -> const Volume::Pointer;
+        -> const std::shared_ptr<Volume>;
 
     /** @copydoc VolumePkg::volume(const Volume::Identifier&) const */
-    auto volume(const Volume::Identifier& id) -> Volume::Pointer;
+    auto volume(const Volume::Identifier& id) -> std::shared_ptr<Volume>;
 
     /** @name Segmentation Data */
     /**@{*/
@@ -257,7 +256,7 @@ private:
     /** The root directory of the VolumePkg */
     std::filesystem::path rootDir_;
     /** The list of all Volumes in the VolumePkg. */
-    std::map<Volume::Identifier, Volume::Pointer> volumes_;
+    std::map<Volume::Identifier, std::shared_ptr<Volume>> volumes_;
     /** The list of all Segmentations in the VolumePkg. */
     std::map<Segmentation::Identifier, Segmentation::Pointer> segmentations_;
     std::vector<std::filesystem::path> segmentation_files_;
@@ -267,18 +266,18 @@ private:
     std::map<Segmentation::Identifier, std::string> segmentationDirectories_;
 
     /**
-     * @brief Populates an empty VolumePkg::config from a volcart::Dictionary
+     * @brief Populates an empty VolumePkg::config from a Dictionary
      * template
      *
      * The configuration is populated with all keys found in `dict`. This is not
      * validated against what is expected for the passed `version` number.
      * @param dict Metadata template
      * @param version Version number of the passed Dictionary
-     * @return volcart::Metadata populated with default keys
+     * @return Metadata populated with default keys
      */
     static auto InitConfig(const Dictionary& dict, int version) -> Metadata;
     
     /** @brief Load segmentations from the specified directory */
     void loadSegmentationsFromDirectory(const std::string& dirName);
 };
-}  // namespace volcart
+

@@ -11,8 +11,7 @@
 
 #include <nlohmann/json.hpp>
  
-namespace ChaoVis
-{
+
  
 struct ColPoint
 {
@@ -105,4 +104,3 @@ void from_json(const nlohmann::json& j, CollectionMetadata& m);
 void to_json(nlohmann::json& j, const VCCollection::Collection& c);
 void from_json(const nlohmann::json& j, VCCollection::Collection& c);
  
-} // namespace ChaoVis

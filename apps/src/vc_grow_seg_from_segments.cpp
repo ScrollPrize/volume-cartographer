@@ -24,7 +24,7 @@
 
 using shape = z5::types::ShapeType;
 using namespace xt::placeholders;
-namespace fs = std::filesystem;
+
 
 using json = nlohmann::json;
 
@@ -38,11 +38,11 @@ int main(int argc, char *argv[])
         return EXIT_SUCCESS;
     }
 
-    fs::path vol_path = argv[1];
-    fs::path src_dir = argv[2];
-    fs::path tgt_dir = argv[3];
-    fs::path params_path = argv[4];
-    fs::path src_path = argv[5];
+    std::filesystem::path vol_path = argv[1];
+    std::filesystem::path src_dir = argv[2];
+    std::filesystem::path tgt_dir = argv[3];
+    std::filesystem::path params_path = argv[4];
+    std::filesystem::path src_path = argv[5];
     while (src_path.filename().empty())
         src_path = src_path.parent_path();
 
@@ -62,20 +62,20 @@ int main(int argc, char *argv[])
     std::string name_prefix = "auto_grown_";
     std::vector<SurfaceMeta*> surfaces;
 
-    fs::path meta_fn = src_path / "meta.json";
+    std::filesystem::path meta_fn = src_path / "meta.json";
     std::ifstream meta_f(meta_fn);
     json meta = json::parse(meta_f);
     SurfaceMeta *src = new SurfaceMeta(src_path, meta);
     src->readOverlapping();
 
-    for (const auto& entry : fs::directory_iterator(src_dir))
-        if (fs::is_directory(entry)) {
+    for (const auto& entry : std::filesystem::directory_iterator(src_dir))
+        if (std::filesystem::is_directory(entry)) {
             std::string name = entry.path().filename();
             if (name.compare(0, name_prefix.size(), name_prefix))
                 continue;
 
-            fs::path meta_fn = entry.path() / "meta.json";
-            if (!fs::exists(meta_fn))
+            std::filesystem::path meta_fn = entry.path() / "meta.json";
+            if (!std::filesystem::exists(meta_fn))
                 continue;
 
             std::ifstream meta_f(meta_fn);
@@ -106,7 +106,7 @@ int main(int argc, char *argv[])
     (*surf->meta)["source"] = "vc_grow_seg_from_segments";
     (*surf->meta)["vc_grow_seg_from_segments_params"] = params;
     std::string uuid = "auto_trace_" + get_surface_time_str();;
-    fs::path seg_dir = tgt_dir / uuid;
+    std::filesystem::path seg_dir = tgt_dir / uuid;
     surf->save(seg_dir, uuid);
 
     delete surf;

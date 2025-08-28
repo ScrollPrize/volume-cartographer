@@ -2,13 +2,13 @@
 
 #include "vc/core/io/PointSetIO.hpp"
 
-using namespace volcart;
 
-namespace fs = std::filesystem;
+
+
 
 // Load a Segmentation directory from disk
 // Reads and verifies metadata
-Segmentation::Segmentation(fs::path path)
+Segmentation::Segmentation(std::filesystem::path path)
     : DiskBasedObjectBaseClass(std::move(path))
 {
     if (metadata_.get<std::string>("type") != "seg") {
@@ -17,7 +17,7 @@ Segmentation::Segmentation(fs::path path)
 }
 
 // Make a new Segmentation file on disk
-Segmentation::Segmentation(fs::path path, Identifier uuid, std::string name)
+Segmentation::Segmentation(std::filesystem::path path, Identifier uuid, std::string name)
     : DiskBasedObjectBaseClass(
           std::move(path), std::move(uuid), std::move(name))
 {
@@ -29,13 +29,13 @@ Segmentation::Segmentation(fs::path path, Identifier uuid, std::string name)
 }
 
 // Load a Segmentation from disk, return a pointer
-auto Segmentation::New(fs::path path) -> Segmentation::Pointer
+auto Segmentation::New(std::filesystem::path path) -> Segmentation::Pointer
 {
     return std::make_shared<Segmentation>(path);
 }
 
 // Make a new segmentation on disk, return a pointer
-auto Segmentation::New(fs::path path, std::string uuid, std::string name)
+auto Segmentation::New(std::filesystem::path path, std::string uuid, std::string name)
     -> Segmentation::Pointer
 {
     return std::make_shared<Segmentation>(path, uuid, name);

@@ -1,5 +1,4 @@
-#ifndef OMP_H
-#define OMP_H
+#pragma once
 
 #include <sys/time.h>
 #include <cstddef>
@@ -113,5 +112,3 @@ static inline int omp_get_max_task_priority(void) { return 0; }
 #ifdef __cplusplus
 }
 #endif
-
-#endif /* OMP_H */

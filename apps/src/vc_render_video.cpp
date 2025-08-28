@@ -26,7 +26,7 @@
 
 using shape = z5::types::ShapeType;
 using namespace xt::placeholders;
-namespace fs = std::filesystem;
+
 
 using json = nlohmann::json;
 
@@ -88,9 +88,9 @@ int main(int argc, char *argv[])
         return EXIT_SUCCESS;
     }
 
-    fs::path vol_path = argv[1];
-    fs::path tgt_fn = argv[2];
-    std::vector<fs::path> seg_dirs;
+    std::filesystem::path vol_path = argv[1];
+    std::filesystem::path tgt_fn = argv[2];
+    std::vector<std::filesystem::path> seg_dirs;
     for(int i=3;i<argc;i++)
         seg_dirs.push_back(argv[i]);
 

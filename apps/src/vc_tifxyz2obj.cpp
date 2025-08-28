@@ -13,7 +13,7 @@
 #include <cmath>
 #include <limits>
 
-namespace fs = std::filesystem;
+
 using json = nlohmann::json;
 
 // ---- small helpers ---------------------------------------------------------
@@ -292,7 +292,7 @@ static cv::Mat_<cv::Vec3f> build_vertex_normals_from_faces(
     return nsum;
 }
 
-static void surf_write_obj(QuadSurface *surf, const fs::path &out_fn, bool normalize_uv, bool align_grid, int decimate_iterations, bool clean_surface)
+static void surf_write_obj(QuadSurface *surf, const std::filesystem::path &out_fn, bool normalize_uv, bool align_grid, int decimate_iterations, bool clean_surface)
 {
     cv::Mat_<cv::Vec3f> points = surf->rawPoints();
     
@@ -443,8 +443,8 @@ int main(int argc, char *argv[])
         }
     }
 
-    const fs::path seg_path = argv[1];
-    const fs::path obj_path = argv[2];
+    const std::filesystem::path seg_path = argv[1];
+    const std::filesystem::path obj_path = argv[2];
 
     QuadSurface *surf = nullptr;
     try {

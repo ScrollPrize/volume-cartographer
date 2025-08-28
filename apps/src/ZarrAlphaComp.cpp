@@ -296,7 +296,7 @@ int main(int argc, char *argv[])
     std::unique_ptr<z5::Dataset> ds = z5::filesystem::openDataset(ds_handle);
 
     auto timer = new LifeTime("reading segment ...");
-    volcart::OrderedPointSet<cv::Vec3d> segment_raw = volcart::PointSetIO<cv::Vec3d>::ReadOrderedPointSet(segment_path);
+    OrderedPointSet<cv::Vec3d> segment_raw = PointSetIO<cv::Vec3d>::ReadOrderedPointSet(segment_path);
     delete timer;
     
     timer = new LifeTime("smoothing segment ...");

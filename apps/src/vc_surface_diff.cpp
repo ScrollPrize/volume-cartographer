@@ -13,7 +13,7 @@
 #include <iostream>
 #include <fstream>
 
-namespace fs = std::filesystem;
+
 using json = nlohmann::json;
 
 class MeasureLife
@@ -45,13 +45,13 @@ std::string get_timestamp() {
     return ss.str();
 }
 
-QuadSurface* load_surface(const fs::path& path) {
-    if (!fs::exists(path)) {
+QuadSurface* load_surface(const std::filesystem::path& path) {
+    if (!std::filesystem::exists(path)) {
         throw std::runtime_error("Surface path does not exist: " + path.string());
     }
 
-    fs::path meta_path = path / "meta.json";
-    if (!fs::exists(meta_path)) {
+    std::filesystem::path meta_path = path / "meta.json";
+    if (!std::filesystem::exists(meta_path)) {
         throw std::runtime_error("No meta.json found at: " + path.string());
     }
 
@@ -88,10 +88,10 @@ int main(int argc, char *argv[])
         return EXIT_FAILURE;
     }
 
-    fs::path surface_a_path = argv[1];
-    fs::path surface_b_path = argv[2];
+    std::filesystem::path surface_a_path = argv[1];
+    std::filesystem::path surface_b_path = argv[2];
     std::string operation = argv[3];
-    fs::path output_base = argv[4];
+    std::filesystem::path output_base = argv[4];
 
     float tolerance = 2.0;
     if (argc >= 6) {
@@ -100,8 +100,8 @@ int main(int argc, char *argv[])
 
     json params;
     if (argc == 7) {
-        fs::path params_path = argv[6];
-        if (fs::exists(params_path)) {
+        std::filesystem::path params_path = argv[6];
+        if (std::filesystem::exists(params_path)) {
             std::ifstream params_f(params_path);
             params = json::parse(params_f);
         }
@@ -181,7 +181,7 @@ int main(int argc, char *argv[])
         std::string uuid = operation + "_" + timestamp;
 
         // Build the full output path
-        fs::path output_path;
+        std::filesystem::path output_path;
         if (output_base.has_parent_path()) {
             // If output_base has a path component, use it
             output_path = output_base.parent_path() / (output_base.filename().string() + "_" + uuid);

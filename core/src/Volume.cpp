@@ -16,36 +16,36 @@
 #include "vc/core/util/xtensor_include.hpp"
 #include XTENSORINCLUDE(containers, xarray.hpp)
 
-namespace fs = std::filesystem;
 
-using namespace volcart;
+
+
 
 // Load a Volume from disk
-Volume::Volume(fs::path path) : DiskBasedObjectBaseClass(std::move(path))
+Volume::Volume(std::filesystem::path path) : DiskBasedObjectBaseClass(std::move(path))
 {
     if (metadata_.get<std::string>("type") != "vol") {
         throw std::runtime_error("File not of type: vol");
     }
 
-    width_ = metadata_.get<int>("width");
-    height_ = metadata_.get<int>("height");
-    slices_ = metadata_.get<int>("slices");
+    _width = metadata_.get<int>("width");
+    _height = metadata_.get<int>("height");
+    _slices = metadata_.get<int>("slices");
 
-    std::vector<std::mutex> init_mutexes(slices_);
+    std::vector<std::mutex> init_mutexes(_slices);
 
 
     zarrOpen();
 }
 
 // Setup a Volume from a folder of slices
-Volume::Volume(fs::path path, std::string uuid, std::string name)
+Volume::Volume(std::filesystem::path path, std::string uuid, std::string name)
     : DiskBasedObjectBaseClass(
           std::move(path), std::move(uuid), std::move(name))
 {
     metadata_.set("type", "vol");
-    metadata_.set("width", width_);
-    metadata_.set("height", height_);
-    metadata_.set("slices", slices_);
+    metadata_.set("width", _width);
+    metadata_.set("height", _height);
+    metadata_.set("slices", _slices);
     metadata_.set("voxelsize", double{});
     metadata_.set("min", double{});
     metadata_.set("max", double{});    
@@ -58,7 +58,6 @@ void Volume::zarrOpen()
     if (!metadata_.hasKey("format") || metadata_.get<std::string>("format") != "zarr")
         return;
 
-    isZarr = true;
     zarrFile_ = std::make_unique<z5::filesystem::handle::File>(path_);
     z5::filesystem::handle::Group group(path_, z5::FileMode::FileMode::r);
     z5::readAttributes(group, zarrGroup_);
@@ -78,50 +77,24 @@ void Volume::zarrOpen()
 }
 
 // Load a Volume from disk, return a pointer
-auto Volume::New(fs::path path) -> Volume::Pointer
+std::shared_ptr<Volume> Volume::New(std::filesystem::path path)
 {
     return std::make_shared<Volume>(path);
 }
 
 // Set a Volume from a folder of slices, return a pointer
-auto Volume::New(fs::path path, std::string uuid, std::string name)
-    -> Volume::Pointer
+std::shared_ptr<Volume> Volume::New(std::filesystem::path path, std::string uuid, std::string name)
 {
     return std::make_shared<Volume>(path, uuid, name);
 }
 
-auto Volume::sliceWidth() const -> int { return width_; }
-auto Volume::sliceHeight() const -> int { return height_; }
-auto Volume::numSlices() const -> int { return slices_; }
+auto Volume::sliceWidth() const -> int { return _width; }
+auto Volume::sliceHeight() const -> int { return _height; }
+auto Volume::numSlices() const -> int { return _slices; }
 auto Volume::voxelSize() const -> double
 {
     return metadata_.get<double>("voxelsize");
 }
-auto Volume::min() const -> double { return metadata_.get<double>("min"); }
-auto Volume::max() const -> double { return metadata_.get<double>("max"); }
-
-void Volume::setSliceWidth(int w)
-{
-    width_ = w;
-    metadata_.set("width", w);
-}
-
-void Volume::setSliceHeight(int h)
-{
-    height_ = h;
-    metadata_.set("height", h);
-}
-
-void Volume::setNumberOfSlices(std::size_t numSlices)
-{
-    slices_ = numSlices;
-    metadata_.set("slices", numSlices);
-}
-
-void Volume::setVoxelSize(double s) { metadata_.set("voxelsize", s); }
-void Volume::setMin(double m) { metadata_.set("min", m); }
-void Volume::setMax(double m) { metadata_.set("max", m); }
-
 
 z5::Dataset *Volume::zarrDataset(int level)
 {

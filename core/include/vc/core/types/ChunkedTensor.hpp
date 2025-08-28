@@ -66,7 +66,7 @@ public:
         if (!_persistent)
             remove_all(_cache_dir);
     };
-    Chunked3d(C &compute_f, z5::Dataset *ds, ChunkCache *cache, const fs::path &cache_root) : _compute_f(compute_f), _ds(ds), _cache(cache)
+    Chunked3d(C &compute_f, z5::Dataset *ds, ChunkCache *cache, const std::filesystem::path &cache_root) : _compute_f(compute_f), _ds(ds), _cache(cache)
     {
         _border = compute_f.BORDER;
         
@@ -79,9 +79,9 @@ public:
         if (!_compute_f.UNIQUE_ID_STRING.size())
             throw std::runtime_error("requested fs cache for compute function without identifier");        
         
-        fs::path root = cache_root/_compute_f.UNIQUE_ID_STRING;
+        std::filesystem::path root = cache_root/_compute_f.UNIQUE_ID_STRING;
         
-        fs::create_directories(root);
+        std::filesystem::create_directories(root);
         
         if (!_ds)
             _persistent = false;
@@ -90,13 +90,13 @@ public:
         for(int r=0;r<1000 && _cache_dir.empty();r++) {
             std::set<std::string> paths;
             if (_persistent) {
-                for (auto const& entry : fs::directory_iterator(root))
-                    if (fs::is_directory(entry) && fs::exists(entry.path()/"meta.json") && fs::is_regular_file(entry.path()/"meta.json")) {
+                for (auto const& entry : std::filesystem::directory_iterator(root))
+                    if (std::filesystem::is_directory(entry) && std::filesystem::exists(entry.path()/"meta.json") && std::filesystem::is_regular_file(entry.path()/"meta.json")) {
                         paths.insert(entry.path());
                         std::ifstream meta_f(entry.path()/"meta.json");
                         nlohmann::json meta = nlohmann::json::parse(meta_f);
-                        fs::path src = fs::canonical(meta["dataset_source_path"]);
-                        if (src == fs::canonical(ds->path())) {
+                        std::filesystem::path src = std::filesystem::canonical(meta["dataset_source_path"]);
+                        if (src == std::filesystem::canonical(ds->path())) {
                             _cache_dir = entry.path();
                             break;
                         }
@@ -107,24 +107,24 @@ public:
             }
             
             //try generating our own cache dir atomically
-            fs::path tmp_dir = cache_root/tmp_name_proc_thread();
-            fs::create_directories(tmp_dir);
+            std::filesystem::path tmp_dir = cache_root/tmp_name_proc_thread();
+            std::filesystem::create_directories(tmp_dir);
             
             if (_persistent) {
                 nlohmann::json meta;
-                meta["dataset_source_path"] = fs::canonical(ds->path()).string();
+                meta["dataset_source_path"] = std::filesystem::canonical(ds->path()).string();
                 std::ofstream o(tmp_dir/"meta.json");
                 o << std::setw(4) << meta << std::endl;
                 
-                fs::path tgt_path;
+                std::filesystem::path tgt_path;
                 for(int i=0;i<1000;i++) {
                     tgt_path = root/std::to_string(i);
                     if (paths.count(tgt_path.string()))
                         continue;
                     try {
-                        fs::rename(tmp_dir, tgt_path);
+                        std::filesystem::rename(tmp_dir, tgt_path);
                     }
-                    catch (fs::filesystem_error&){
+                    catch (std::filesystem::filesystem_error&){
                         continue;
                     }
                     _cache_dir = tgt_path;
@@ -180,7 +180,7 @@ public:
         return safe_at({z,y,x});
     }
 
-    fs::path id_path(const fs::path &dir, const cv::Vec3i &id)
+    std::filesystem::path id_path(const std::filesystem::path &dir, const cv::Vec3i &id)
     {
         return dir / (std::to_string(id[0]) + "." + std::to_string(id[1]) + "." + std::to_string(id[2]));
     }
@@ -189,11 +189,11 @@ public:
     {
         auto s = C::CHUNK_SIZE;
 
-        fs::path tgt_path = id_path(_cache_dir, id);
+        std::filesystem::path tgt_path = id_path(_cache_dir, id);
         size_t len = s*s*s;
         size_t len_bytes = len*sizeof(T);
 
-        if (fs::exists(tgt_path)) {
+        if (std::filesystem::exists(tgt_path)) {
             int fd = open(tgt_path.string().c_str(), O_RDWR);
             T *chunk = (T*)mmap(NULL, len_bytes, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
             close(fd);
@@ -215,11 +215,11 @@ public:
             return chunk;
         }
 
-        fs::path tmp_path;
+        std::filesystem::path tmp_path;
         _mutex.lock();
         std::stringstream ss;
         ss << this << "_" << std::this_thread::get_id() << "_" << _tmp_counter++;
-        tmp_path = fs::path(_cache_dir) / ss.str();
+        tmp_path = std::filesystem::path(_cache_dir) / ss.str();
         _mutex.unlock();
         int fd = open(tmp_path.string().c_str(), O_RDWR | O_CREAT | O_TRUNC, (mode_t)0600);
         int ret = ftruncate(fd, len_bytes);
@@ -404,7 +404,7 @@ public:
     C &_compute_f;
     std::shared_mutex _mutex;
     uint64_t _tmp_counter = 0;
-    fs::path _cache_dir;
+    std::filesystem::path _cache_dir;
     bool _persistent = true;
     std::vector<int> _shape;
 };

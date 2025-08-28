@@ -9,8 +9,7 @@
 
 #include "PointSet.hpp"
 
-namespace volcart
-{
+
 /**
  * @class OrderedPointSet
  * @brief Holds a collection of ordered points
@@ -231,4 +230,4 @@ private:
     /** Number of rows preallocated */
     constexpr static std::size_t CAPACITY_MULTIPLIER = 20;
 };
-}  // namespace volcart
+

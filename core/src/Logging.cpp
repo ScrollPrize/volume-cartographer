@@ -8,8 +8,7 @@
 
 #include "vc/core/util/String.hpp"
 
-namespace fs = std::filesystem;
-namespace vcl = volcart::logging;
+
 
 auto DistSink() -> std::shared_ptr<spdlog::sinks::dist_sink_mt>;
 auto DistSink() -> std::shared_ptr<spdlog::sinks::dist_sink_mt>
@@ -24,7 +23,7 @@ static auto Init() -> std::shared_ptr<spdlog::sinks::dist_sink_mt>
     return DistSink();
 }
 
-void vcl::AddLogFile(const fs::path& path)
+void AddLogFile(const std::filesystem::path& path)
 {
     // Add a file logger to the logger list
     auto log =
@@ -32,13 +31,13 @@ void vcl::AddLogFile(const fs::path& path)
     DistSink()->add_sink(log);
 }
 
-void vcl::SetLogLevel(const std::string& s)
+void SetLogLevel(const std::string& s)
 {
     auto level = spdlog::level::from_str(to_lower_copy(s));
     Logger()->set_level(level);
 }
 
-auto volcart::Logger() -> std::shared_ptr<spdlog::logger>
+auto Logger() -> std::shared_ptr<spdlog::logger>
 {
     static auto logger = std::make_shared<spdlog::logger>("volcart", Init());
     return logger;

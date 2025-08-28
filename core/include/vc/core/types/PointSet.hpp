@@ -12,8 +12,7 @@
 
 #include <opencv2/core.hpp>
 
-namespace volcart
-{
+
 /**
  * @class PointSet
  * @brief Holds a collection of points
@@ -210,4 +209,4 @@ protected:
     /** Point container */
     Container data_;
 };
-}  // namespace volcart
+

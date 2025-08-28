@@ -5,7 +5,7 @@
 #include <QPushButton>
 #include <QLabel>
 
-namespace ChaoVis {
+
 class ConsoleOutputWidget : public QWidget
 {
     Q_OBJECT
@@ -28,4 +28,4 @@ private:
     QLabel* _titleLabel;
 };
 
-} // namespace ChaoVis
+

@@ -9,8 +9,7 @@
 
 #include <variant>
 
-namespace volcart
-{
+
 
 /**
  * @class Segmentation
@@ -127,4 +126,4 @@ public:
         metadata_.save();
     }
 };
-}  // namespace volcart
+

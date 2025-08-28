@@ -8,50 +8,43 @@
 #include "vc/core/util/Logging.hpp"
 #include "vc/core/util/String.hpp"
 
-using namespace volcart;
-
-namespace fs = std::filesystem;
-
-namespace
-{
-////// Convenience vars and fns for accessing VolumePkg sub-paths //////
 constexpr auto CONFIG = "config.json";
 
-inline auto VolsDir(const fs::path& baseDir) -> fs::path
+inline auto VolsDir(const std::filesystem::path& baseDir) -> std::filesystem::path
 {
     return baseDir / "volumes";
 }
 
-inline auto SegsDir(const fs::path& baseDir, const std::string& dirName = "paths") -> fs::path
+inline auto SegsDir(const std::filesystem::path& baseDir, const std::string& dirName = "paths") -> std::filesystem::path
 {
     return baseDir / dirName;
 }
 
-inline auto RendDir(const fs::path& baseDir) -> fs::path
+inline auto RendDir(const std::filesystem::path& baseDir) -> std::filesystem::path
 {
     return baseDir / "renders";
 }
 
-inline auto TfmDir(const fs::path& baseDir) -> fs::path
+inline auto TfmDir(const std::filesystem::path& baseDir) -> std::filesystem::path
 {
     return baseDir / "transforms";
 }
 
-inline auto PreviewDirs(const fs::path& baseDir) -> std::vector<std::filesystem::path>
+inline auto PreviewDirs(const std::filesystem::path& baseDir) -> std::vector<std::filesystem::path>
 {
     return { baseDir / "volumes_preview_half", baseDir / "volumes_masked", baseDir / "volumes_previews"};
 }
 
-inline auto ReqDirs(const fs::path& baseDir) -> std::vector<std::filesystem::path>
+inline auto ReqDirs(const std::filesystem::path& baseDir) -> std::vector<std::filesystem::path>
 {
     return {
         baseDir, ::VolsDir(baseDir), ::SegsDir(baseDir), ::RendDir(baseDir),
         ::TfmDir(baseDir)};
 }
 
-inline void keep(const fs::path& dir)
+inline void keep(const std::filesystem::path& dir)
 {
-    if (not fs::exists(dir / ".vckeep")) {
+    if (not std::filesystem::exists(dir / ".vckeep")) {
         std::ofstream(dir / ".vckeep", std::ostream::ate);
     }
 }
@@ -78,9 +71,9 @@ auto VolpkgV3ToV4(const Metadata& meta) -> Metadata
 
     // Make the "volumes" directory
     Logger()->debug("- Creating volumes directory");
-    const fs::path volumesDir = path / "volumes";
-    if (!fs::exists(volumesDir)) {
-        fs::create_directory(volumesDir);
+    const std::filesystem::path volumesDir = path / "volumes";
+    if (!std::filesystem::exists(volumesDir)) {
+        std::filesystem::create_directory(volumesDir);
     }
 
     // Set up a new Volume name and make a new folder for it
@@ -88,7 +81,7 @@ auto VolpkgV3ToV4(const Metadata& meta) -> Metadata
     Logger()->debug("- Migrating v3 volume");
     const auto id = DateTime();
     const auto newVolDir = volumesDir / id;
-    fs::rename(path / "slices", newVolDir);
+    std::filesystem::rename(path / "slices", newVolDir);
 
     // Setup and save the metadata to the new Volume folder
     Metadata volMeta;
@@ -118,11 +111,11 @@ auto VolpkgV4ToV5(const Metadata& meta) -> Metadata
 
     // Add metadata to all the segmentations
     Logger()->debug("- Initializing segmentation metadata");
-    fs::path seg;
-    const fs::path segsDir = path / "paths";
-    for (const auto& entry : fs::directory_iterator(segsDir)) {
-        if (fs::is_directory(entry)) {
-            // Get the folder as a fs::path
+    std::filesystem::path seg;
+    const std::filesystem::path segsDir = path / "paths";
+    for (const auto& entry : std::filesystem::directory_iterator(segsDir)) {
+        if (std::filesystem::is_directory(entry)) {
+            // Get the folder as a std::filesystem::path
             seg = entry;
 
             // Generate basic metadata
@@ -132,7 +125,7 @@ auto VolpkgV4ToV5(const Metadata& meta) -> Metadata
             segMeta.set("type", "seg");
 
             // Link the metadata to the vcps file
-            if (fs::exists(seg / "pointset.vcps")) {
+            if (std::filesystem::exists(seg / "pointset.vcps")) {
                 segMeta.set("vcps", "pointset.vcps");
             } else {
                 segMeta.set("vcps", std::string{});
@@ -145,9 +138,9 @@ auto VolpkgV4ToV5(const Metadata& meta) -> Metadata
 
     // Add renders folder
     Logger()->debug("- Adding renders directory");
-    const fs::path rendersDir = path / "renders";
-    if (!fs::exists(rendersDir)) {
-        fs::create_directory(rendersDir);
+    const std::filesystem::path rendersDir = path / "renders";
+    if (!std::filesystem::exists(rendersDir)) {
+        std::filesystem::create_directory(rendersDir);
     }
 
     // Update the version
@@ -171,11 +164,11 @@ auto VolpkgV5ToV6(const Metadata& meta) -> Metadata
 
     // Add metadata to all the volumes
     Logger()->debug("- Updating volume metadata");
-    fs::path vol;
-    const fs::path volsDir = path / "volumes";
-    for (const auto& entry : fs::directory_iterator(volsDir)) {
-        if (fs::is_directory(entry)) {
-            // Get the folder as a fs::path
+    std::filesystem::path vol;
+    const std::filesystem::path volsDir = path / "volumes";
+    for (const auto& entry : std::filesystem::directory_iterator(volsDir)) {
+        if (std::filesystem::is_directory(entry)) {
+            // Get the folder as a std::filesystem::path
             vol = entry;
 
             // Generate basic metadata
@@ -216,9 +209,9 @@ auto VolpkgV6ToV7(const Metadata& meta) -> Metadata
 
     // Add renders folder
     Logger()->debug("- Adding transforms directory");
-    const fs::path tfmsDir = path / "transforms";
-    if (not fs::exists(tfmsDir)) {
-        fs::create_directory(tfmsDir);
+    const std::filesystem::path tfmsDir = path / "transforms";
+    if (not std::filesystem::exists(tfmsDir)) {
+        std::filesystem::create_directory(tfmsDir);
     }
 
     // Add vc keep files
@@ -239,11 +232,10 @@ using UpgradeFn = std::function<Metadata(const Metadata&)>;
 const std::vector<UpgradeFn> UPGRADE_FNS{
     VolpkgV3ToV4, VolpkgV4ToV5, VolpkgV5ToV6, VolpkgV6ToV7};
 
-}  // namespace
 
 // CONSTRUCTORS //
 // Make a volpkg of a particular version number
-VolumePkg::VolumePkg(fs::path fileLocation, int version)
+VolumePkg::VolumePkg(std::filesystem::path fileLocation, int version)
     : rootDir_{std::move(fileLocation)}
 {
     // Lookup the metadata template from our library of versions
@@ -258,8 +250,8 @@ VolumePkg::VolumePkg(fs::path fileLocation, int version)
 
     // Make directories
     for (const auto& d : ::ReqDirs(rootDir_)) {
-        if (not fs::exists(d)) {
-            fs::create_directory(d);
+        if (not std::filesystem::exists(d)) {
+            std::filesystem::create_directory(d);
         }
         if (d != rootDir_) {
             ::keep(d);
@@ -271,7 +263,7 @@ VolumePkg::VolumePkg(fs::path fileLocation, int version)
 }
 
 // Use this when reading a volpkg from a file
-VolumePkg::VolumePkg(const fs::path& fileLocation) : rootDir_{fileLocation}
+VolumePkg::VolumePkg(const std::filesystem::path& fileLocation) : rootDir_{fileLocation}
 {
     // Loads the metadata
     config_ = Metadata(fileLocation / ::CONFIG);
@@ -285,11 +277,11 @@ VolumePkg::VolumePkg(const fs::path& fileLocation) : rootDir_{fileLocation}
 
     // Check directory structure
     for (const auto& d : ::ReqDirs(rootDir_)) {
-        if (not fs::exists(d)) {
+        if (not std::filesystem::exists(d)) {
             Logger()->warn(
                 "Creating missing VolumePkg directory: {}",
                 d.filename().string());
-            fs::create_directory(d);
+            std::filesystem::create_directory(d);
         }
         if (d != rootDir_) {
             ::keep(d);
@@ -297,9 +289,9 @@ VolumePkg::VolumePkg(const fs::path& fileLocation) : rootDir_{fileLocation}
     }
 
     // Load volumes into volumes_
-    for (const auto& entry : fs::directory_iterator(::VolsDir(rootDir_))) {
-        fs::path dirpath = fs::canonical(entry);
-        if (fs::is_directory(dirpath)) {
+    for (const auto& entry : std::filesystem::directory_iterator(::VolsDir(rootDir_))) {
+        std::filesystem::path dirpath = std::filesystem::canonical(entry);
+        if (std::filesystem::is_directory(dirpath)) {
             auto v = Volume::New(dirpath);
             volumes_.emplace(v->id(), v);
         }
@@ -312,13 +304,13 @@ VolumePkg::VolumePkg(const fs::path& fileLocation) : rootDir_{fileLocation}
     }
 }
 
-auto VolumePkg::New(fs::path fileLocation, int version) -> VolumePkg::Pointer
+auto VolumePkg::New(std::filesystem::path fileLocation, int version) -> VolumePkg::Pointer
 {
     return std::make_shared<VolumePkg>(fileLocation, version);
 }
 
 // Shared pointer volumepkg construction
-auto VolumePkg::New(fs::path fileLocation) -> VolumePkg::Pointer
+auto VolumePkg::New(std::filesystem::path fileLocation) -> VolumePkg::Pointer
 {
     return std::make_shared<VolumePkg>(fileLocation);
 }
@@ -347,7 +339,7 @@ auto VolumePkg::metadata() const -> Metadata { return config_; }
 
 void VolumePkg::saveMetadata() { config_.save(); }
 
-void VolumePkg::saveMetadata(const fs::path& filePath)
+void VolumePkg::saveMetadata(const std::filesystem::path& filePath)
 {
     config_.save(filePath);
 }
@@ -383,7 +375,7 @@ auto VolumePkg::volumeNames() const -> std::vector<std::string>
     return names;
 }
 
-auto VolumePkg::newVolume(std::string name) -> Volume::Pointer
+auto VolumePkg::newVolume(std::string name) -> std::shared_ptr<Volume>
 {
     // Generate a uuid
     auto uuid = DateTime();
@@ -395,8 +387,8 @@ auto VolumePkg::newVolume(std::string name) -> Volume::Pointer
 
     // Make the volume directory
     auto volDir = ::VolsDir(rootDir_) / uuid;
-    if (!fs::exists(volDir)) {
-        fs::create_directory(volDir);
+    if (!std::filesystem::exists(volDir)) {
+        std::filesystem::create_directory(volDir);
     } else {
         throw std::runtime_error("Volume directory already exists");
     }
@@ -412,7 +404,7 @@ auto VolumePkg::newVolume(std::string name) -> Volume::Pointer
     return r.first->second;
 }
 
-auto VolumePkg::volume() const -> const Volume::Pointer
+auto VolumePkg::volume() const -> const std::shared_ptr<Volume>
 {
     if (volumes_.empty()) {
         throw std::out_of_range("No volumes in VolPkg");
@@ -420,7 +412,7 @@ auto VolumePkg::volume() const -> const Volume::Pointer
     return volumes_.begin()->second;
 }
 
-auto VolumePkg::volume() -> Volume::Pointer
+auto VolumePkg::volume() -> std::shared_ptr<Volume>
 {
     if (volumes_.empty()) {
         throw std::out_of_range("No volumes in VolPkg");
@@ -429,12 +421,12 @@ auto VolumePkg::volume() -> Volume::Pointer
 }
 
 auto VolumePkg::volume(const Volume::Identifier& id) const
-    -> const Volume::Pointer
+    -> const std::shared_ptr<Volume>
 {
     return volumes_.at(id);
 }
 
-auto VolumePkg::volume(const Volume::Identifier& id) -> Volume::Pointer
+auto VolumePkg::volume(const Volume::Identifier& id) -> std::shared_ptr<Volume>
 {
     return volumes_.at(id);
 }
@@ -456,7 +448,7 @@ auto VolumePkg::segmentation(const DiskBasedObjectBaseClass::Identifier& id)
     return segmentations_.at(id);
 }
 
-std::vector<fs::path> VolumePkg::segmentationFiles()
+std::vector<std::filesystem::path> VolumePkg::segmentationFiles()
 {
     return segmentation_files_;
 }
@@ -518,7 +510,7 @@ auto VolumePkg::InitConfig(const Dictionary& dict, int version) -> Metadata
 }
 
 ////////// Upgrade //////////
-void VolumePkg::Upgrade(const fs::path& path, int version, bool force)
+void VolumePkg::Upgrade(const std::filesystem::path& path, int version, bool force)
 {
     // Copy the current metadata
     Metadata meta(path / "config.json");
@@ -567,7 +559,7 @@ void VolumePkg::loadSegmentationsFromDirectory(const std::string& dirName)
         
         // Remove from files vector
         auto it = std::remove_if(segmentation_files_.begin(), segmentation_files_.end(),
-            [&id, this](const fs::path& path) {
+            [&id, this](const std::filesystem::path& path) {
                 auto segIt = segmentations_.find(id);
                 return segIt != segmentations_.end() && segIt->second->path() == path;
             });
@@ -576,15 +568,15 @@ void VolumePkg::loadSegmentationsFromDirectory(const std::string& dirName)
     
     // Check if directory exists
     const auto segDir = ::SegsDir(rootDir_, dirName);
-    if (!fs::exists(segDir)) {
+    if (!std::filesystem::exists(segDir)) {
         Logger()->warn("Segmentation directory '{}' does not exist", dirName);
         return;
     }
     
     // Load segmentations from the specified directory
-    for (const auto& entry : fs::directory_iterator(segDir)) {
-        fs::path dirpath = fs::canonical(entry);
-        if (fs::is_directory(dirpath)) {
+    for (const auto& entry : std::filesystem::directory_iterator(segDir)) {
+        std::filesystem::path dirpath = std::filesystem::canonical(entry);
+        if (std::filesystem::is_directory(dirpath)) {
             try {
                 auto s = Segmentation::New(dirpath);
                 segmentations_.emplace(s->id(), s);
@@ -618,7 +610,7 @@ auto VolumePkg::getAvailableSegmentationDirectories() const -> std::vector<std::
     // Check for common segmentation directories
     const std::vector<std::string> commonDirs = {"paths", "traces"};
     for (const auto& dir : commonDirs) {
-        if (fs::exists(rootDir_ / dir) && fs::is_directory(rootDir_ / dir)) {
+        if (std::filesystem::exists(rootDir_ / dir) && std::filesystem::is_directory(rootDir_ / dir)) {
             dirs.push_back(dir);
         }
     }
@@ -635,7 +627,7 @@ void VolumePkg::removeSegmentation(const Segmentation::Identifier& id)
     }
     
     // Get the path before removing
-    fs::path segPath = it->second->path();
+    std::filesystem::path segPath = it->second->path();
     
     // Remove from internal map
     segmentations_.erase(it);
@@ -648,24 +640,24 @@ void VolumePkg::removeSegmentation(const Segmentation::Identifier& id)
     }
     
     // Delete the physical folder
-    if (fs::exists(segPath)) {
-        fs::remove_all(segPath);
+    if (std::filesystem::exists(segPath)) {
+        std::filesystem::remove_all(segPath);
     }
 }
 
 void VolumePkg::refreshSegmentations()
 {
     const auto segDir = ::SegsDir(rootDir_, currentSegmentationDir_);
-    if (!fs::exists(segDir)) {
+    if (!std::filesystem::exists(segDir)) {
         Logger()->warn("Segmentation directory '{}' does not exist", currentSegmentationDir_);
         return;
     }
     
     // Build a set of current segmentation paths on disk for the current directory
-    std::set<fs::path> diskPaths;
-    for (const auto& entry : fs::directory_iterator(segDir)) {
-        fs::path dirpath = fs::canonical(entry);
-        if (fs::is_directory(dirpath)) {
+    std::set<std::filesystem::path> diskPaths;
+    for (const auto& entry : std::filesystem::directory_iterator(segDir)) {
+        std::filesystem::path dirpath = std::filesystem::canonical(entry);
+        if (std::filesystem::is_directory(dirpath)) {
             diskPaths.insert(dirpath);
         }
     }
@@ -689,7 +681,7 @@ void VolumePkg::refreshSegmentations()
         Logger()->info("Removing segmentation '{}' - no longer exists on disk", id);
         
         // Get the path before removing the segmentation
-        fs::path segPath;
+        std::filesystem::path segPath;
         auto segIt = segmentations_.find(id);
         if (segIt != segmentations_.end()) {
             segPath = segIt->second->path();
