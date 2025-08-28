@@ -346,36 +346,38 @@ void QuadSurface::gen(cv::Mat_<cv::Vec3f>* coords,
 
     coords->create(size + cv::Size(8, 8));
 
-    // --- build mapping in double precision
-    const double sx   = static_cast<double>(_scale[0]) / static_cast<double>(scale);
-    const double sy   = static_cast<double>(_scale[1]) / static_cast<double>(scale);
-    const cv::Point2d off2d( static_cast<double>(ul[0]) - 4.0 * sx,
-                             static_cast<double>(ul[1]) - 4.0 * sy );
+    // --- build mapping in double precision, but pass Point2f to OpenCV
+    const double sx = static_cast<double>(_scale[0]) / static_cast<double>(scale);
+    const double sy = static_cast<double>(_scale[1]) / static_cast<double>(scale);
 
-    std::vector<cv::Point2d> dst = { {0.0, 0.0}, {w + 8.0, 0.0}, {0.0, h + 8.0} };
-    std::vector<cv::Point2d> src = {
-        off2d,
-        off2d + cv::Point2d((w + 8.0) * sx, 0.0),
-        off2d + cv::Point2d(0.0, (h + 8.0) * sy)
+    const double ox = static_cast<double>(ul[0]) - 4.0 * sx;
+    const double oy = static_cast<double>(ul[1]) - 4.0 * sy;
+
+    // 3 points in float, as required by OpenCV 4.6
+    std::array<cv::Point2f,3> srcf = {
+        cv::Point2f(static_cast<float>(ox),                       static_cast<float>(oy)),
+        cv::Point2f(static_cast<float>(ox + (w + 8) * sx),        static_cast<float>(oy)),
+        cv::Point2f(static_cast<float>(ox),                       static_cast<float>(oy + (h + 8) * sy))
+    };
+    std::array<cv::Point2f,3> dstf = {
+        cv::Point2f(0.f, 0.f),
+        cv::Point2f(static_cast<float>(w + 8), 0.f),
+        cv::Point2f(0.f, static_cast<float>(h + 8))
     };
 
-    cv::Matx23d A = cv::getAffineTransform(src, dst);
+    cv::Mat A = cv::getAffineTransform(srcf.data(), dstf.data());
 
-    // --- warp with seam-safe border
-    // Option A: replicate (good for interior tile joins)
+    // --- warp with a seam-safe border (replicate), not the default zeros
     cv::warpAffine(*_points, *coords, A, size + cv::Size(8, 8),
-                   cv::INTER_LINEAR, cv::BORDER_REPLICATE);
-    // Option B (preserving the "invalid" sentinel at the global image boundary):
-    // cv::warpAffine(*_points, *coords, A, size + cv::Size(8, 8),
-    //                cv::INTER_LINEAR, cv::BORDER_CONSTANT, cv::Scalar(-1,-1,-1));
+                cv::INTER_LINEAR, cv::BORDER_REPLICATE);
 
-    // --- normals: sample on the SOURCE grid to avoid resample-then-differentiate artifacts
+    // --- normals: sample on the SOURCE grid (use Vec3f, z=0)
     if (need_normals) {
         normals->create(size);
         for (int j = 0; j < h; ++j) {
-            const double y = off2d.y + (j + 4.0) * sy;
+            const double y = oy + (j + 4.0) * sy;
             for (int i = 0; i < w; ++i) {
-                const double x = off2d.x + (i + 4.0) * sx;
+                const double x = ox + (i + 4.0) * sx;
                 (*normals)(j, i) = grid_normal(*_points,
                                             cv::Vec3f(static_cast<float>(x),
                                                         static_cast<float>(y),
@@ -384,14 +386,11 @@ void QuadSurface::gen(cv::Mat_<cv::Vec3f>* coords,
         }
     }
 
-
-    // --- crop away the padded halo
+    // crop halo
     *coords = (*coords)(cv::Rect(4, 4, w, h)).clone();
 
-    // --- apply z offset along normal if needed
-    if (need_normals && ul[2] != 0.0f) {
+    if (need_normals && ul[2] != 0.0f)
         *coords += (*normals) * ul[2];
-    }
 }
 
 static inline float sdist(const cv::Vec3f &a, const cv::Vec3f &b)
