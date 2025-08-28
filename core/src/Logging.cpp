@@ -6,9 +6,6 @@
 #include <spdlog/sinks/dist_sink.h>
 #include <spdlog/sinks/stdout_sinks.h>
 
-#include "vc/core/util/String.hpp"
-
-
 
 auto DistSink() -> std::shared_ptr<spdlog::sinks::dist_sink_mt>;
 auto DistSink() -> std::shared_ptr<spdlog::sinks::dist_sink_mt>
@@ -23,19 +20,6 @@ static auto Init() -> std::shared_ptr<spdlog::sinks::dist_sink_mt>
     return DistSink();
 }
 
-void AddLogFile(const std::filesystem::path& path)
-{
-    // Add a file logger to the logger list
-    auto log =
-        std::make_shared<spdlog::sinks::basic_file_sink_mt>(path.string());
-    DistSink()->add_sink(log);
-}
-
-void SetLogLevel(const std::string& s)
-{
-    auto level = spdlog::level::from_str(to_lower_copy(s));
-    Logger()->set_level(level);
-}
 
 auto Logger() -> std::shared_ptr<spdlog::logger>
 {

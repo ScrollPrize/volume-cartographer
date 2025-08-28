@@ -1,12 +1,10 @@
 #include "vc/core/types/VolumePkg.hpp"
 
-#include <functional>
 #include <set>
 #include <utility>
 
 #include "vc/core/util/DateTime.hpp"
 #include "vc/core/util/Logging.hpp"
-#include "vc/core/util/String.hpp"
 
 constexpr auto CONFIG = "config.json";
 
