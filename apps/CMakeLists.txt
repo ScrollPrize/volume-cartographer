@@ -129,6 +129,14 @@ target_link_libraries(vc_render_bench
     VC::slicing
 )
 
+add_executable(vc_create_segment_mask src/vc_create_segment_mask.cpp)
+target_link_libraries(vc_create_segment_mask
+        VC::metrics
+        VC::surface
+        Boost::program_options
+)
+
+
 ## experiements for flattening ##
 # add_executable(vc_zarralphacomp src/ZarrAlphaComp.cpp)
 # target_link_libraries(vc_zarralphacomp

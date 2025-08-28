@@ -227,3 +227,10 @@ float pointTo(cv::Vec2f &loc, const cv::Mat_<cv::Vec3f> &points, const cv::Vec3f
 
 void write_overlapping_json(const std::filesystem::path& seg_path, const std::set<std::string>& overlapping_names);
 std::set<std::string> read_overlapping_json(const std::filesystem::path& seg_path);
+
+void generate_mask(QuadSurface* surf,
+                            cv::Mat_<uint8_t>& mask,
+                            cv::Mat_<uint8_t>& img,
+                            z5::Dataset* ds_high = nullptr,
+                            z5::Dataset* ds_low = nullptr,
+                            ChunkCache* cache = nullptr);

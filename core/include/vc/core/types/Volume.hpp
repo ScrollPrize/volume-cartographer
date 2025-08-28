@@ -63,6 +63,8 @@ public:
     /** @brief Make a new Volume at the specified path */
     Volume(std::filesystem::path path, Identifier uuid, std::string name);
 
+    ~Volume() = default;
+
     /** @overload Volume(std::filesystem::path) */
     static Pointer New(std::filesystem::path path);
 
