@@ -561,6 +561,8 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds,
     int skel_max_steps = 200;        // BFS step cap
     bool skel_debug = false;
     float skel_align_w = 0.1f;       // weight for soft alignment residual
+    std::string skel_method = "tensor"; // "tensor" (fast) or "thinning"
+    int skel_tangent_radius = 5;     // px half-window for tangent calc (tensor)
     if (params_opt) {
         const auto &p = *params_opt;
         skel_enable = p.value("skeleton_guidance", false);
@@ -571,11 +573,14 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds,
         skel_max_steps = p.value("skeleton_connectivity_max_steps", skel_max_steps);
         skel_debug = p.value("skeleton_debug", false);
         skel_align_w = p.value("skeleton_align_weight", skel_align_w);
+        skel_method = p.value("skeleton_method", skel_method);
+        skel_tangent_radius = p.value("skeleton_tangent_radius", skel_tangent_radius);
         if (skel_roi % 2 == 0) skel_roi += 1;
         skel_roi = std::max(17, std::min(257, skel_roi));
         skel_slices = std::max(0, std::min(8, skel_slices));
         skel_min_align = std::max(0.f, std::min(1.f, skel_min_align));
         skel_max_steps = std::max(10, std::min(2000, skel_max_steps));
+        skel_tangent_radius = std::max(2, std::min(15, skel_tangent_radius));
     }
 
     auto compute_skeleton_mask = [&](const cv::Vec3d &center, cv::Mat1b &mask, cv::Point &top_left) {
@@ -688,6 +693,43 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds,
         return false;
     };
 
+    auto tensor_tangent = [&](const cv::Mat1b &mask, const cv::Point &p){
+        cv::Mat m32f; mask.convertTo(m32f, CV_32F, 1.0/255.0);
+        // slight blur to stabilize gradients
+        cv::GaussianBlur(m32f, m32f, cv::Size(3,3), 0.8, 0.8, cv::BORDER_REPLICATE);
+        cv::Mat Ix, Iy;
+        cv::Sobel(m32f, Ix, CV_32F, 1, 0, 3);
+        cv::Sobel(m32f, Iy, CV_32F, 0, 1, 3);
+        int r = skel_tangent_radius;
+        cv::Rect roi(std::max(0, p.x-r), std::max(0, p.y-r), 1, 1);
+        roi.x = std::max(0, p.x-r); roi.y = std::max(0, p.y-r);
+        roi.width = std::min(Ix.cols - roi.x, 2*r+1);
+        roi.height = std::min(Ix.rows - roi.y, 2*r+1);
+        cv::Mat IxR = Ix(roi), IyR = Iy(roi);
+        double Sxx = 0, Sxy = 0, Syy = 0;
+        // weight by gradient magnitude (emphasize edges)
+        for (int y=0;y<IxR.rows;++y){
+            const float* px = IxR.ptr<float>(y);
+            const float* py = IyR.ptr<float>(y);
+            for (int x=0;x<IxR.cols;++x){
+                double gx = px[x], gy = py[x];
+                Sxx += gx*gx;
+                Sxy += gx*gy;
+                Syy += gy*gy;
+            }
+        }
+        // Principal direction is eigenvector with largest eigenvalue of [[Sxx,Sxy],[Sxy,Syy]]
+        double tr = Sxx + Syy;
+        double det = Sxx*Syy - Sxy*Sxy;
+        double tmp = std::sqrt(std::max(0.0, tr*tr - 4*det));
+        double l1 = 0.5*(tr + tmp);
+        // eigenvector for l1: (Sxy, l1 - Sxx)
+        cv::Vec2d v(Sxy, l1 - Sxx);
+        double n = std::sqrt(v[0]*v[0] + v[1]*v[1]);
+        if (n < 1e-6) return cv::Vec2d(1,0);
+        return cv::Vec2d(v[0]/n, v[1]/n);
+    };
+
     // fringe contains all 2D points around the edge of the patch where we might expand it
     // cands will contain new points adjacent to the fringe that are candidates to expand into
     std::vector<cv::Vec2i> fringe;
@@ -704,6 +746,8 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds,
     cv::Mat_<uint8_t> phys_fail(size,0);
     cv::Mat_<float> init_dist(size,0);
     cv::Mat_<uint16_t> loss_status(cv::Size(w,h),0);
+    // Track a preferred forward direction per patch point to avoid backtracking
+    cv::Mat_<cv::Vec3f> forward_dir(size, cv::Vec3f(0,0,0));
 
     cv::Vec3f vx = {1,0,0};
     cv::Vec3f vy = {0,1,0};
@@ -956,6 +1000,16 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds,
                 gen_fiber_loss(problem, p, 1, state, locs, h_fiber_dir_tensor);
                 gen_fiber_loss(problem, p, -1, state, locs, h_fiber_dir_tensor);
 
+                // Prevent backtracking: align (best_l -> p) with stored forward at best_l
+                float back_w = 0.0f;
+                cv::Vec3f fdir = forward_dir(best_l);
+                float fnorm = std::sqrt(fdir[0]*fdir[0]+fdir[1]*fdir[1]+fdir[2]*fdir[2]);
+                if (params_opt) back_w = (*params_opt).value("prevent_backtracking_weight", 0.2f);
+                if (fnorm > 1e-6 && back_w > 0.f) {
+                    cv::Vec3f fdir_n{fdir[0]/fnorm, fdir[1]/fnorm, fdir[2]/fnorm};
+                    problem.AddResidualBlock(ForwardDirLoss::Create(fdir_n, back_w), nullptr, &locs(best_l)[0], &locs(p)[0]);
+                }
+
                 // Soft skeleton-guided alignment residual (optional)
                 if (skel_enable && skel_align_w > 0.f) {
                     // choose predecessor with valid state (prefer best_l, else any neighbor)
@@ -964,14 +1018,12 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds,
                         for (auto &off : neighs) { if (state(p+off) & STATE_LOC_VALID) { pred2d = p+off; break; } }
                     }
                     cv::Vec3d a3 = locs(pred2d), b3 = locs(p);
-                    // build skeleton around candidate b3 and compute tangent near a3
+                    // build local mask and compute tangent (fast tensor by default)
                     cv::Mat1b mask; cv::Point top_left;
                     compute_skeleton_mask(b3, mask, top_left);
-                    cv::Mat1b skel = thinningZS(mask);
                     cv::Point pa(int(std::round(a3[0]))-top_left.x, int(std::round(a3[1]))-top_left.y);
-                    pa.x = std::clamp(pa.x, 0, skel.cols-1); pa.y = std::clamp(pa.y, 0, skel.rows-1);
-                    cv::Point sa = nearest_skel(skel, pa);
-                    cv::Vec2d tanv = local_tangent(skel, sa);
+                    pa.x = std::clamp(pa.x, 0, mask.cols-1); pa.y = std::clamp(pa.y, 0, mask.rows-1);
+                    cv::Vec2d tanv = (skel_method == "thinning") ? local_tangent(thinningZS(mask), pa) : tensor_tangent(mask, pa);
                     double n = std::sqrt(tanv[0]*tanv[0] + tanv[1]*tanv[1]);
                     if (n > 1e-6) {
                         cv::Vec2f tanf = cv::Vec2f(tanv[0]/n, tanv[1]/n);
@@ -1058,6 +1110,11 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds,
                         fringe.push_back(p);
                         succ_gen_ps.push_back(p);
                     }
+
+                    // Record forward direction at p from its predecessor best_l
+                    cv::Vec3d disp = locs(p) - locs(best_l);
+                    double dlen = std::sqrt(disp[0]*disp[0]+disp[1]*disp[1]+disp[2]*disp[2]);
+                    if (dlen > 1e-6) forward_dir(p) = cv::Vec3f(disp[0]/dlen, disp[1]/dlen, disp[2]/dlen);
                 }
             }  // end parallel iteration over cands
         }

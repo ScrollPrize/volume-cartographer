@@ -469,3 +469,35 @@ struct XYDirectionAlignLoss {
         return new ceres::AutoDiffCostFunction<XYDirectionAlignLoss, 1, 3, 3>(new XYDirectionAlignLoss(tangent_xy, w));
     }
 };
+
+// Penalize backtracking relative to a prior forward 3D direction.
+// Let f be a unit forward direction at the predecessor, and d = normalized(b - a).
+// residual = w * max(0, -dot(d, f)) = w * (|dot| - dot)/2
+// So no penalty if d aligns or is orthogonal-ish (dot>=0), increasing penalty only if d points backwards.
+struct ForwardDirLoss {
+    ForwardDirLoss(const cv::Vec3f &forward, float w) : _fx(forward[0]), _fy(forward[1]), _fz(forward[2]), _w(w) {}
+    template <typename E>
+    bool operator()(const E* const a_xyz, const E* const b_xyz, E* residual) const {
+        E dx = b_xyz[0] - a_xyz[0];
+        E dy = b_xyz[1] - a_xyz[1];
+        E dz = b_xyz[2] - a_xyz[2];
+        E len = sqrt(dx*dx + dy*dy + dz*dz);
+        if (unjet(len) <= 1e-6) { residual[0] = E(0); return true; }
+        E ndx = dx/len, ndy = dy/len, ndz = dz/len;
+        E dot = ndx*E(_fx) + ndy*E(_fy) + ndz*E(_fz);
+        residual[0] = E(_w) * (abs(dot) - dot) * E(0.5);
+        return true;
+    }
+
+    static float unjet(const float& v) { return v; }
+    static double unjet(const double& v) { return v; }
+    template<typename JetT> static double unjet(const JetT& v) { return v.a; }
+
+    float _fx, _fy, _fz;
+    float _w;
+
+    static ceres::CostFunction* Create(const cv::Vec3f &forward, float w = 1.0)
+    {
+        return new ceres::AutoDiffCostFunction<ForwardDirLoss, 1, 3, 3>(new ForwardDirLoss(forward, w));
+    }
+};
