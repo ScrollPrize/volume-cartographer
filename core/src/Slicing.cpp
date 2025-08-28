@@ -24,9 +24,6 @@
 
 #include <algorithm>
 
-using shape = z5::types::ShapeType;
-using namespace xt::placeholders;
-
 
 template<typename T>
 static xt::xarray<T> *readChunk(const z5::Dataset & ds, z5::types::ShapeType chunkId)

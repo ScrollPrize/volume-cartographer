@@ -4,17 +4,14 @@
 
 #include <opencv2/core.hpp> 
 #include <nlohmann/json_fwd.hpp>
+#include <z5/dataset.hxx>
+
+#include "Slicing.hpp"
 
 
 #define Z_DBG_GEN_PREFIX "auto_grown_"
 
-class QuadSurface;
-class ChunkCache;
 class Chunked3dVec3fFromUint8;
-
-namespace z5 {
-    class Dataset;
-}
 
 struct Rect3D {
     cv::Vec3f low = {0,0,0};
@@ -30,10 +27,7 @@ struct DirectionField
 bool intersect(const Rect3D &a, const Rect3D &b);
 Rect3D expand_rect(const Rect3D &a, const cv::Vec3f &p);
 
-QuadSurface *load_quad_from_tifxyz(const std::string &path);
-QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *cache, cv::Vec3f origin, int generations = 100, float step = 10, const std::string &cache_root = "", float voxelsize = 1.0, std::vector<DirectionField> const &direction_fields = {});
-QuadSurface *regularized_local_quad(QuadSurface *src, const cv::Vec3f &ptr, int w, int h, int step_search = 100, int step_out = 5);
-QuadSurface *smooth_vc_segmentation(QuadSurface *src);
+
 
 //base surface class
 class Surface
@@ -217,6 +211,11 @@ public:
     std::set<std::string> overlapping_str;
     std::set<SurfaceMeta*> overlapping;
 };
+
+QuadSurface *load_quad_from_tifxyz(const std::string &path);
+QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *cache, cv::Vec3f origin, int generations = 100, float step = 10, const std::string &cache_root = "", float voxelsize = 1.0, std::vector<DirectionField> const &direction_fields = {});
+QuadSurface *regularized_local_quad(QuadSurface *src, const cv::Vec3f &ptr, int w, int h, int step_search = 100, int step_out = 5);
+QuadSurface *smooth_vc_segmentation(QuadSurface *src);
 
 bool overlap(SurfaceMeta &a, SurfaceMeta &b, int max_iters = 1000);
 bool contains(SurfaceMeta &a, const cv::Vec3f &loc, int max_iters = 1000);

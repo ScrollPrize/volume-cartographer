@@ -14,7 +14,7 @@
  
 #include "vc/core/util/VCCollection.hpp"
  
-namespace ChaoVis {
+
 
 CPointCollectionWidget::CPointCollectionWidget(VCCollection *collection, QWidget *parent)
     : QDockWidget("Point Collections", parent), _point_collection(collection)
@@ -606,5 +606,4 @@ CPointCollectionWidget::~CPointCollectionWidget() {
     }
 }
 
-}
 

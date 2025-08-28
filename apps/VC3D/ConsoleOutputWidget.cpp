@@ -1,12 +1,11 @@
 #include "ConsoleOutputWidget.hpp"
 #include <QApplication>
-#include <QClipboard>
 #include <QScrollBar>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QFontDatabase>
+#include <QClipboard>
 
-namespace ChaoVis {
 
 ConsoleOutputWidget::ConsoleOutputWidget(QWidget* parent)
     : QWidget(parent)
@@ -72,4 +71,4 @@ void ConsoleOutputWidget::setTitle(const QString& title)
     _titleLabel->setText(title);
 }
 
-} // namespace ChaoVis
+

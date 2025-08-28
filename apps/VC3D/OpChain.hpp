@@ -4,15 +4,6 @@
 
 #include <set>
 
-class QuadSurface;
-class DeltaSurface;
-class ChunkCache;
-class FormSetSrc;
-
-namespace z5 {
-    class Dataset;
-}
-
 enum class OpChainSourceMode: int
 {
     RAW = 0,

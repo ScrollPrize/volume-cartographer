@@ -1,5 +1,3 @@
-// CVolumeViewer.h
-// Chao Du 2015 April
 #pragma once
 
 #include <QtWidgets>
@@ -9,28 +7,11 @@
 #include "PathData.hpp"
 #include "vc/core/util/VCCollection.hpp"
 #include "COutlinedTextItem.hpp"
+#include "CSurfaceCollection.hpp"
+#include "CVolumeViewerView.hpp"
+#include "vc/core/types/Volume.hpp"
 
-class ChunkCache;
-class Surface;
-class SurfacePointer;
-class QuadSurface;
 
-class QGraphicsScene;
-
-namespace volcart {
-    class Volume;
-}
-
-namespace ChaoVis
-{
-
-class CVolumeViewerView;
-class CSurfaceCollection;
-class POI;
-class Intersection;
-class SeedingWidget;
-class VCCollection;
- 
 class CVolumeViewer : public QWidget
 {
     Q_OBJECT
@@ -101,7 +82,7 @@ public:
     CVolumeViewerView* fGraphicsView;
 
 public slots:
-    void OnVolumeChanged(std::shared_ptr<volcart::Volume> vol);
+    void OnVolumeChanged(std::shared_ptr<Volume> vol);
     void onVolumeClicked(QPointF scene_loc,Qt::MouseButton buttons, Qt::KeyboardModifiers modifiers);
     void onPanRelease(Qt::MouseButton buttons, Qt::KeyboardModifiers modifiers);
     void onPanStart(Qt::MouseButton buttons, Qt::KeyboardModifiers modifiers);
@@ -163,7 +144,7 @@ protected:
 
     QGraphicsPixmapItem* fBaseImageItem;
     
-    std::shared_ptr<volcart::Volume> volume = nullptr;
+    std::shared_ptr<Volume> volume = nullptr;
     Surface *_surf = nullptr;
     cv::Vec3f _ptr = cv::Vec3f(0,0,0);
     cv::Vec2f _vis_center = {0,0};
@@ -250,5 +231,3 @@ protected:
 
 
 };  // class CVolumeViewer
-
-}  // namespace ChaoVis

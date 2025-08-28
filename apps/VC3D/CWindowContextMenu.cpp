@@ -8,12 +8,13 @@
 #include <QFileInfo>
 #include <QCoreApplication>
 
+#include "CommandLineToolRunner.hpp"
 #include "vc/core/types/VolumePkg.hpp"
 #include "vc/core/util/Surface.hpp"
 
-namespace vc = volcart;
-using namespace ChaoVis;
-namespace fs = std::filesystem;
+
+
+
 
 // --------- local helpers for running external tools -------------------------
 static bool runProcessBlocking(const QString& program,
@@ -151,7 +152,7 @@ void CWindow::onSlimFlattenAndRender(const std::string& segmentId)
     }
 
     // Paths
-    const fs::path segDirFs = _vol_qsurfs[segmentId]->path;           // tifxyz folder
+    const std::filesystem::path segDirFs = _vol_qsurfs[segmentId]->path;           // tifxyz folder
     const QString  segDir   = QString::fromStdString(segDirFs.string());
     const QString  objPath  = QDir(segDir).filePath(QString::fromStdString(segmentId) + ".obj");
     const QString  flatObj  = QDir(segDir).filePath(QString::fromStdString(segmentId) + "_flatboi.obj");
@@ -270,17 +271,17 @@ void CWindow::onGrowSegmentFromSegment(const std::string& segmentId)
     QString srcSegment = QString::fromStdString(_vol_qsurfs[segmentId]->path.string());
 
     // Get the volpkg path and create traces directory if it doesn't exist
-    fs::path volpkgPath = fs::path(fVpkgPath.toStdString());
-    fs::path tracesDir = volpkgPath / "traces";
-    fs::path jsonParamsPath = volpkgPath / "trace_params.json";
-    fs::path pathsDir = volpkgPath / "paths";
+    std::filesystem::path volpkgPath = std::filesystem::path(fVpkgPath.toStdString());
+    std::filesystem::path tracesDir = volpkgPath / "traces";
+    std::filesystem::path jsonParamsPath = volpkgPath / "trace_params.json";
+    std::filesystem::path pathsDir = volpkgPath / "paths";
 
     statusBar()->showMessage(tr("Preparing to run grow_seg_from_segment..."), 2000);
 
     // Create traces directory if it doesn't exist
-    if (!fs::exists(tracesDir)) {
+    if (!std::filesystem::exists(tracesDir)) {
         try {
-            fs::create_directory(tracesDir);
+            std::filesystem::create_directory(tracesDir);
         } catch (const std::exception& e) {
             QMessageBox::warning(this, tr("Error"), tr("Failed to create traces directory: %1").arg(e.what()));
             return;
@@ -288,7 +289,7 @@ void CWindow::onGrowSegmentFromSegment(const std::string& segmentId)
     }
 
     // Check if trace_params.json exists
-    if (!fs::exists(jsonParamsPath)) {
+    if (!std::filesystem::exists(jsonParamsPath)) {
         QMessageBox::warning(this, tr("Error"), tr("trace_params.json not found in the volpkg"));
         return;
     }
@@ -329,8 +330,8 @@ void CWindow::onAddOverlap(const std::string& segmentId)
     }
 
     // Get paths
-    fs::path volpkgPath = fs::path(fVpkgPath.toStdString());
-    fs::path pathsDir = volpkgPath / "paths";
+    std::filesystem::path volpkgPath = std::filesystem::path(fVpkgPath.toStdString());
+    std::filesystem::path pathsDir = volpkgPath / "paths";
     QString tifxyzPath = QString::fromStdString(_vol_qsurfs[segmentId]->path.string());
 
     // Set up parameters and execute the tool
@@ -363,10 +364,10 @@ void CWindow::onConvertToObj(const std::string& segmentId)
     }
 
     // Get source tifxyz path (this is a directory containing the TIFXYZ files)
-    fs::path tifxyzPath = _vol_qsurfs[segmentId]->path;
+    std::filesystem::path tifxyzPath = _vol_qsurfs[segmentId]->path;
 
     // Generate output OBJ path inside the TIFXYZ directory with segment ID as filename
-    fs::path objPath = tifxyzPath / (segmentId + ".obj");
+    std::filesystem::path objPath = tifxyzPath / (segmentId + ".obj");
 
     // Set up parameters and execute the tool
     _cmdRunner->setToObjParams(
@@ -398,21 +399,21 @@ void CWindow::onGrowSeeds(const std::string& segmentId, bool isExpand, bool isRa
     }
 
     // Get paths
-    fs::path volpkgPath = fs::path(fVpkgPath.toStdString());
-    fs::path pathsDir = volpkgPath / "paths";
+    std::filesystem::path volpkgPath = std::filesystem::path(fVpkgPath.toStdString());
+    std::filesystem::path pathsDir = volpkgPath / "paths";
 
     // Create traces directory if it doesn't exist
-    if (!fs::exists(pathsDir)) {
+    if (!std::filesystem::exists(pathsDir)) {
         QMessageBox::warning(this, tr("Error"), tr("Paths directory not found in the volpkg"));
         return;
     }
 
     // Get JSON parameters file
     QString jsonFileName = isExpand ? "expand.json" : "seed.json";
-    fs::path jsonParamsPath = volpkgPath / jsonFileName.toStdString();
+    std::filesystem::path jsonParamsPath = volpkgPath / jsonFileName.toStdString();
 
     // Check if JSON file exists
-    if (!fs::exists(jsonParamsPath)) {
+    if (!std::filesystem::exists(jsonParamsPath)) {
         QMessageBox::warning(this, tr("Error"), tr("%1 not found in the volpkg").arg(jsonFileName));
         return;
     }
@@ -523,7 +524,7 @@ void CWindow::onDeleteSegments(const std::vector<std::string>& segmentIds)
             fVpkg->removeSegmentation(segmentId);
             successCount++;
             needsReload = true;
-        } catch (const fs::filesystem_error& e) {
+        } catch (const std::filesystem::filesystem_error& e) {
             std::cerr << "Failed to delete segment " << segmentId << ": " << e.what() << std::endl;
 
             // Check if it's a permission error

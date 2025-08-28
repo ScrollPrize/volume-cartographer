@@ -4,8 +4,7 @@
 
 #include <string>
 
-namespace volcart
-{
+
 
 /**
  * @class IOException
@@ -35,4 +34,4 @@ public:
 protected:
     std::string msg_;
 };
-}  // namespace volcart
+

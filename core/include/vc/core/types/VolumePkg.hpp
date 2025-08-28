@@ -1,7 +1,5 @@
 #pragma once
 
-/** @file */
-
 #include <cstddef>
 #include <iostream>
 #include <map>
@@ -12,273 +10,52 @@
 #include "vc/core/types/Volume.hpp"
 #include "vc/core/types/VolumePkgVersion.hpp"
 
-namespace volcart
-{
-
-/**
- * @class VolumePkg
- * @brief The interface to the VolumePkg (.volpkg) file format.
- *
- * Provides access to volume, segmentation, and rendering data stored on disk.
- *
- * @warning VolumePkg is not thread safe.
- *
- * @ingroup Types
- * @ingroup VolumePackage
- *
- * @see apps/src/packager.cpp
- *      apps/src/metadata.cpp
- *      examples/src/volpkg.cpp
- *      examples/src/ResliceAnalysis.cpp
- */
 class VolumePkg
 {
 public:
-    /**@{*/
-    /**
-     * @brief Construct an empty VolumePkg of a specific version number.
-     *
-     * This will construct an empty VolumePkg in memory and set its expected
-     * location on disk. Note: You must call initialize() before the file can
-     * be written to and accessed. Only metadata keys may be modified before
-     * initialize is called.
-     *
-     * @param fileLocation The location to store the VolPkg
-     * @param version Version of VolumePkg you wish to construct
-     */
-    VolumePkg(std::filesystem::path fileLocation, int version);
-
-    /**
-     * @brief Construct a VolumePkg from a .volpkg file stored at
-     * `fileLocation.`
-     * @param fileLocation The root of the VolumePkg file
-     */
     explicit VolumePkg(const std::filesystem::path& fileLocation);
-
-    /** VolumePkg shared pointer */
-    using Pointer = std::shared_ptr<VolumePkg>;
-
-    /**
-     * @copybrief VolumePkg(filesystem::path fileLocation, int version)
-     *
-     * Returns a shared pointer to the VolumePkg.
-     */
-    static auto New(std::filesystem::path fileLocation, int version) -> Pointer;
-
-    /**
-     * @copybrief VolumePkg(filesystem::path fileLocation)
-     *
-     * Returns a shared pointer to the VolumePkg.
-     */
-    static auto New(std::filesystem::path fileLocation) -> Pointer;
-    /**@}*/
-
-    /** @name Metadata */
-    /**@{*/
-    /**
-     * @brief Returns the identifying name of the VolumePkg.
-     * @return Name of the VolumePkg
-     */
-    [[nodiscard]] auto name() const -> std::string;
-
-    /**
-     * @brief Returns the VolumePkg version.
-     *
-     * Use in conjunction with volcart::VERSION_LIBRARY to verify the presence
-     * of
-     * specific VolumePkg metadata keys.
-     *
-     * @return Version number of VolumePkg
-     */
-    [[nodiscard]] auto version() const -> int;
-
-    /**
-     * @brief Returns the approx. thickness of a material layer in microns (um).
-     *
-     * This value is approximated by the user when the VolumePkg is created.
-     * This is an intrinsic property of the scanned object and is therefore
-     * indepedent of scan resolution. The material thickness in microns can be
-     * used to estimate the material thickness in voxels for scans of any
-     * resolution.
-     *
-     * \f[
-        \frac{\mbox{Material Thickness }(um)}{\mbox{Voxel Size }(um)}
-        = \mbox{Material Thickness }(voxels)
-      \f]
-     *
-     * @return Layer thickness, measured in microns (um).
-     */
-    [[nodiscard]] auto materialThickness() const -> double;
-
-    /** @brief Return the VolumePkg Metadata */
-    [[nodiscard]] auto metadata() const -> Metadata;
-
-    /**
-     * @brief Sets the value of `key` in the VolumePkg metadata.
-     *
-     * These values are stored only in memory until saveMetadata() is called.
-     *
-     * @param key Metadata key identifier
-     * @param value Value to be stored
-     */
-    template <typename T>
-    void setMetadata(const std::string& key, T value)
-    {
-        config_.set<T>(key, value);
-    }
-
-    /**
-     * @brief Saves the metadata to the VolumePkg (.volpkg) file.
-     */
+    static std::shared_ptr<VolumePkg> New(std::filesystem::path fileLocation);
+    [[nodiscard]] std::string name() const;
+    [[nodiscard]] int version() const;
+    [[nodiscard]] double materialThickness() const;
+    [[nodiscard]] Metadata metadata() const;
     void saveMetadata();
-
-    /**
-     * @brief Saves the metadata to a user-specified location.
-     * @param filePath Path to output file
-     */
     void saveMetadata(const std::filesystem::path& filePath);
-    /**@}*/
-
-    /** @name Volume Data */
-    /**@{*/
-    /** @brief Return whether there are Volumes */
-    auto hasVolumes() const -> bool;
-
-    /** @brief Whether a volume with the given identifier is in the VolumePkg */
-    [[nodiscard]] auto hasVolume(const Volume::Identifier& id) const -> bool;
-
-    /** @brief Get the number of Volumes */
-    auto numberOfVolumes() const -> std::size_t;
-
-    /** @brief Get the list of volume IDs */
-    [[nodiscard]] auto volumeIDs() const -> std::vector<Volume::Identifier>;
-
-    /** @brief Get the list of volumes names */
-    [[nodiscard]] auto volumeNames() const -> std::vector<std::string>;
-
-    /**
-     * @brief Add a new Volume to the VolumePkg
-     * @param name Human-readable name for the new Volume. Defaults to the
-     * auto-generated Volume ID.
-     * @return Pointer to the new Volume
-     */
-    auto newVolume(std::string name = "") -> Volume::Pointer;
-
-    /** @brief Get the first Volume */
-    [[nodiscard]] auto volume() const -> const Volume::Pointer;
-
-    /** @copydoc volume() const */
-    auto volume() -> Volume::Pointer;
-
-    /** @brief Get a Volume by uuid */
-    [[nodiscard]] auto volume(const Volume::Identifier& id) const
-        -> const Volume::Pointer;
-
-    /** @copydoc VolumePkg::volume(const Volume::Identifier&) const */
-    auto volume(const Volume::Identifier& id) -> Volume::Pointer;
-
-    /** @name Segmentation Data */
-    /**@{*/
-    /** @brief Return whether there are Segmentations */
-    auto hasSegmentations() const -> bool;
-
-    /** @brief Get the number of Segmentations */
-    auto numberOfSegmentations() const -> std::size_t;
-
-    /** @brief Get the list of Segmentation IDs */
-    [[nodiscard]] auto segmentationIDs() const
-        -> std::vector<Segmentation::Identifier>;
-
-    /** @brief Get the list of Segmentation names */
-    [[nodiscard]] auto segmentationNames() const -> std::vector<std::string>;
-
-    /** @brief Get a Segmentation by uuid */
-    [[nodiscard]] auto segmentation(const Segmentation::Identifier& id) const
-        -> const Segmentation::Pointer;
+    [[nodiscard]] bool hasVolumes() const;
+    [[nodiscard]] bool hasVolume(const std::string& id) const;
+    [[nodiscard]] std::size_t numberOfVolumes() const;
+    [[nodiscard]] std::vector<std::string> volumeIDs() const;
+    [[nodiscard]] std::vector<std::string> volumeNames() const;
+    std::shared_ptr<Volume> newVolume(std::string name = "");
+    [[nodiscard]] const std::shared_ptr<Volume> volume() const;
+    std::shared_ptr<Volume> volume();
+    [[nodiscard]] const std::shared_ptr<Volume> volume(const std::string& id) const;
+    std::shared_ptr<Volume> volume(const std::string& id);
+    [[nodiscard]] bool hasSegmentations() const;
+    [[nodiscard]] std::size_t numberOfSegmentations() const;
+    [[nodiscard]] std::vector<std::string> segmentationIDs() const;
+    [[nodiscard]] std::vector<std::string> segmentationNames() const;
+    [[nodiscard]] const std::shared_ptr<Segmentation> segmentation(const std::string& id) const;
 
     std::vector<std::filesystem::path> segmentationFiles();
 
-    /** @copydoc VolumePkg::segmentation(const Segmentation::Identifier&) const
-     */
-    auto segmentation(const Segmentation::Identifier& id)
-        -> Segmentation::Pointer;
-        
-    /** 
-     * @brief Remove a segmentation from the VolumePkg
-     * 
-     * This method removes the segmentation from the internal data structures
-     * and deletes the associated files from disk.
-     * 
-     * @param id The identifier of the segmentation to remove
-     * @throws std::runtime_error if the segmentation is not found
-     */
-    void removeSegmentation(const Segmentation::Identifier& id);
-        
-    /** @brief Set the active segmentation directory (e.g., "paths", "traces") */
+    std::shared_ptr<Segmentation> segmentation(const std::string& id);
+    void removeSegmentation(const std::string& id);
     void setSegmentationDirectory(const std::string& dirName);
-    
-    /** @brief Get the current segmentation directory name */
-    [[nodiscard]] auto getSegmentationDirectory() const -> std::string;
-    
-    /** @brief Get list of available segmentation directories */
-    [[nodiscard]] auto getAvailableSegmentationDirectories() const 
-        -> std::vector<std::string>;
-    
-    /** 
-     * @brief Refresh the segmentation cache by scanning the current directory
-     * 
-     * This method efficiently updates the internal segmentation cache by:
-     * - Adding any new segmentations found on disk
-     * - Removing any segmentations that no longer exist on disk
-     * 
-     * This is much faster than reloading the entire VolumePkg when only
-     * segmentations have changed.
-     */
+    [[nodiscard]] std::string getSegmentationDirectory() const;
+    [[nodiscard]] std::vector<std::string> getAvailableSegmentationDirectories() const;
+
     void refreshSegmentations();
-    /**@}*/
-
-    /**
-     * @brief Return whether a transform with the given identifier is in the
-     * VolumePkg
-     *
-     * If the provided identifier ends with "*", additionally checks if the
-     * transform can be inverted.
-     */
-
-    /** Utility function for updating VolumePkgs */
-    static void Upgrade(
-        const std::filesystem::path& path,
-        int version = VOLPKG_VERSION_LATEST,
-        bool force = false);
 
 private:
-    /** VolumePkg metadata */
     Metadata config_;
-    /** The root directory of the VolumePkg */
     std::filesystem::path rootDir_;
-    /** The list of all Volumes in the VolumePkg. */
-    std::map<Volume::Identifier, Volume::Pointer> volumes_;
-    /** The list of all Segmentations in the VolumePkg. */
-    std::map<Segmentation::Identifier, Segmentation::Pointer> segmentations_;
+    std::map<std::string, std::shared_ptr<Volume>> volumes_;
+    std::map<std::string, std::shared_ptr<Segmentation>> segmentations_;
     std::vector<std::filesystem::path> segmentation_files_;
-    /** Current segmentation directory name */
     std::string currentSegmentationDir_ = "paths";
-    /** Track which directory each segmentation came from */
-    std::map<Segmentation::Identifier, std::string> segmentationDirectories_;
+    std::map<std::string, std::string> segmentationDirectories_;
 
-    /**
-     * @brief Populates an empty VolumePkg::config from a volcart::Dictionary
-     * template
-     *
-     * The configuration is populated with all keys found in `dict`. This is not
-     * validated against what is expected for the passed `version` number.
-     * @param dict Metadata template
-     * @param version Version number of the passed Dictionary
-     * @return volcart::Metadata populated with default keys
-     */
-    static auto InitConfig(const Dictionary& dict, int version) -> Metadata;
-    
-    /** @brief Load segmentations from the specified directory */
     void loadSegmentationsFromDirectory(const std::string& dirName);
 };
-}  // namespace volcart
+

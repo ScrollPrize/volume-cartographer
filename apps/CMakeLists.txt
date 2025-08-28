@@ -138,15 +138,6 @@ target_link_libraries(vc_surface_diff
         Boost::program_options
 )
 
-## experiements for flattening ##
-# add_executable(vc_zarralphacomp src/ZarrAlphaComp.cpp)
-# target_link_libraries(vc_zarralphacomp
-#     nlohmann_json::nlohmann_json
-#     z5
-#     opencv_highgui
-#     VC::slicing
-# )
-
 # Install targets
 if(VC_INSTALL_APPS)
 install(

@@ -3,7 +3,7 @@
 #include <nlohmann/json.hpp>
 #include <fstream>
 
-namespace fs = std::filesystem;
+
 using json = nlohmann::json;
 
 
@@ -16,8 +16,8 @@ int main(int argc, char *argv[])
         return EXIT_SUCCESS;
     }
 
-    fs::path tgt_dir = argv[1];
-    fs::path seg_dir = argv[2];
+    std::filesystem::path tgt_dir = argv[1];
+    std::filesystem::path seg_dir = argv[2];
     int search_iters = 10;
     srand(clock());
 
@@ -28,15 +28,15 @@ int main(int argc, char *argv[])
 
     bool found_overlaps = false;
 
-    for (const auto& entry : fs::directory_iterator(tgt_dir))
-        if (fs::is_directory(entry))
+    for (const auto& entry : std::filesystem::directory_iterator(tgt_dir))
+        if (std::filesystem::is_directory(entry))
         {
             std::string name = entry.path().filename();
             if (name == current.name())
                 continue;
 
-            fs::path meta_fn = entry.path() / "meta.json";
-            if (!fs::exists(meta_fn))
+            std::filesystem::path meta_fn = entry.path() / "meta.json";
+            if (!std::filesystem::exists(meta_fn))
                 continue;
 
             std::ifstream meta_f(meta_fn);
