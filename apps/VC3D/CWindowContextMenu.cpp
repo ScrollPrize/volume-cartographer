@@ -88,7 +88,6 @@ void CWindow::onRenderSegment(const std::string& segmentId)
         return;
     }
 
-    // Get surface from VolumePkg
     auto surfMeta = fVpkg->getSurface(segmentId);
     if (!surfMeta) {
         QMessageBox::warning(this, tr("Error"), tr("Cannot render segment: Invalid segment or segment not loaded"));
@@ -153,7 +152,6 @@ void CWindow::onSlimFlattenAndRender(const std::string& segmentId)
         return;
     }
 
-    // Get surface from VolumePkg
     auto surfMeta = fVpkg->getSurface(segmentId);
     if (!surfMeta) {
         QMessageBox::warning(this, tr("Error"), tr("Cannot SLIM-flatten: Invalid segment or segment not loaded"));
@@ -272,7 +270,6 @@ void CWindow::onGrowSegmentFromSegment(const std::string& segmentId)
         return;
     }
 
-    // Get surface from VolumePkg
     auto surfMeta = fVpkg->getSurface(segmentId);
     if (!surfMeta) {
         QMessageBox::warning(this, tr("Error"), tr("Cannot grow segment: Invalid segment or segment not loaded"));
@@ -341,7 +338,6 @@ void CWindow::onAddOverlap(const std::string& segmentId)
         return;
     }
 
-    // Get surface from VolumePkg
     auto surfMeta = fVpkg->getSurface(segmentId);
     if (!surfMeta) {
         QMessageBox::warning(this, tr("Error"), tr("Cannot add overlap: Invalid segment or segment not loaded"));
@@ -382,7 +378,6 @@ void CWindow::onConvertToObj(const std::string& segmentId)
         return;
     }
 
-    // Get surface from VolumePkg
     auto surfMeta = fVpkg->getSurface(segmentId);
     if (!surfMeta) {
         QMessageBox::warning(this, tr("Error"), tr("Cannot convert to OBJ: Invalid segment or segment not loaded"));

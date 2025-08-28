@@ -716,7 +716,6 @@ void CWindow::onSurfaceFromSelection()
         return;
     }
 
-    // Get surface metadata from VolumePkg
     auto surfMeta = fVpkg->getSurface(_surfID);
     std::filesystem::path baseSegPath = surfMeta->path; // .../paths/<uuid>
     std::filesystem::path parentDir = baseSegPath.parent_path();
@@ -1670,7 +1669,6 @@ void CWindow::UpdateSurfaceTreeIcon(SurfaceTreeWidgetItem *item)
 {
     std::string id = item->data(SURFACE_ID_COLUMN, Qt::UserRole).toString().toStdString();
 
-    // Get surface from VolumePkg
     if (fVpkg) {
         auto surfMeta = fVpkg->getSurface(id);
         if (surfMeta && surfMeta->surface() && surfMeta->surface()->meta) {
