@@ -430,7 +430,7 @@ int main(int argc, char *argv[])
         ("segmentation,s", po::value<std::string>()->required(),
             "Path to the segmentation file")
         ("scale", po::value<float>()->required(),
-            "Target scale for rendering")
+            "Pixels per level-g voxel (Pg)")
         ("group-idx,g", po::value<int>()->required(),
             "OME-Zarr group index");
 
@@ -559,49 +559,40 @@ int main(int argc, char *argv[])
     
     cv::Size full_size = raw_points->size();
 
-    // canvas sizing:
-    // apply pyramid ds_scale and the local tangent stretch
+    // Interpret --scale as Pg = pixels per level-g voxel.
+    // Compute isotropic affine scale sA = cbrt(|det(A)|) (ignore shear/rot)
+    // and the effective render scale used by surf->gen() and canvas sizing:
+    //   render_scale = Pg / (scale_seg * sA * ds_scale)
+    // This keeps pixels locked to level-g voxels while geometry is still
+    // mapped to dataset index space by: scale_seg -> affine -> ds_scale.
+    double sA = 1.0;
+    if (hasAffine) {
+        const cv::Matx33d A(
+            affineTransform.matrix(0,0), affineTransform.matrix(0,1), affineTransform.matrix(0,2),
+            affineTransform.matrix(1,0), affineTransform.matrix(1,1), affineTransform.matrix(1,2),
+            affineTransform.matrix(2,0), affineTransform.matrix(2,1), affineTransform.matrix(2,2)
+        );
+        const double detA = cv::determinant(cv::Mat(A));
+        if (std::isfinite(detA) && std::abs(detA) > 1e-18)
+            sA = std::cbrt(std::abs(detA));
+    }
+    const double Pg = static_cast<double>(tgt_scale);
+    const double render_scale = Pg * (static_cast<double>(scale_seg) * sA * static_cast<double>(ds_scale));
+
+    // Canvas sizing depends ONLY on render_scale and the saved surface stride.
     {
-        const double base_sx = (static_cast<double>(tgt_scale) /  surf->_scale[0]);
-        const double base_sy = (static_cast<double>(tgt_scale) /  surf->_scale[1]);
-
-        double aff_sx = 1.0, aff_sy = 1.0;
-        if (hasAffine) {
-            auto uvS = estimateUVScaleFromAffine(*raw_points,
-                                                 affineTransform,
-                                                 scale_seg);
-            // Guard against NaNs/zeros
-            if (std::isfinite(uvS.sx) && uvS.sx > 0.0) aff_sx = uvS.sx;
-            if (std::isfinite(uvS.sy) && uvS.sy > 0.0) aff_sy = uvS.sy;
-            std::cout << "Affine UV stretch ~ sx=" << aff_sx << " sy=" << aff_sy << std::endl;
-        }
-        else
-        {
-            aff_sx = aff_sx * scale_seg;
-            aff_sy = aff_sy * scale_seg;
-            std::cout << "Mesh UV stretch ~ sx=" << aff_sx << " sy=" << aff_sy << std::endl;
-        }
-
-        const double sx = base_sx * ds_scale * aff_sx;
-        const double sy = base_sy * ds_scale * aff_sy;
+        const double sx = render_scale / static_cast<double>(surf->_scale[0]);
+        const double sy = render_scale / static_cast<double>(surf->_scale[1]);
         full_size.width  = std::max(1, static_cast<int>(std::lround(full_size.width  * sx)));
         full_size.height = std::max(1, static_cast<int>(std::lround(full_size.height * sy)));
-
-        // Update tgt_scale (working only for isotropic scaling)
-        if (aff_sx == aff_sy){
-            tgt_scale = tgt_scale * ds_scale * aff_sx;
-        }
-        else
-        {
-            tgt_scale = tgt_scale * ds_scale;
-        }
     }
     
     cv::Size tgt_size = full_size;
     cv::Rect crop = {0,0,tgt_size.width, tgt_size.height};
     
-    std::cout << "downsample level " << group_idx << " (ds_scale=" << ds_scale
-              << ")";
+    std::cout << "downsample level " << group_idx
+              << " (ds_scale=" << ds_scale << ", sA=" << sA
+              << ", Pg=" << Pg << ", render_scale=" << render_scale << ")\n";
 
     // Handle crop parameters
     int crop_x = parsed["crop-x"].as<int>();
@@ -628,10 +619,13 @@ int main(int argc, char *argv[])
     if ((tgt_size.width >= 10000 || tgt_size.height >= 10000) && num_slices > 1)
         slice_gen = true;
     else {
-        // Center at pixel centers: -(W-1)/2, -(H-1)/2  (avoid integer division & half-pixel drift)
+        // Center at pixel centers: -(W-1)/2, -(H-1)/2
         const float u0 = -0.5f * (static_cast<float>(tgt_size.width)  - 1.0f);
         const float v0 = -0.5f * (static_cast<float>(tgt_size.height) - 1.0f);
-        surf->gen(&points, &normals, tgt_size, cv::Vec3f(0,0,0), tgt_scale, cv::Vec3f(u0, v0, 0.0f));
+        surf->gen(&points, &normals,
+                  tgt_size, cv::Vec3f(0,0,0),
+                  static_cast<float>(render_scale),
+                  cv::Vec3f(u0, v0, 0.0f));
     }
 
     cv::Mat_<uint8_t> img;
@@ -685,14 +679,15 @@ int main(int argc, char *argv[])
                 // or a representative sample to ensure consistency
                 for(int x=crop.x;x<crop.x+crop.width;x+=1024) {
                     int w = std::min(tgt_size.width+crop.x-x, 1024);
-                    // Apply effective scale in chunked generation
-                    // Center at pixel centers and then offset by the chunk's x and crop.y
+                    // Independent-crop FOV: local chunk origin inside the crop
                     const float u0 = -0.5f * (static_cast<float>(tgt_size.width)  - 1.0f)
-                                + static_cast<float>(x - crop.x);
+                                   + static_cast<float>(x - crop.x);
                     const float v0 = -0.5f * (static_cast<float>(tgt_size.height) - 1.0f);
-                    surf->gen(&points, &normals, cv::Size(w, crop.height),
-                              cv::Vec3f(0,0,0), tgt_scale, cv::Vec3f(u0, v0, 0.0f));
-
+                    surf->gen(&points, &normals,
+                              cv::Size(w, crop.height),
+                              cv::Vec3f(0,0,0),
+                              static_cast<float>(render_scale),
+                              cv::Vec3f(u0, v0, 0.0f));
                     // Scale the segmentation points if requested
                     points *= scale_seg;
 
