@@ -8,7 +8,7 @@
 #include <opencv2/imgproc.hpp>
 #include <omp.h>
 
-namespace fs = std::filesystem;
+
 
 using json = nlohmann::json;
 
@@ -279,7 +279,7 @@ int main(int argc, char *argv[])
         return EXIT_SUCCESS;
     }
     
-    fs::path seg_path = argv[1];
+    std::filesystem::path seg_path = argv[1];
     
     QuadSurface *surf = nullptr;
     try {

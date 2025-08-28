@@ -1,6 +1,6 @@
 #include "ProgressUtil.hpp"
 
-namespace ChaoVis {
+
 
 ProgressUtil::ProgressUtil(QStatusBar* statusBar, QObject* parent)
     : QObject(parent)
@@ -50,4 +50,4 @@ void ProgressUtil::updateAnimation()
     if (_statusBar) _statusBar->showMessage(_message + " " + animChars[_animFrame], 0);
 }
 
-} // namespace ChaoVis
+

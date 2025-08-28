@@ -12,7 +12,7 @@
 #include <omp.h>
 
 using shape = z5::types::ShapeType;
-namespace fs = std::filesystem;
+
 
 using json = nlohmann::json;
 
@@ -40,10 +40,10 @@ float get_val(I &interp, cv::Vec3d l) {
     return v;
 }
 
-bool check_existing_segments(const fs::path& tgt_dir, const cv::Vec3d& origin, 
+bool check_existing_segments(const std::filesystem::path& tgt_dir, const cv::Vec3d& origin,
                            const std::string& name_prefix, int search_effort) {
-    for (const auto& entry : fs::directory_iterator(tgt_dir)) {
-        if (!fs::is_directory(entry)) {
+    for (const auto& entry : std::filesystem::directory_iterator(tgt_dir)) {
+        if (!std::filesystem::is_directory(entry)) {
             continue;
         }
 
@@ -52,8 +52,8 @@ bool check_existing_segments(const fs::path& tgt_dir, const cv::Vec3d& origin,
             continue;
         }
 
-        fs::path meta_fn = entry.path() / "meta.json";
-        if (!fs::exists(meta_fn)) {
+        std::filesystem::path meta_fn = entry.path() / "meta.json";
+        if (!std::filesystem::exists(meta_fn)) {
             continue;
         }
 
@@ -81,8 +81,8 @@ int main(int argc, char *argv[])
         return EXIT_SUCCESS;
     }
 
-    fs::path vol_path = argv[1];
-    fs::path tgt_dir = argv[2];
+    std::filesystem::path vol_path = argv[1];
+    std::filesystem::path tgt_dir = argv[2];
     const char *params_path = argv[3];
 
     std::ifstream params_f(params_path);
@@ -159,16 +159,16 @@ int main(int argc, char *argv[])
             //if both still have less than N then grow a seg from the seed
             //after growing, check locations on the new seg agains all existing segs
 
-        for (const auto& entry : fs::directory_iterator(tgt_dir))
-            if (fs::is_directory(entry)) {
+        for (const auto& entry : std::filesystem::directory_iterator(tgt_dir))
+            if (std::filesystem::is_directory(entry)) {
                 std::string name = entry.path().filename();
                 if (name.compare(0, name_prefix.size(), name_prefix))
                     continue;
 
                 std::cout << entry.path() << entry.path().filename() << std::endl;
 
-                fs::path meta_fn = entry.path() / "meta.json";
-                if (!fs::exists(meta_fn))
+                std::filesystem::path meta_fn = entry.path() / "meta.json";
+                if (!std::filesystem::exists(meta_fn))
                     continue;
 
                 std::ifstream meta_f(meta_fn);
@@ -338,7 +338,7 @@ int main(int argc, char *argv[])
     if (mode == "expansion")
         (*surf->meta)["seed_overlap"] = count_overlap;
     std::string uuid = name_prefix + time_str();
-    fs::path seg_dir = tgt_dir / uuid;
+    std::filesystem::path seg_dir = tgt_dir / uuid;
     std::cout << "saving " << seg_dir << std::endl;
     surf->save(seg_dir, uuid);
 
@@ -371,8 +371,8 @@ int main(int argc, char *argv[])
             }
 
         // Check for additional surfaces in target directory
-        for (const auto& entry : fs::directory_iterator(tgt_dir))
-            if (fs::is_directory(entry) && !surfs.count(entry.path().filename()))
+        for (const auto& entry : std::filesystem::directory_iterator(tgt_dir))
+            if (std::filesystem::is_directory(entry) && !surfs.count(entry.path().filename()))
             {
                 std::string name = entry.path().filename();
                 if (name.compare(0, name_prefix.size(), name_prefix))
@@ -381,8 +381,8 @@ int main(int argc, char *argv[])
                 if (name == current.name())
                     continue;
 
-                fs::path meta_fn = entry.path() / "meta.json";
-                if (!fs::exists(meta_fn))
+                std::filesystem::path meta_fn = entry.path() / "meta.json";
+                if (!std::filesystem::exists(meta_fn))
                     continue;
 
                 std::ifstream meta_f(meta_fn);

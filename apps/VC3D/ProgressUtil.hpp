@@ -5,7 +5,7 @@
 #include <QTimer>
 #include <QString>
 
-namespace ChaoVis {
+
 
 class ProgressUtil : public QObject
 {
@@ -39,4 +39,4 @@ private:
     QString _message;
 };
 
-} // namespace ChaoVis
+

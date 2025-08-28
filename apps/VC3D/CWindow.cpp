@@ -1,5 +1,3 @@
-// CWindow.cpp
-// Chao Du 2014 Dec
 #include "CWindow.hpp"
 
 #include <QKeySequence>
@@ -41,22 +39,22 @@
 #include "SurfaceTreeWidget.hpp"
 #include "SeedingWidget.hpp"
 #include "DrawingWidget.hpp"
+#include "CommandLineToolRunner.hpp"
 
 #include "vc/core/types/Exceptions.hpp"
 #include "vc/core/util/Logging.hpp"
 #include "vc/core/types/Volume.hpp"
 #include "vc/core/types/VolumePkg.hpp"
-
 #include "vc/core/util/Surface.hpp"
 #include "vc/core/util/Slicing.hpp"
 #include "vc/core/util/SurfaceVoxelizer.hpp"
 
 
 
-namespace vc = volcart;
-using namespace ChaoVis;
+
+
 using qga = QGuiApplication;
-namespace fs = std::filesystem;
+
 
 // Constructor
 CWindow::CWindow() :
@@ -249,7 +247,7 @@ CVolumeViewer *CWindow::newConnectedCVolumeViewer(std::string surfaceName, QStri
     return volView;
 }
 
-void CWindow::setVolume(std::shared_ptr<volcart::Volume> newvol)
+void CWindow::setVolume(std::shared_ptr<Volume> newvol)
 {
     bool keep_poi = false;
     if (currentVolume && currentVolume->sliceWidth() == newvol->sliceWidth() && currentVolume->sliceHeight() == newvol->sliceHeight() && currentVolume->numSlices() == newvol->numSlices()) {
@@ -333,7 +331,7 @@ void CWindow::CreateWidgets(void)
     ui.dockWidgetDrawing->setWidget(_drawingWidget);
 
     connect(this, &CWindow::sendVolumeChanged, _drawingWidget, 
-            static_cast<void (DrawingWidget::*)(std::shared_ptr<volcart::Volume>, const std::string&)>(&DrawingWidget::onVolumeChanged));
+            static_cast<void (DrawingWidget::*)(std::shared_ptr<Volume>, const std::string&)>(&DrawingWidget::onVolumeChanged));
     connect(_drawingWidget, &DrawingWidget::sendStatusMessageAvailable, this, &CWindow::onShowStatusMessage);
     connect(this, &CWindow::sendSurfacesLoaded, _drawingWidget, &DrawingWidget::onSurfacesLoaded);
 
@@ -344,7 +342,7 @@ void CWindow::CreateWidgets(void)
     ui.dockWidgetDistanceTransform->setWidget(_seedingWidget);
     
     connect(this, &CWindow::sendVolumeChanged, _seedingWidget, 
-            static_cast<void (SeedingWidget::*)(std::shared_ptr<volcart::Volume>, const std::string&)>(&SeedingWidget::onVolumeChanged));
+            static_cast<void (SeedingWidget::*)(std::shared_ptr<Volume>, const std::string&)>(&SeedingWidget::onVolumeChanged));
     connect(_seedingWidget, &SeedingWidget::sendStatusMessageAvailable, this, &CWindow::onShowStatusMessage);
     connect(this, &CWindow::sendSurfacesLoaded, _seedingWidget, &SeedingWidget::onSurfacesLoaded);
     
@@ -481,7 +479,7 @@ void CWindow::CreateWidgets(void)
     volSelect = ui.volSelect;
     connect(
         volSelect, &QComboBox::currentIndexChanged, [this](const int& index) {
-            vc::Volume::Pointer newVolume;
+            std::shared_ptr<Volume> newVolume;
             try {
                 newVolume = fVpkg->volume(volSelect->currentData().toString().toStdString());
             } catch (const std::out_of_range& e) {
@@ -719,9 +717,9 @@ void CWindow::onSurfaceFromSelection()
         return;
     }
 
-    namespace fs = std::filesystem;
-    fs::path baseSegPath = _vol_qsurfs[_surfID]->path; // .../paths/<uuid>
-    fs::path parentDir = baseSegPath.parent_path();
+
+    std::filesystem::path baseSegPath = _vol_qsurfs[_surfID]->path; // .../paths/<uuid>
+    std::filesystem::path parentDir = baseSegPath.parent_path();
 
     int idx = 1;
     int created = 0;
@@ -731,7 +729,7 @@ void CWindow::onSurfaceFromSelection()
         std::unique_ptr<QuadSurface> filtered(segViewer->makeBBoxFilteredSurfaceFromSceneRect(rect));
         if (!filtered) continue;
         std::string newId = _surfID + std::string("_sel_") + ts.toStdString() + std::string("_") + std::to_string(idx++);
-        fs::path outDir = parentDir / newId;
+        std::filesystem::path outDir = parentDir / newId;
         try {
             filtered->save(outDir.string(), newId);
             created++;
@@ -973,13 +971,13 @@ auto CWindow::InitializeVolumePkg(const std::string& nVpkgPath) -> bool
     fVpkg = nullptr;
 
     try {
-        fVpkg = vc::VolumePkg::New(nVpkgPath);
+        fVpkg = VolumePkg::New(nVpkgPath);
     } catch (const std::exception& e) {
-        vc::Logger()->error("Failed to initialize volpkg: {}", e.what());
+        Logger()->error("Failed to initialize volpkg: {}", e.what());
     }
 
     if (fVpkg == nullptr) {
-        vc::Logger()->error("Cannot open .volpkg: {}", nVpkgPath);
+        Logger()->error("Cannot open .volpkg: {}", nVpkgPath);
         QMessageBox::warning(
             this, "Error",
             "Volume package failed to load. Package might be corrupt.");
@@ -1021,7 +1019,7 @@ void CWindow::onShowStatusMessage(QString text, int timeout)
     statusBar()->showMessage(text, timeout);
 }
 
-fs::path seg_path_name(const fs::path &path)
+std::filesystem::path seg_path_name(const std::filesystem::path &path)
 {
     std::string name;
     bool store = false;
@@ -1047,7 +1045,7 @@ void CWindow::OpenVolume(const QString& path)
             QFileDialog::ShowDirsOnly | QFileDialog::DontResolveSymlinks | QFileDialog::ReadOnly | QFileDialog::DontUseNativeDialog);
         // Dialog box cancelled
         if (aVpkgPath.length() == 0) {
-            vc::Logger()->info("Open .volpkg canceled");
+            Logger()->info("Open .volpkg canceled");
             return;
         }
     }
@@ -1059,7 +1057,7 @@ void CWindow::OpenVolume(const QString& path)
         QMessageBox::warning(
             this, tr("ERROR"),
             "The selected file is not of the correct type: \".volpkg\"");
-        vc::Logger()->error(
+        Logger()->error(
             "Selected file is not .volpkg: {}", aVpkgPath.toStdString());
         fVpkg = nullptr;  // Is needed for User Experience, clears screen.
         return;
@@ -1076,7 +1074,7 @@ void CWindow::OpenVolume(const QString& path)
                          std::to_string(fVpkg->version()) +
                          " but this program requires version " +
                          std::to_string(VOLPKG_MIN_VERSION) + "+.";
-        vc::Logger()->error(msg);
+        Logger()->error(msg);
         QMessageBox::warning(this, tr("ERROR"), QString(msg.c_str()));
         fVpkg = nullptr;
         return;
@@ -1964,9 +1962,9 @@ void CWindow::onEditMaskPressed(void)
     
     cv::Mat_<cv::Vec3f> points = _surf->rawPoints();
 
-    fs::path path = _surf->path/"mask.tif";
+    std::filesystem::path path = _surf->path/"mask.tif";
     
-    if (!fs::exists(path)) {
+    if (!std::filesystem::exists(path)) {
         cv::Mat_<uint8_t> img;
         cv::Mat_<uint8_t> mask;
         //TODO make this aim for some target size instead of a hardcoded decision
@@ -2518,7 +2516,7 @@ void CWindow::onVoxelizePaths()
     }
     
     // Set up volume info from current volume
-    volcart::SurfaceVoxelizer::VolumeInfo volumeInfo;
+    SurfaceVoxelizer::VolumeInfo volumeInfo;
     volumeInfo.width = currentVolume->sliceWidth();
     volumeInfo.height = currentVolume->sliceHeight();
     volumeInfo.depth = currentVolume->numSlices();
@@ -2535,7 +2533,7 @@ void CWindow::onVoxelizePaths()
     volumeInfo.voxelSize = voxelSize;
     
     // Set up parameters
-    volcart::SurfaceVoxelizer::VoxelizationParams params;
+    SurfaceVoxelizer::VoxelizationParams params;
     params.voxelSize = volumeInfo.voxelSize; // Match volume voxel size
     params.samplingDensity = 0.5f; // Sample every 0.5 surface units
     params.fillGaps = true;
@@ -2563,7 +2561,7 @@ void CWindow::onVoxelizePaths()
     
     QFuture<void> future = QtConcurrent::run([this, outputStr, surfaces, volumeInfo, params, progress, &cancelled]() {
         try {
-            volcart::SurfaceVoxelizer::voxelizeSurfaces(
+            SurfaceVoxelizer::voxelizeSurfaces(
                 outputStr,
                 surfaces,
                 volumeInfo,

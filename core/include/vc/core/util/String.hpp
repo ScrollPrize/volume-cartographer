@@ -11,8 +11,7 @@
 #include <tuple>
 #include <type_traits>
 
-namespace volcart
-{
+
 
 /** @brief Convert string characters to upper case (in place) */
 static inline void to_upper(std::string& s)
@@ -252,4 +251,3 @@ auto to_padded_string(Integer val, int padding, char fill = '0') -> std::string
     return stream.str();
 }
 
-}  // namespace volcart

@@ -1,22 +1,13 @@
-#ifndef OPSLIST_HPP
-#define OPSLIST_HPP
+#pragma once
 
 #include <QWidget>
+#include <ui_OpsList.h>
+#include <z5/dataset.hxx>
 
-class OpChain;
-class Surface;
-class QTreeWidget;
-class QTreeWidgetItem;
-class QComboBox;
-class ChunkCache;
-namespace z5 {
-    class Dataset;
-};
+#include "OpChain.hpp"
+#include "SurfaceTreeWidget.hpp"
+#include "vc/core/util/Slicing.hpp"
 
-namespace Ui
-{
-class OpsList;
-}
 
 class OpsList : public QWidget
 {
@@ -52,4 +43,3 @@ private:
     float _scale = 0.0;
 };
 
-#endif  // OPSLIST_HPP

@@ -12,7 +12,7 @@
 
 #include <opencv2/imgproc.hpp>
 
-namespace fs = std::filesystem;
+
 
 struct Vertex {
     cv::Vec3f pos;
@@ -349,8 +349,8 @@ int main(int argc, char *argv[])
         return EXIT_SUCCESS;
     }
 
-    fs::path obj_path = argv[1];
-    fs::path output_dir = argv[2];
+    std::filesystem::path obj_path = argv[1];
+    std::filesystem::path output_dir = argv[2];
     float stretch_factor = 1000.0f;
     float mesh_units = 1.0f;  // mesh units in micrometers
     int step = 20;
@@ -379,7 +379,7 @@ int main(int argc, char *argv[])
         }
     }
 
-    if (!fs::exists(obj_path)) {
+    if (!std::filesystem::exists(obj_path)) {
         std::cerr << "Input file does not exist: " << obj_path << std::endl;
         return EXIT_FAILURE;
     }

@@ -3,7 +3,7 @@
 #include <QGraphicsTextItem>
 #include <QPainter>
 
-namespace ChaoVis {
+
 
 class COutlinedTextItem : public QGraphicsTextItem
 {
@@ -13,4 +13,3 @@ public:
     QRectF boundingRect() const override;
 };
 
-}

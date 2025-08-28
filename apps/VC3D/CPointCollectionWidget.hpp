@@ -13,9 +13,9 @@
 #include <QDoubleSpinBox>
 
 
-namespace ChaoVis {
 
-class VCCollection;
+
+
 
 class CPointCollectionWidget : public QDockWidget
 {
@@ -88,4 +88,3 @@ private slots:
     QDoubleSpinBox* _winding_spinbox;
 };
 
-}

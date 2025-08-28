@@ -1,6 +1,6 @@
 #include "vc/core/Version.hpp"
 
-using namespace volcart;
+
 
 auto ProjectInfo::Name() -> std::string
 {

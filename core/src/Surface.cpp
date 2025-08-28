@@ -1,6 +1,5 @@
 #include "vc/core/util/Surface.hpp"
 
-#include "vc/core/io/PointSetIO.hpp"
 #include "vc/core/util/Slicing.hpp"
 #include "vc/core/types/ChunkedTensor.hpp"
 
@@ -12,7 +11,7 @@
 #include <unordered_map>
 #include <nlohmann/json.hpp>
 
-void write_overlapping_json(const fs::path& seg_path, const std::set<std::string>& overlapping_names) {
+void write_overlapping_json(const std::filesystem::path& seg_path, const std::set<std::string>& overlapping_names) {
     nlohmann::json overlap_json;
     overlap_json["overlapping"] = std::vector<std::string>(overlapping_names.begin(), overlapping_names.end());
 
@@ -20,11 +19,11 @@ void write_overlapping_json(const fs::path& seg_path, const std::set<std::string
     o << std::setw(4) << overlap_json << std::endl;
 }
 
-std::set<std::string> read_overlapping_json(const fs::path& seg_path) {
+std::set<std::string> read_overlapping_json(const std::filesystem::path& seg_path) {
     std::set<std::string> overlapping;
-    fs::path json_path = seg_path / "overlapping.json";
+    std::filesystem::path json_path = seg_path / "overlapping.json";
 
-    if (fs::exists(json_path)) {
+    if (std::filesystem::exists(json_path)) {
         std::ifstream i(json_path);
         nlohmann::json overlap_json;
         i >> overlap_json;
@@ -39,7 +38,7 @@ std::set<std::string> read_overlapping_json(const fs::path& seg_path) {
     return overlapping;
 }
 
-namespace fs = std::filesystem;
+
 
 //NOTE we have 3 coordiante systems. Nominal (voxel volume) coordinates, internal relative (ptr) coords (where _center is at 0/0) and internal absolute (_points) coordinates where the upper left corner is at 0/0.
 static cv::Vec3f internal_loc(const cv::Vec3f &nominal, const cv::Vec3f &internal, const cv::Vec2f &scale)
@@ -1059,8 +1058,8 @@ void QuadSurface::save(const std::string &path_, const std::string &uuid)
 {
     path = path_;
 
-    if (!fs::create_directories(path)) {
-        if (fs::exists(path))
+    if (!std::filesystem::create_directories(path)) {
+        if (std::filesystem::exists(path))
             throw std::runtime_error("dir already exists => cannot run QuadSurface::save(): " + path.string());
         else
             throw std::runtime_error("error creating dir for QuadSurface::save(): " + path.string());
@@ -1086,7 +1085,7 @@ void QuadSurface::save(const std::string &path_, const std::string &uuid)
     o << std::setw(4) << (*meta) << std::endl;
 
     //rename to make creation atomic
-    fs::rename(path/"meta.json.tmp", path/+"meta.json");
+    std::filesystem::rename(path/"meta.json.tmp", path/+"meta.json");
 }
 
 void QuadSurface::save_meta()
@@ -1100,7 +1099,7 @@ void QuadSurface::save_meta()
     o << std::setw(4) << (*meta) << std::endl;
 
     //rename to make creation atomic
-    fs::rename(path/"meta.json.tmp", path/"meta.json");
+    std::filesystem::rename(path/"meta.json.tmp", path/"meta.json");
 }
 
 Rect3D QuadSurface::bbox()
@@ -1139,7 +1138,7 @@ QuadSurface *load_quad_from_tifxyz(const std::string &path)
                 (*points)(j,i) = {-1,-1,-1};
             }
 
-    if (fs::exists(path+"/mask.tif")) {
+    if (std::filesystem::exists(path+"/mask.tif")) {
         std::vector<cv::Mat> layers;
         cv::imreadmulti(path+"/mask.tif", layers, cv::IMREAD_GRAYSCALE);
         cv::Mat_<uint8_t> mask = layers[0];

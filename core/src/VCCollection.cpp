@@ -22,8 +22,7 @@ NLOHMANN_JSON_NAMESPACE_END
  
 #define VC_POINTCOLLECTIONS_JSON_VERSION "1"
 
-namespace ChaoVis
-{
+
 
 using json = nlohmann::json;
  
@@ -434,4 +433,4 @@ uint64_t VCCollection::findOrCreateCollectionByName(const std::string& name)
     return new_id;
 }
 
-} // namespace ChaoVis
+
