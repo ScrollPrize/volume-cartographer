@@ -540,7 +540,7 @@ int main(int argc, char *argv[])
     fs::path output_path(tgt_ptn);
     fs::create_directories(output_path.parent_path());
     
-    ChunkCache chunk_cache(16ull * 1024 * 1024 * 1024);
+    ChunkCache chunk_cache(32ull * 1024 * 1024 * 1024);
 
     QuadSurface *surf = nullptr;
     try {
@@ -675,8 +675,8 @@ int main(int argc, char *argv[])
 
                 // For chunked processing, we need to determine orientation from the first chunk
                 // or a representative sample to ensure consistency
-                for(int x=crop.x;x<crop.x+crop.width;x+=1024) {
-                    int w = std::min(tgt_size.width+crop.x-x, 1024);
+                for(int x=crop.x;x<crop.x+crop.width;x+=2048) {
+                    int w = std::min(tgt_size.width+crop.x-x, 2048);
                     // Independent-crop FOV: local chunk origin inside the crop
                     const float u0 = -0.5f * (static_cast<float>(tgt_size.width)  - 1.0f)
                                    + static_cast<float>(x - crop.x);
