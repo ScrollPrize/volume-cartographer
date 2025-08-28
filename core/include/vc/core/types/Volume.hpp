@@ -14,33 +14,19 @@
 
 #include "z5/types/types.hxx"
 
-    
-/**
- * @class Volume
- * @author Sean Karlage
- *
- * @brief Volumetric image data
- *
- * Provides access to a volumetric dataset, such as a CT scan. By default,
- * slices are cached in memory using LRUCache.
- *
- * @ingroup Types
- */
-// shared_from_this used in Python bindings
-// https://en.cppreference.com/w/cpp/memory/enable_shared_from_this
-class Volume : public DiskBasedObjectBaseClass,
-               public std::enable_shared_from_this<Volume>
+
+class Volume : public DiskBasedObjectBaseClass
 {
 public:
     Volume() = delete;
 
     explicit Volume(std::filesystem::path path);
 
-    Volume(std::filesystem::path path, Identifier uuid, std::string name);
+    Volume(std::filesystem::path path, std::string uuid, std::string name);
 
     static std::shared_ptr<Volume> New(std::filesystem::path path);
 
-    static std::shared_ptr<Volume> New(std::filesystem::path path, Identifier uuid, std::string name);
+    static std::shared_ptr<Volume> New(std::filesystem::path path, std::string uuid, std::string name);
 
     int sliceWidth() const;
     int sliceHeight() const;

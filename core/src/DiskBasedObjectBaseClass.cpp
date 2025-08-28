@@ -16,7 +16,7 @@ DiskBasedObjectBaseClass::DiskBasedObjectBaseClass(
 
 // Create new file on disk
 DiskBasedObjectBaseClass::DiskBasedObjectBaseClass(
-    std::filesystem::path path, Identifier uuid, std::string name)
+    std::filesystem::path path, std::string uuid, std::string name)
     : path_(std::move(path))
 {
     metadata_.setPath((path_ / METADATA_FILE));

@@ -304,13 +304,13 @@ VolumePkg::VolumePkg(const std::filesystem::path& fileLocation) : rootDir_{fileL
     }
 }
 
-auto VolumePkg::New(std::filesystem::path fileLocation, int version) -> VolumePkg::Pointer
+auto VolumePkg::New(std::filesystem::path fileLocation, int version) -> std::shared_ptr<VolumePkg>
 {
     return std::make_shared<VolumePkg>(fileLocation, version);
 }
 
 // Shared pointer volumepkg construction
-auto VolumePkg::New(std::filesystem::path fileLocation) -> VolumePkg::Pointer
+auto VolumePkg::New(std::filesystem::path fileLocation) -> std::shared_ptr<VolumePkg>
 {
     return std::make_shared<VolumePkg>(fileLocation);
 }
@@ -345,37 +345,37 @@ void VolumePkg::saveMetadata(const std::filesystem::path& filePath)
 }
 
 // VOLUME FUNCTIONS //
-auto VolumePkg::hasVolumes() const -> bool { return !volumes_.empty(); }
+bool VolumePkg::hasVolumes() const { return !volumes_.empty(); }
 
-auto VolumePkg::hasVolume(const Volume::Identifier& id) const -> bool
+bool VolumePkg::hasVolume(const std::string& id) const
 {
     return volumes_.count(id) > 0;
 }
 
-auto VolumePkg::numberOfVolumes() const -> std::size_t
+std::size_t VolumePkg::numberOfVolumes() const
 {
     return volumes_.size();
 }
 
-auto VolumePkg::volumeIDs() const -> std::vector<Volume::Identifier>
+std::vector<std::string> VolumePkg::volumeIDs() const
 {
-    std::vector<Volume::Identifier> ids;
+    std::vector<std::string> ids;
     for (const auto& v : volumes_) {
         ids.emplace_back(v.first);
     }
     return ids;
 }
 
-auto VolumePkg::volumeNames() const -> std::vector<std::string>
+std::vector<std::string> VolumePkg::volumeNames() const
 {
-    std::vector<Volume::Identifier> names;
+    std::vector<std::string> names;
     for (const auto& v : volumes_) {
         names.emplace_back(v.second->name());
     }
     return names;
 }
 
-auto VolumePkg::newVolume(std::string name) -> std::shared_ptr<Volume>
+std::shared_ptr<Volume> VolumePkg::newVolume(std::string name)
 {
     // Generate a uuid
     auto uuid = DateTime();
@@ -404,7 +404,7 @@ auto VolumePkg::newVolume(std::string name) -> std::shared_ptr<Volume>
     return r.first->second;
 }
 
-auto VolumePkg::volume() const -> const std::shared_ptr<Volume>
+const std::shared_ptr<Volume> VolumePkg::volume() const
 {
     if (volumes_.empty()) {
         throw std::out_of_range("No volumes in VolPkg");
@@ -412,7 +412,7 @@ auto VolumePkg::volume() const -> const std::shared_ptr<Volume>
     return volumes_.begin()->second;
 }
 
-auto VolumePkg::volume() -> std::shared_ptr<Volume>
+std::shared_ptr<Volume> VolumePkg::volume()
 {
     if (volumes_.empty()) {
         throw std::out_of_range("No volumes in VolPkg");
@@ -420,30 +420,28 @@ auto VolumePkg::volume() -> std::shared_ptr<Volume>
     return volumes_.begin()->second;
 }
 
-auto VolumePkg::volume(const Volume::Identifier& id) const
-    -> const std::shared_ptr<Volume>
+const std::shared_ptr<Volume> VolumePkg::volume(const std::string& id) const
 {
     return volumes_.at(id);
 }
 
-auto VolumePkg::volume(const Volume::Identifier& id) -> std::shared_ptr<Volume>
+std::shared_ptr<Volume> VolumePkg::volume(const std::string& id)
 {
     return volumes_.at(id);
 }
 
 // SEGMENTATION FUNCTIONS //
-auto VolumePkg::hasSegmentations() const -> bool
+bool VolumePkg::hasSegmentations() const
 {
     return !segmentations_.empty();
 }
 
-auto VolumePkg::numberOfSegmentations() const -> std::size_t
+std::size_t VolumePkg::numberOfSegmentations() const
 {
     return segmentations_.size();
 }
 
-auto VolumePkg::segmentation(const DiskBasedObjectBaseClass::Identifier& id)
-    const -> const Segmentation::Pointer
+const std::shared_ptr<Segmentation> VolumePkg::segmentation(const std::string& id) const
 {
     return segmentations_.at(id);
 }
@@ -453,15 +451,15 @@ std::vector<std::filesystem::path> VolumePkg::segmentationFiles()
     return segmentation_files_;
 }
 
-auto VolumePkg::segmentation(const DiskBasedObjectBaseClass::Identifier& id)
-    -> Segmentation::Pointer
+auto VolumePkg::segmentation(const std::string& id)
+    -> std::shared_ptr<Segmentation>
 {
     return segmentations_.at(id);
 }
 
-auto VolumePkg::segmentationIDs() const -> std::vector<Segmentation::Identifier>
+auto VolumePkg::segmentationIDs() const -> std::vector<std::string>
 {
-    std::vector<Segmentation::Identifier> ids;
+    std::vector<std::string> ids;
     // Only return IDs from the current directory
     for (const auto& s : segmentations_) {
         auto it = segmentationDirectories_.find(s.first);
@@ -545,7 +543,7 @@ void VolumePkg::loadSegmentationsFromDirectory(const std::string& dirName)
 {
     // DO NOT clear existing segmentations - we keep all directories in memory
     // Only remove segmentations from this specific directory
-    std::vector<Segmentation::Identifier> toRemove;
+    std::vector<std::string> toRemove;
     for (const auto& pair : segmentationDirectories_) {
         if (pair.second == dirName) {
             toRemove.push_back(pair.first);
@@ -618,7 +616,7 @@ auto VolumePkg::getAvailableSegmentationDirectories() const -> std::vector<std::
     return dirs;
 }
 
-void VolumePkg::removeSegmentation(const Segmentation::Identifier& id)
+void VolumePkg::removeSegmentation(const std::string& id)
 {
     // Check if segmentation exists
     auto it = segmentations_.find(id);
@@ -663,7 +661,7 @@ void VolumePkg::refreshSegmentations()
     }
     
     // Find segmentations to remove (loaded from current directory but not on disk anymore)
-    std::vector<Segmentation::Identifier> toRemove;
+    std::vector<std::string> toRemove;
     for (const auto& seg : segmentations_) {
         auto dirIt = segmentationDirectories_.find(seg.first);
         if (dirIt != segmentationDirectories_.end() && dirIt->second == currentSegmentationDir_) {

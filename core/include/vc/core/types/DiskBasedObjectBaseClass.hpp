@@ -24,17 +24,12 @@
 class DiskBasedObjectBaseClass
 {
 public:
-    /** @brief Identifier type */
-    using Identifier = std::string;
-
-    /** ID/Name pair */
-    using Description = std::pair<Identifier, std::string>;
 
     /** Default constructor */
     DiskBasedObjectBaseClass() = delete;
 
     /** @brief Get the "unique" ID for the object */
-    Identifier id() const { return metadata_.get<std::string>("uuid"); }
+    std::string id() const { return metadata_.get<std::string>("uuid"); }
 
     /** @brief Get the path to the object */
     std::filesystem::path path() const { return path_; }
@@ -58,7 +53,7 @@ protected:
 
     /** Make a new object */
     DiskBasedObjectBaseClass(
-        std::filesystem::path path, Identifier uuid, std::string name);
+        std::filesystem::path path, std::string uuid, std::string name);
 
     /** Metadata */
     Metadata metadata_;
