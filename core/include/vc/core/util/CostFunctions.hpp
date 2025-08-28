@@ -392,8 +392,8 @@ struct SpaceLineLossAcc {
 
 };
 
-struct HorizontalFiberLoss {
-    HorizontalFiberLoss(Chunked3dVec3fFromUint8 &h_fiber_dirs, float w) : _h_fiber_dirs(h_fiber_dirs), _w(w) {};
+struct FiberDirectionLoss {
+    FiberDirectionLoss(Chunked3dVec3fFromUint8 &fiber_dirs, float w) : _fiber_dirs(fiber_dirs), _w(w) {};
     template <typename E>
     bool operator()(const E* const l_base, const E* const l_u_off, E* residual) const {
 
@@ -401,7 +401,7 @@ struct HorizontalFiberLoss {
 
         // Note this does *not* sample the direction volume differentiably. This makes sense for now since the volume
         // is piecewise constant, and interpolating it is non-trivial anyway (since its values live in RP2)
-        cv::Vec3f fiber_dir_zyx_vec = _h_fiber_dirs(unjet(l_base[2]), unjet(l_base[1]), unjet(l_base[0]));
+        cv::Vec3f fiber_dir_zyx_vec = _fiber_dirs(unjet(l_base[2]), unjet(l_base[1]), unjet(l_base[0]));
         E fiber_dir_zyx[3] = {E(fiber_dir_zyx_vec[0]), E(fiber_dir_zyx_vec[1]), E(fiber_dir_zyx_vec[2])};
 
         E const patch_u_disp_zyx[3] {
@@ -410,8 +410,8 @@ struct HorizontalFiberLoss {
             l_u_off[0] - l_base[0],
         };
 
-        // fiber_dir is now a unit vector in zyx order, pointing along horizontal-fibers (so in U-direction of patch)
-        // l_u_off is assumed to be the location for a 2D point that is shifted along the U-direction from l_base
+        // fiber_dir is now a unit vector in zyx order, pointing along our fibers (so in U-/V-direction of patch)
+        // l_u_off is assumed to be the location for a 2D point that is shifted along the U-/V-direction from l_base
         // patch_u_disp is the displacement between l_base and l_u_off, which we want to be aligned with the fiber direction, modulo flips
 
         E const patch_u_dist = sqrt(patch_u_disp_zyx[0] * patch_u_disp_zyx[0] + patch_u_disp_zyx[1] * patch_u_disp_zyx[1] + patch_u_disp_zyx[2] * patch_u_disp_zyx[2]);
@@ -422,15 +422,14 @@ struct HorizontalFiberLoss {
         return true;
     }
 
-    static float unjet(const float& v) { return v; }
     static double unjet(const double& v) { return v; }
     template<typename JetT> static double unjet(const JetT& v) { return v.a; }
 
     float _w;
-    Chunked3dVec3fFromUint8 &_h_fiber_dirs;
+    Chunked3dVec3fFromUint8 &_fiber_dirs;
 
-    static ceres::CostFunction* Create(Chunked3dVec3fFromUint8 &h_fiber_dirs, float w = 1.0)
+    static ceres::CostFunction* Create(Chunked3dVec3fFromUint8 &fiber_dirs, float w = 1.0)
     {
-        return new ceres::AutoDiffCostFunction<HorizontalFiberLoss, 1, 3, 3>(new HorizontalFiberLoss(h_fiber_dirs, w));
+        return new ceres::AutoDiffCostFunction<FiberDirectionLoss, 1, 3, 3>(new FiberDirectionLoss(fiber_dirs, w));
     }
 };
