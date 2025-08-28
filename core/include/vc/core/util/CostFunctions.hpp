@@ -391,3 +391,46 @@ struct SpaceLineLossAcc {
     }
 
 };
+
+struct HorizontalFiberLoss {
+    HorizontalFiberLoss(Chunked3dVec3fFromUint8 &h_fiber_dirs, float w) : _h_fiber_dirs(h_fiber_dirs), _w(w) {};
+    template <typename E>
+    bool operator()(const E* const l_base, const E* const l_u_off, E* residual) const {
+
+        // Both l_base and l_u_off are indexed xyz!
+
+        // Note this does *not* sample the direction volume differentiably. This makes sense for now since the volume
+        // is piecewise constant, and interpolating it is non-trivial anyway (since its values live in RP2)
+        cv::Vec3f fiber_dir_zyx_vec = _h_fiber_dirs(unjet(l_base[2]), unjet(l_base[1]), unjet(l_base[0]));
+        E fiber_dir_zyx[3] = {E(fiber_dir_zyx_vec[0]), E(fiber_dir_zyx_vec[1]), E(fiber_dir_zyx_vec[2])};
+
+        E const patch_u_disp_zyx[3] {
+            l_u_off[2] - l_base[2],
+            l_u_off[1] - l_base[1],
+            l_u_off[0] - l_base[0],
+        };
+
+        // fiber_dir is now a unit vector in zyx order, pointing along horizontal-fibers (so in U-direction of patch)
+        // l_u_off is assumed to be the location for a 2D point that is shifted along the U-direction from l_base
+        // patch_u_disp is the displacement between l_base and l_u_off, which we want to be aligned with the fiber direction, modulo flips
+
+        E const patch_u_dist = sqrt(patch_u_disp_zyx[0] * patch_u_disp_zyx[0] + patch_u_disp_zyx[1] * patch_u_disp_zyx[1] + patch_u_disp_zyx[2] * patch_u_disp_zyx[2]);
+        E const abs_dot = abs(patch_u_disp_zyx[0] * fiber_dir_zyx[0] + patch_u_disp_zyx[1] * fiber_dir_zyx[1] + patch_u_disp_zyx[2] * fiber_dir_zyx[2]) / patch_u_dist;
+
+        residual[0] = E(_w) * (E(1) - abs_dot);
+
+        return true;
+    }
+
+    static float unjet(const float& v) { return v; }
+    static double unjet(const double& v) { return v; }
+    template<typename JetT> static double unjet(const JetT& v) { return v.a; }
+
+    float _w;
+    Chunked3dVec3fFromUint8 &_h_fiber_dirs;
+
+    static ceres::CostFunction* Create(Chunked3dVec3fFromUint8 &h_fiber_dirs, float w = 1.0)
+    {
+        return new ceres::AutoDiffCostFunction<HorizontalFiberLoss, 1, 3, 3>(new HorizontalFiberLoss(h_fiber_dirs, w));
+    }
+};
