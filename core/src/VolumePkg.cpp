@@ -481,54 +481,6 @@ std::shared_ptr<SurfaceMeta> VolumePkg::getSurface(const std::string& id)
     return nullptr;
 }
 
-void VolumePkg::loadSurfacesForDirectory(const std::string& dirName)
-{
-    std::string targetDir = dirName.empty() ? currentSegmentationDir_ : dirName;
-
-    std::vector<std::pair<std::string, std::shared_ptr<SurfaceMeta>>> toLoad;
-
-    // Prepare list of surfaces to load
-    for (const auto& [id, seg] : segmentations_) {
-        // Only load from the target directory
-        if (segmentationDirectories_[id] != targetDir) {
-            continue;
-        }
-
-        // Skip if already loaded
-        if (loadedSurfaces_.count(id)) {
-            continue;
-        }
-
-        // Check format
-        if (seg->metadata().hasKey("format") &&
-            seg->metadata().get<std::string>("format") == "tifxyz") {
-            toLoad.push_back({id, nullptr});
-        }
-    }
-
-    // Parallel loading
-    #pragma omp parallel for
-    for (size_t i = 0; i < toLoad.size(); i++) {
-        try {
-            auto seg = segmentations_[toLoad[i].first];
-            auto sm = std::make_shared<SurfaceMeta>(seg->path());
-            sm->surface();
-            sm->readOverlapping();
-            toLoad[i].second = sm;
-        } catch (const std::exception& e) {
-            Logger()->error("Failed to load surface {}: {}",
-                          toLoad[i].first, e.what());
-        }
-    }
-
-    // Store loaded surfaces
-    for (const auto& [id, surface] : toLoad) {
-        if (surface) {
-            loadedSurfaces_[id] = surface;
-        }
-    }
-}
-
 
 std::vector<std::string> VolumePkg::getLoadedSurfaceIDs() const
 {

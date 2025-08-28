@@ -52,7 +52,6 @@ public:
     std::shared_ptr<SurfaceMeta> loadSurface(const std::string& id);
     std::shared_ptr<SurfaceMeta> getSurface(const std::string& id);
     bool unloadSurface(const std::string& id);
-    void loadSurfacesForDirectory(const std::string& dirName = "");
     [[nodiscard]] std::vector<std::string> getLoadedSurfaceIDs() const;
     void unloadAllSurfaces();
     void loadSurfacesBatch(const std::vector<std::string>& ids);
