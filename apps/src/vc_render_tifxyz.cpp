@@ -616,7 +616,7 @@ int main(int argc, char *argv[])
     bool orientationDetermined = false;
     cv::Vec3f meshCentroid;
 
-    if (slice_gen = false) {
+    if (!slice_gen) {
         // Center at pixel centers: -(W-1)/2, -(H-1)/2
         const float u0 = -0.5f * (static_cast<float>(tgt_size.width)  - 1.0f);
         const float v0 = -0.5f * (static_cast<float>(tgt_size.height) - 1.0f);
@@ -628,7 +628,7 @@ int main(int argc, char *argv[])
 
     cv::Mat_<uint8_t> img;
 
-    if (slice_gen = false && num_slices == 1) {
+    if (!slice_gen && num_slices == 1) {
         // Scale the segmentation points if requested
         points *= scale_seg;
 
