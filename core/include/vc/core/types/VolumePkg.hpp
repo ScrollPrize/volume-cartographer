@@ -53,7 +53,7 @@ public:
     std::shared_ptr<SurfaceMeta> getSurface(const std::string& id);
     bool unloadSurface(const std::string& id);
     void loadSurfacesForDirectory(const std::string& dirName = "");
-    std::vector<std::string> getLoadedSurfaceIDs() const;
+    [[nodiscard]] std::vector<std::string> getLoadedSurfaceIDs() const;
     void unloadAllSurfaces();
     void loadSurfacesBatch(const std::vector<std::string>& ids);
 
@@ -68,7 +68,6 @@ private:
     std::map<std::string, std::string> segmentationDirectories_;
 
     std::map<std::string, std::shared_ptr<SurfaceMeta>> loadedSurfaces_;
-    std::shared_ptr<ChunkCache> chunkCache_; // Could be passed in or created
 
     void loadSegmentationsFromDirectory(const std::string& dirName);
 };
