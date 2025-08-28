@@ -434,3 +434,38 @@ struct HorizontalFiberLoss {
         return new ceres::AutoDiffCostFunction<HorizontalFiberLoss, 1, 3, 3>(new HorizontalFiberLoss(h_fiber_dirs, w));
     }
 };
+
+// Penalize misalignment between the XY direction from a base point to a neighbor and a given target tangent.
+// Residual = w * (1 - |dot(normalized((b - a)_xy), target_tangent_xy)|)
+// a, b are 3D xyz parameters; only XY components are used for alignment
+struct XYDirectionAlignLoss {
+    XYDirectionAlignLoss(const cv::Vec2f &tangent_xy, float w) : _tx(tangent_xy[0]), _ty(tangent_xy[1]), _w(w) {}
+    template <typename E>
+    bool operator()(const E* const a_xyz, const E* const b_xyz, E* residual) const {
+        E dx = b_xyz[0] - a_xyz[0];
+        E dy = b_xyz[1] - a_xyz[1];
+        E len = sqrt(dx*dx + dy*dy);
+        if (unjet(len) <= 1e-6) {
+            residual[0] = E(0);
+            return true;
+        }
+        E ndx = dx/len;
+        E ndy = dy/len;
+        E dot = abs(ndx*E(_tx) + ndy*E(_ty));
+        residual[0] = E(_w) * (E(1) - dot);
+        return true;
+    }
+
+    static float unjet(const float& v) { return v; }
+    static double unjet(const double& v) { return v; }
+    template<typename JetT> static double unjet(const JetT& v) { return v.a; }
+
+    float _tx;
+    float _ty;
+    float _w;
+
+    static ceres::CostFunction* Create(const cv::Vec2f &tangent_xy, float w = 1.0)
+    {
+        return new ceres::AutoDiffCostFunction<XYDirectionAlignLoss, 1, 3, 3>(new XYDirectionAlignLoss(tangent_xy, w));
+    }
+};

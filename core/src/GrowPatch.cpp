@@ -13,6 +13,12 @@
 #include XTENSORINCLUDE(views, xview.hpp)
 
 #include <iostream>
+#include <queue>
+#include <array>
+#include <numeric>
+#include <climits>
+#include <algorithm>
+#include <cmath>
 
 static float space_trace_dist_w = 1.0;
 float dist_th = 1.5;
@@ -503,7 +509,17 @@ struct thresholdedDistance
 };
 
 
-QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *cache, cv::Vec3f origin, int stop_gen, float step, const std::string &cache_root, float voxelsize, std::vector<std::unique_ptr<z5::Dataset>> const &h_fiber_ds, float fibers_scale)
+QuadSurface *space_tracing_quad_phys(z5::Dataset *ds,
+    float scale,
+    ChunkCache *cache,
+    cv::Vec3f origin,
+    int stop_gen,
+    float step,
+    const std::string &cache_root,
+    float voxelsize,
+    std::vector<std::unique_ptr<z5::Dataset>> const &h_fiber_ds,
+    float fibers_scale,
+    const nlohmann::json* params_opt)
 {
     ALifeTime f_timer("empty space tracing\n");
     DSReader reader = {ds,scale,cache};
@@ -535,6 +551,142 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *c
 
     // This provides a cached interpolated version of the original surface volume
     CachedChunked3dInterpolator<uint8_t,thresholdedDistance> interp_global(proc_tensor);
+
+    // Skeleton-guidance parameters (optional, via params)
+    bool skel_enable = false;
+    int skel_roi = 65;               // odd, pixels
+    int skel_slices = 3;             // half-span (total slices = 2*skel_slices+1)
+    int skel_thresh = thresholdedDistance::TH; // default to same as volume threshold
+    float skel_min_align = 0.25f;    // [0,1]; below this discourage/reject
+    int skel_max_steps = 200;        // BFS step cap
+    bool skel_debug = false;
+    float skel_align_w = 0.1f;       // weight for soft alignment residual
+    if (params_opt) {
+        const auto &p = *params_opt;
+        skel_enable = p.value("skeleton_guidance", false);
+        skel_roi = p.value("skeleton_roi", skel_roi);
+        skel_slices = p.value("skeleton_slices", skel_slices);
+        skel_thresh = p.value("skeleton_threshold", skel_thresh);
+        skel_min_align = p.value("skeleton_min_align", skel_min_align);
+        skel_max_steps = p.value("skeleton_connectivity_max_steps", skel_max_steps);
+        skel_debug = p.value("skeleton_debug", false);
+        skel_align_w = p.value("skeleton_align_weight", skel_align_w);
+        if (skel_roi % 2 == 0) skel_roi += 1;
+        skel_roi = std::max(17, std::min(257, skel_roi));
+        skel_slices = std::max(0, std::min(8, skel_slices));
+        skel_min_align = std::max(0.f, std::min(1.f, skel_min_align));
+        skel_max_steps = std::max(10, std::min(2000, skel_max_steps));
+    }
+
+    auto compute_skeleton_mask = [&](const cv::Vec3d &center, cv::Mat1b &mask, cv::Point &top_left) {
+        mask = cv::Mat1b(skel_roi, skel_roi, uchar(0));
+        cv::Vec3i c{int(std::round(center[0])), int(std::round(center[1])), int(std::round(center[2]))};
+        int r = skel_roi/2;
+        top_left = {c[0]-r, c[1]-r};
+        auto SZ = ds->shape(0);
+        auto SY = ds->shape(1);
+        auto SX = ds->shape(2);
+        for (int dz=-skel_slices; dz<=skel_slices; ++dz) {
+            int z = std::clamp(c[2] + dz, 0, int(SZ)-1);
+            for (int y=-r; y<=r; ++y) {
+                int yy = std::clamp(c[1] + y, 0, int(SY)-1);
+                for (int x=-r; x<=r; ++x) {
+                    int xx = std::clamp(c[0] + x, 0, int(SX)-1);
+                    uint8_t v = dbg_tensor(z, yy, xx);
+                    if (v >= skel_thresh) mask(y+r, x+r) = 255;
+                }
+            }
+        }
+    };
+
+    auto thinningZS = [&](const cv::Mat1b &src)->cv::Mat1b {
+        cv::Mat1b img;
+        cv::threshold(src, img, 0, 255, cv::THRESH_BINARY);
+        img /= 255;
+        cv::Mat1b prev = cv::Mat1b::zeros(img.size());
+        cv::Mat1b diff;
+        auto neighbours = [](const cv::Mat1b &im, int y, int x){
+            int p2 = im.at<uchar>(y-1, x);
+            int p3 = im.at<uchar>(y-1, x+1);
+            int p4 = im.at<uchar>(y,   x+1);
+            int p5 = im.at<uchar>(y+1, x+1);
+            int p6 = im.at<uchar>(y+1, x);
+            int p7 = im.at<uchar>(y+1, x-1);
+            int p8 = im.at<uchar>(y,   x-1);
+            int p9 = im.at<uchar>(y-1, x-1);
+            return std::array<int,8>{p2,p3,p4,p5,p6,p7,p8,p9};
+        };
+        do {
+            cv::Mat1b m = cv::Mat1b::zeros(img.size());
+            // sub-iteration 1
+            for(int y=1;y<img.rows-1;++y){
+                for(int x=1;x<img.cols-1;++x){
+                    if (img(y,x) == 0) continue;
+                    auto nb = neighbours(img,y,x);
+                    int bp1 = std::accumulate(nb.begin(), nb.end(), 0);
+                    if (bp1 < 2 || bp1 > 6) continue;
+                    int a = 0; for (int k=0;k<8;++k){ a += (nb[k]==0 && nb[(k+1)%8]==1); }
+                    if (a != 1) continue;
+                    if (nb[0]*nb[2]*nb[4] != 0) continue;
+                    if (nb[2]*nb[4]*nb[6] != 0) continue;
+                    m(y,x) = 1;
+                }
+            }
+            img -= m;
+            // sub-iteration 2
+            m = cv::Mat1b::zeros(img.size());
+            for(int y=1;y<img.rows-1;++y){
+                for(int x=1;x<img.cols-1;++x){
+                    if (img(y,x) == 0) continue;
+                    auto nb = neighbours(img,y,x);
+                    int bp1 = std::accumulate(nb.begin(), nb.end(), 0);
+                    if (bp1 < 2 || bp1 > 6) continue;
+                    int a = 0; for (int k=0;k<8;++k){ a += (nb[k]==0 && nb[(k+1)%8]==1); }
+                    if (a != 1) continue;
+                    if (nb[0]*nb[2]*nb[6] != 0) continue;
+                    if (nb[0]*nb[4]*nb[6] != 0) continue;
+                    m(y,x) = 1;
+                }
+            }
+            img -= m;
+            cv::absdiff(img, prev, diff);
+            img.copyTo(prev);
+        } while (cv::countNonZero(diff) > 0);
+        cv::Mat1b out; img *= 255; img.copyTo(out); return out;
+    };
+
+    auto nearest_skel = [](const cv::Mat1b &skel, const cv::Point &p){
+        int bestd = INT_MAX; cv::Point best=p;
+        for(int y=0;y<skel.rows;++y) for(int x=0;x<skel.cols;++x){
+            if (skel(y,x)) { int d=(y-p.y)*(y-p.y)+(x-p.x)*(x-p.x); if (d<bestd){bestd=d;best={x,y};} }
+        }
+        return best;
+    };
+
+    auto pca_dir = [](const std::vector<cv::Point> &pts){
+        if (pts.size()<2) return cv::Vec2d(1,0);
+        double meanx=0, meany=0; for(auto &q:pts){meanx+=q.x; meany+=q.y;} meanx/=pts.size(); meany/=pts.size();
+        double a=0,b=0,c=0; for(auto &q:pts){double dx=q.x-meanx, dy=q.y-meany; a+=dx*dx; b+=dx*dy; c+=dy*dy;}
+        double theta = 0.5*std::atan2(2*b, a-c);
+        return cv::Vec2d(std::cos(theta), std::sin(theta));
+    };
+
+    auto local_tangent = [&](const cv::Mat1b &skel, const cv::Point &p){
+        int r=3; std::vector<cv::Point> pts; for(int y=std::max(0,p.y-r); y<=std::min(skel.rows-1,p.y+r); ++y)
+            for(int x=std::max(0,p.x-r); x<=std::min(skel.cols-1,p.x+r); ++x) if (skel(y,x)) pts.emplace_back(x,y);
+        return pca_dir(pts);
+    };
+
+    auto skel_connected = [&](const cv::Mat1b &skel, const cv::Point &a, const cv::Point &b){
+        if (skel.empty() || !skel(a) || !skel(b)) return false;
+        const int H=skel.rows,W=skel.cols; std::queue<cv::Point> q; std::vector<uint8_t> vis(H*W,0);
+        auto idx=[&](int x,int y){return y*W+x;}; q.push(a); vis[idx(a.x,a.y)]=1; int steps=0;
+        const int dx[8]={-1,0,1,-1,1,-1,0,1}; const int dy[8]={-1,-1,-1,0,0,1,1,1};
+        while(!q.empty() && steps<skel_max_steps){auto u=q.front(); q.pop(); if (u==b) return true; ++steps;
+            for(int k=0;k<8;++k){int nx=u.x+dx[k], ny=u.y+dy[k]; if(nx<0||ny<0||nx>=W||ny>=H) continue; if (!skel(ny,nx)) continue; int id=idx(nx,ny); if(!vis[id]){vis[id]=1; q.emplace(nx,ny);} }
+        }
+        return false;
+    };
 
     // fringe contains all 2D points around the edge of the patch where we might expand it
     // cands will contain new points adjacent to the fringe that are candidates to expand into
@@ -804,6 +956,29 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *c
                 gen_fiber_loss(problem, p, 1, state, locs, h_fiber_dir_tensor);
                 gen_fiber_loss(problem, p, -1, state, locs, h_fiber_dir_tensor);
 
+                // Soft skeleton-guided alignment residual (optional)
+                if (skel_enable && skel_align_w > 0.f) {
+                    // choose predecessor with valid state (prefer best_l, else any neighbor)
+                    cv::Vec2i pred2d = best_l;
+                    if (!(state(pred2d) & STATE_LOC_VALID)) {
+                        for (auto &off : neighs) { if (state(p+off) & STATE_LOC_VALID) { pred2d = p+off; break; } }
+                    }
+                    cv::Vec3d a3 = locs(pred2d), b3 = locs(p);
+                    // build skeleton around candidate b3 and compute tangent near a3
+                    cv::Mat1b mask; cv::Point top_left;
+                    compute_skeleton_mask(b3, mask, top_left);
+                    cv::Mat1b skel = thinningZS(mask);
+                    cv::Point pa(int(std::round(a3[0]))-top_left.x, int(std::round(a3[1]))-top_left.y);
+                    pa.x = std::clamp(pa.x, 0, skel.cols-1); pa.y = std::clamp(pa.y, 0, skel.rows-1);
+                    cv::Point sa = nearest_skel(skel, pa);
+                    cv::Vec2d tanv = local_tangent(skel, sa);
+                    double n = std::sqrt(tanv[0]*tanv[0] + tanv[1]*tanv[1]);
+                    if (n > 1e-6) {
+                        cv::Vec2f tanf = cv::Vec2f(tanv[0]/n, tanv[1]/n);
+                        problem.AddResidualBlock(XYDirectionAlignLoss::Create(tanf, skel_align_w), nullptr, &locs(pred2d)[0], &locs(p)[0]);
+                    }
+                }
+
                 // Re-solve the updated local problem
                 ceres::Solve(options, &problem, &summary);
 
@@ -826,6 +1001,8 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *c
                 }
 
                 init_dist(p) = dist;
+
+                // Skeleton guidance is now applied as a soft residual above; no hard gating here.
 
                 if (dist >= dist_th || summary.final_cost >= 0.1) {
                     // The solution to the local problem is bad -- large loss, or too far from the surface; still add to the global
