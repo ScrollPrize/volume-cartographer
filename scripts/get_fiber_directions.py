@@ -258,6 +258,7 @@ def get_directions(cc_mask, structure_tensor: StructureTensor):
 @click.command()
 @click.option('--predictions-zarr-path', required=True, help='Path/URL to predictions OME-Zarr')
 @click.option('--predictions-ome-scale', type=int, required=True, help='OME scaling level to read from predictions')
+@click.option('--fiber-label', 'fiber_labels', type=int, multiple=True, required=True, help='Fiber labels to treat as foreground')
 @click.option('--output-path', required=True, help='File to write dense direction field to')
 @click.option('--output-ome-scale', type=int, required=True, help='OME scaling level for direction field (equal or greater than predictions-ome-scale)')
 @click.option('--z-min', type=int, default=0, help='First slice (wrt original scan)')
@@ -267,6 +268,7 @@ def get_directions(cc_mask, structure_tensor: StructureTensor):
 def main(
     predictions_zarr_path,
     predictions_ome_scale,
+    fiber_labels,
     output_path,
     output_ome_scale,
     z_min,
@@ -294,9 +296,8 @@ def main(
     structure_tensor = StructureTensor()
 
     out_zarr = zarr.open(output_path, mode='w')
-    horizontal_group = out_zarr.create_group('horizontal')
     def make_dim_ds(dim):
-        dim_group = horizontal_group.create_group(dim)
+        dim_group = out_zarr.create_group(dim)
         return dim_group.create_dataset(
             f'{output_ome_scale}',
             dtype=np.uint8,  # chosen due to ChunkedTensor support (and size!)
@@ -317,10 +318,9 @@ def main(
                 print(f'processing chunk [{z_start}:{z_end}, {y_start}:{y_end}, {x_start}:{x_end}]')
 
                 chunk = predictions_zarr_array[z_start:z_end, y_start:y_end, x_start:x_end]
-                
-                # We assume 0 = background, 1 = vertical, 2 = horizontal, 3 = ambiguous
-                print('  filtering to horizontal fibers')
-                chunk = fastremap.remap(chunk, {0: 0, 1: 0, 2: 1, 3: 1})
+
+                print('  filtering to relevant fibers')
+                chunk = fastremap.remap(chunk, {label: 1 if label in fiber_labels else 0 for label in fastremap.unique(chunk)})
 
                 print('  running connected components')
                 chunk_ccs, num_ccs = cc3d.connected_components(chunk, connectivity=6, return_N=True)
