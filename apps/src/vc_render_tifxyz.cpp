@@ -347,7 +347,75 @@ void flipImage(cv::Mat& img, int flipType)
 }
 
 
+// UV-stretch estimation for canvas sizing =====
+static bool _vc_valid3(const cv::Vec3f& p) {
+    return !(std::isnan(p[0]) || std::isnan(p[1]) || std::isnan(p[2]));
+}
 
+struct UVScale { double sx{1.0}, sy{1.0}; };
+
+static UVScale estimateUVScaleFromAffine(const cv::Mat_<cv::Vec3f>& raw,
+                                         const AffineTransform& T,
+                                         double seg_scale)
+{
+    const cv::Matx33d A(
+        T.matrix(0,0), T.matrix(0,1), T.matrix(0,2),
+        T.matrix(1,0), T.matrix(1,1), T.matrix(1,2),
+        T.matrix(2,0), T.matrix(2,1), T.matrix(2,2)
+    );
+
+    // --- remove isotropic scale so canvas reacts only to anisotropy ---
+    cv::Matx33d A_used = A;
+    double detA = cv::determinant(cv::Mat(A));           // det of 3x3 linear part
+    double scale_factor = 1.0;
+    if (std::isfinite(detA) && std::abs(detA) > 1e-18) {
+        scale_factor = std::cbrt(std::abs(detA));  // isotropic scale factor (>=0)
+        if (scale_factor > 0.0) {
+            std::cout << "[affine] det(A)=" << detA << "  isotropic scale=" << scale_factor << "  CLI segmentation-scale=" << seg_scale << "\n";
+        }
+        else {
+            std::cout << "[WARNING] scale factor < 0! [affine] det(A)=" << detA << "  isotropic scale=" << scale_factor << "  CLI segmentation-scale=" << seg_scale << "\n";
+        }
+    }
+    // ----------------------------------------------------------------------
+
+    std::vector<double> sxv, syv;
+    auto push = [&](int y, int x){
+        if (x+1 >= raw.cols || y+1 >= raw.rows) return;
+        const cv::Vec3f &p  = raw(y,x);
+        const cv::Vec3f &px = raw(y,x+1);
+        const cv::Vec3f &py = raw(y+1,x);
+        if (!_vc_valid3(p) || !_vc_valid3(px) || !_vc_valid3(py)) return;
+
+        cv::Vec3d duA = (cv::Vec3d)(px - p);
+        cv::Vec3d dvA = (cv::Vec3d)(py - p);
+
+        cv::Vec3d duBg = scale_factor * seg_scale * duA;
+        cv::Vec3d dvBg = scale_factor * seg_scale * dvA;
+
+        const double duA_len = cv::norm(duA);
+        const double dvA_len = cv::norm(dvA);
+        if (duA_len > 1e-12) sxv.push_back(cv::norm(duBg) / duA_len);
+        if (dvA_len > 1e-12) syv.push_back(cv::norm(dvBg) / dvA_len);
+    };
+
+    // Sample a few representative locations (corners + center)
+    const int ys[] = {0, raw.rows/2, std::max(0, raw.rows-2)};
+    const int xs[] = {0, raw.cols/2, std::max(0, raw.cols-2)};
+    for (int y : ys) for (int x : xs) push(y, x);
+
+    auto median = [](std::vector<double>& v)->double{
+        if (v.empty()) return 1.0;
+        size_t k = v.size()/2;
+        std::nth_element(v.begin(), v.begin()+k, v.end());
+        return v[k];
+    };
+
+    UVScale S;
+    S.sx = median(sxv);
+    S.sy = median(syv);
+    return S;
+}
 
 int main(int argc, char *argv[])
 {
@@ -431,7 +499,6 @@ int main(int argc, char *argv[])
     // Load affine transform if provided
     AffineTransform affineTransform;
     bool hasAffine = false;
-    double affine_scale_iso = 1.0; // ~uniform scale factor k from the affine
     
     if (parsed.count("affine-transform") > 0) {
         std::string affineFile = parsed["affine-transform"].as<std::string>();
@@ -449,28 +516,12 @@ int main(int argc, char *argv[])
                 inv.copyTo(affineTransform.matrix);
                 std::cout << "Note: Inverting affine as requested (--invert-affine).\n";
             }
-            // Extract isotropic-equivalent scale k ~= cbrt(|det(A)|) from the 3x3 linear part
-            try {
-                const cv::Matx33d A(
-                    affineTransform.matrix(0,0), affineTransform.matrix(0,1), affineTransform.matrix(0,2),
-                    affineTransform.matrix(1,0), affineTransform.matrix(1,1), affineTransform.matrix(1,2),
-                    affineTransform.matrix(2,0), affineTransform.matrix(2,1), affineTransform.matrix(2,2)
-                );
-                const double detA = cv::determinant(cv::Mat(A));
-                double k = std::cbrt(std::abs(detA));
-                if (std::isfinite(k) && k > 0.0)
-                    affine_scale_iso = k;
-                std::cout << "Affine isotropic scale ~= " << affine_scale_iso << '\n';
-            } catch (...) {
-                std::cout << "Warning: could not infer affine scale; assuming k=1\n";
-                affine_scale_iso = 1.0;
-            }
         } catch (const std::exception& e) {
             std::cerr << "Error loading affine transform: " << e.what() << std::endl;
             return EXIT_FAILURE;
         }
     }
-
+    
     z5::filesystem::handle::Group group(vol_path, z5::FileMode::FileMode::r);
     z5::filesystem::handle::Dataset ds_handle(group, std::to_string(group_idx), json::parse(std::ifstream(vol_path/std::to_string(group_idx)/".zarray")).value<std::string>("dimension_separator","."));
     std::unique_ptr<z5::Dataset> ds = z5::filesystem::openDataset(ds_handle);
@@ -507,13 +558,43 @@ int main(int argc, char *argv[])
                 (*raw_points)(j,i) = {NAN,NAN,NAN};
     
     cv::Size full_size = raw_points->size();
-    // Auto-scale the canvas by the pyramid level, so -g N shrinks by 2^N.
-    // Use rounding to avoid truncation bias.
+
+    // canvas sizing:
+    // apply pyramid ds_scale and the local tangent stretch
     {
-        const double sx = (static_cast<double>(tgt_scale) /  surf->_scale[0]) * ds_scale * scale_seg * affine_scale_iso;
-        const double sy = (static_cast<double>(tgt_scale) /  surf->_scale[1]) * ds_scale * scale_seg * affine_scale_iso;
+        const double base_sx = (static_cast<double>(tgt_scale) /  surf->_scale[0]);
+        const double base_sy = (static_cast<double>(tgt_scale) /  surf->_scale[1]);
+
+        double aff_sx = 1.0, aff_sy = 1.0;
+        if (hasAffine) {
+            auto uvS = estimateUVScaleFromAffine(*raw_points,
+                                                 affineTransform,
+                                                 scale_seg);
+            // Guard against NaNs/zeros
+            if (std::isfinite(uvS.sx) && uvS.sx > 0.0) aff_sx = uvS.sx;
+            if (std::isfinite(uvS.sy) && uvS.sy > 0.0) aff_sy = uvS.sy;
+            std::cout << "Affine UV stretch ~ sx=" << aff_sx << " sy=" << aff_sy << std::endl;
+        }
+        else
+        {
+            aff_sx = aff_sx * scale_seg;
+            aff_sy = aff_sy * scale_seg;
+            std::cout << "Mesh UV stretch ~ sx=" << aff_sx << " sy=" << aff_sy << std::endl;
+        }
+
+        const double sx = base_sx * ds_scale * aff_sx;
+        const double sy = base_sy * ds_scale * aff_sy;
         full_size.width  = std::max(1, static_cast<int>(std::lround(full_size.width  * sx)));
         full_size.height = std::max(1, static_cast<int>(std::lround(full_size.height * sy)));
+
+        // Update tgt_scale (working only for isotropic scaling)
+        if (aff_sx == aff_sy){
+            tgt_scale = tgt_scale * ds_scale * aff_sx;
+        }
+        else
+        {
+            tgt_scale = tgt_scale * ds_scale;
+        }
     }
     
     cv::Size tgt_size = full_size;
@@ -547,7 +628,12 @@ int main(int argc, char *argv[])
     if ((tgt_size.width >= 10000 || tgt_size.height >= 10000) && num_slices > 1)
         slice_gen = true;
     else {
-        surf->gen(&points, &normals, tgt_size, cv::Vec3f(0,0,0), 1.0f, {-full_size.width/2+crop.x,-full_size.height/2+crop.y,0});
+        // Center at pixel centers: -(W-1)/2, -(H-1)/2  (avoid integer division & half-pixel drift)
+        const float u0 = -0.5f * (static_cast<float>(full_size.width)  - 1.0f)
+                       + static_cast<float>(crop.x);
+        const float v0 = -0.5f * (static_cast<float>(full_size.height) - 1.0f)
+                       + static_cast<float>(crop.y);
+        surf->gen(&points, &normals, tgt_size, cv::Vec3f(0,0,0), tgt_scale, cv::Vec3f(u0, v0, 0.0f));
     }
 
     cv::Mat_<uint8_t> img;
@@ -602,7 +688,13 @@ int main(int argc, char *argv[])
                 for(int x=crop.x;x<crop.x+crop.width;x+=1024) {
                     int w = std::min(tgt_size.width+crop.x-x, 1024);
                     // Apply effective scale in chunked generation
-                    surf->gen(&points, &normals, {w,crop.height}, cv::Vec3f(0,0,0), 1.0f, {-full_size.width/2+x,-full_size.height/2+crop.y,0});
+                    // Center at pixel centers and then offset by the chunk's x and crop.y
+                    const float u0 = -0.5f * (static_cast<float>(full_size.width)  - 1.0f)
+                                   + static_cast<float>(x);
+                    const float v0 = -0.5f * (static_cast<float>(full_size.height) - 1.0f)
+                                   + static_cast<float>(crop.y);
+                    surf->gen(&points, &normals, cv::Size(w, crop.height),
+                              cv::Vec3f(0,0,0), tgt_scale, cv::Vec3f(u0, v0, 0.0f));
 
                     // Scale the segmentation points if requested
                     points *= scale_seg;
