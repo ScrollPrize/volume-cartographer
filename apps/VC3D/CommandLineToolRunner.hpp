@@ -66,6 +66,7 @@ public:
         double rotateDegrees,
         int flipAxis // -1 none, 0 vertical, 1 horizontal, 2 both
     );
+    void setIncludeTifs(bool v) { _includeTifs = v; }
 
     bool execute(Tool tool);
     void cancel();
@@ -76,6 +77,7 @@ public:
     void setAutoShowConsoleOutput(bool autoShow);
     void setParallelProcesses(int count);
     void setIterationCount(int count);
+    void setOmpThreads(int threads) { _ompThreads = threads; }
 
 signals:
     void toolStarted(Tool tool, const QString& message);
@@ -132,6 +134,7 @@ private:
     float _scaleSeg{1.0f};
     double _rotateDeg{0.0};
     int _flipAxis{-1};
+    bool _includeTifs{false};
 
     // vc_tifxyz2obj options
     bool _optNormalizeUV{false};
@@ -143,6 +146,8 @@ private:
 
     QFile* _logFile;
     QTextStream* _logStream;
+
+    int _ompThreads{-1};
 };
 
 } // namespace ChaoVis

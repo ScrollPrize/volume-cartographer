@@ -271,6 +271,19 @@ bool CommandLineToolRunner::execute(Tool tool)
         connect(_process, &QProcess::readyRead, this, &CommandLineToolRunner::onProcessReadyRead);
     }
 
+    // Apply per-run environment variables (e.g., OMP_NUM_THREADS)
+    {
+        QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+        if (_ompThreads > 0) {
+            env.insert("OMP_NUM_THREADS", QString::number(_ompThreads));
+            if (_logStream) {
+                *_logStream << "ENV: OMP_NUM_THREADS=" << _ompThreads << Qt::endl;
+                _logStream->flush();
+            }
+        }
+        _process->setProcessEnvironment(env);
+    }
+
     QStringList args = buildArguments(tool);
     QString toolCommand = toolName(tool);
 
@@ -504,6 +517,9 @@ QStringList CommandLineToolRunner::buildArguments(Tool tool)
             }
             if (_flipAxis >= 0) {
                 args << "--flip" << QString::number(_flipAxis);
+            }
+            if (_includeTifs) {
+                args << "--include-tifs";
             }
             break;
 
