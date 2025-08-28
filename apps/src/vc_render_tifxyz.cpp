@@ -540,7 +540,7 @@ int main(int argc, char *argv[])
     fs::path output_path(tgt_ptn);
     fs::create_directories(output_path.parent_path());
     
-    ChunkCache chunk_cache(16e9);
+    ChunkCache chunk_cache(16ull * 1024 * 1024 * 1024);
 
     QuadSurface *surf = nullptr;
     try {
