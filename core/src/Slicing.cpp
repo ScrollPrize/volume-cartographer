@@ -317,26 +317,16 @@ void readInterpolated3D(cv::Mat_<uint8_t> &out, z5::Dataset *ds,
     int w = coords.cols;
     int h = coords.rows;
 
-    // Dataset bounds for clamping (Z, Y, X)
-    const int Zmax = static_cast<int>(ds->shape(0)) - 1;
-    const int Ymax = static_cast<int>(ds->shape(1)) - 1;
-    const int Xmax = static_cast<int>(ds->shape(2)) - 1;
-
     std::shared_mutex mutex;
     std::unordered_map<cv::Vec4i,std::shared_ptr<xt::xarray<uint8_t>>,vec4i_hash> chunks;
 
-    // Lambda for retrieving single values
-    auto retrieve_single_value_cached = [&cw,&ch,&cd,&group_idx,&chunks,&Xmax,&Ymax,&Zmax](
+    // Lambda for retrieving single values (unchanged)
+    auto retrieve_single_value_cached = [&cw,&ch,&cd,&group_idx,&chunks](
         int ox, int oy, int oz) -> uint8_t {
 
-            // Clamp global voxel coords to valid dataset range
-            if (ox < 0) ox = 0; else if (ox > Xmax) ox = Xmax;
-            if (oy < 0) oy = 0; else if (oy > Ymax) oy = Ymax;
-            if (oz < 0) oz = 0; else if (oz > Zmax) oz = Zmax;
-
-            int ix = ox / cw;
-            int iy = oy / ch;
-            int iz = oz / cd;
+            int ix = int(ox)/cw;
+            int iy = int(oy)/ch;
+            int iz = int(oz)/cd;
 
             cv::Vec4i idx = {group_idx,ix,iy,iz};
 
@@ -345,9 +335,9 @@ void readInterpolated3D(cv::Mat_<uint8_t> &out, z5::Dataset *ds,
             if (!chunk)
                 return 0;
 
-            int lx = ox - ix * cw;
-            int ly = oy - iy * ch;
-            int lz = oz - iz * cd;
+            int lx = ox-ix*cw;
+            int ly = oy-iy*ch;
+            int lz = oz-iz*cd;
 
             return chunk->operator()(lx,ly,lz);
         };
@@ -382,26 +372,26 @@ void readInterpolated3D(cv::Mat_<uint8_t> &out, z5::Dataset *ds,
                         chunks_local[idx] = nullptr;
                     }
 
-                    int lx = static_cast<int>(ox) - ix * cw;
-                    int ly = static_cast<int>(oy) - iy * ch;
-                    int lz = static_cast<int>(oz) - iz * cd;
+                    int lx = ox-ix*cw;
+                    int ly = oy-iy*ch;
+                    int lz = oz-iz*cd;
 
-                    // If interpolation touches any +1 neighbor along x/y/z,
-                    // prefetch ALL needed 2x2x2 corner chunks to avoid seams.
-                    const int need_x = (lx + 1 >= cw);
-                    const int need_y = (ly + 1 >= ch);
-                    const int need_z = (lz + 1 >= cd);
-                    if (need_x || need_y || need_z) {
-                        for (int dx = 0; dx <= need_x; ++dx)
-                        for (int dy = 0; dy <= need_y; ++dy)
-                        for (int dz = 0; dz <= need_z; ++dz) {
-                            if (dx || dy || dz) {
-                                cv::Vec4i idx2 = idx;   // {group, ix, iy, iz}
-                                idx2[1] += dx;         // +x chunk
-                                idx2[2] += dy;         // +y chunk
-                                idx2[3] += dz;         // +z chunk
-                                chunks_local[idx2] = nullptr;
-                            }
+                    if (lx+1 >= cw || ly+1 >= ch || lz+1 >= cd) {
+                        if (lx+1>=cw) {
+                            cv::Vec4i idx2 = idx;
+                            idx2[1]++;
+                            chunks_local[idx2] = nullptr;
+                        }
+                        if (ly+1>=ch) {
+                            cv::Vec4i idx2 = idx;
+                            idx2[2]++;
+                            chunks_local[idx2] = nullptr;
+                        }
+
+                        if (lz+1>=cd) {
+                            cv::Vec4i idx2 = idx;
+                            idx2[3]++;
+                            chunks_local[idx2] = nullptr;
                         }
                     }
                 }
@@ -474,9 +464,9 @@ void readInterpolated3D(cv::Mat_<uint8_t> &out, z5::Dataset *ds,
                     chunk = chunks[idx].get();
                 }
 
-                int lx = static_cast<int>(ox) - ix * cw;
-                int ly = static_cast<int>(oy) - iy * ch;
-                int lz = static_cast<int>(oz) - iz * cd;
+                int lx = ox-ix*cw;
+                int ly = oy-iy*ch;
+                int lz = oz-iz*cd;
 
                 //valid - means zero!
                 if (!chunk)
@@ -488,23 +478,23 @@ void readInterpolated3D(cv::Mat_<uint8_t> &out, z5::Dataset *ds,
                 // Handle edge cases for interpolation
                 if (lx+1 >= cw || ly+1 >= ch || lz+1 >= cd) {
                     if (lx+1>=cw)
-                        c100 = retrieve_single_value_cached(static_cast<int>(ox)+1, static_cast<int>(oy), static_cast<int>(oz));
+                        c100 = retrieve_single_value_cached(ox+1,oy,oz);
                     else
                         c100 = chunk->operator()(lx+1,ly,lz);
 
-                    if (ly+1>=ch)
-                        c010 = retrieve_single_value_cached(static_cast<int>(ox), static_cast<int>(oy)+1, static_cast<int>(oz));
+                    if (ly+1 >= ch)
+                        c010 = retrieve_single_value_cached(ox,oy+1,oz);
                     else
                         c010 = chunk->operator()(lx,ly+1,lz);
-                    if (lz+1>=cd)
-                        c001 = retrieve_single_value_cached(static_cast<int>(ox), static_cast<int>(oy), static_cast<int>(oz)+1);
+                    if (lz+1 >= cd)
+                        c001 = retrieve_single_value_cached(ox,oy,oz+1);
                     else
                         c001 = chunk->operator()(lx,ly,lz+1);
 
-                    c110 = retrieve_single_value_cached(static_cast<int>(ox)+1, static_cast<int>(oy)+1, static_cast<int>(oz));
-                    c101 = retrieve_single_value_cached(static_cast<int>(ox)+1, static_cast<int>(oy),   static_cast<int>(oz)+1);
-                    c011 = retrieve_single_value_cached(static_cast<int>(ox),   static_cast<int>(oy)+1, static_cast<int>(oz)+1);
-                    c111 = retrieve_single_value_cached(static_cast<int>(ox)+1, static_cast<int>(oy)+1, static_cast<int>(oz)+1);
+                    c110 = retrieve_single_value_cached(ox+1,oy+1,oz);
+                    c101 = retrieve_single_value_cached(ox+1,oy,oz+1);
+                    c011 = retrieve_single_value_cached(ox,oy+1,oz+1);
+                    c111 = retrieve_single_value_cached(ox+1,oy+1,oz+1);
                 } else {
                     c100 = chunk->operator()(lx+1,ly,lz);
                     c010 = chunk->operator()(lx,ly+1,lz);

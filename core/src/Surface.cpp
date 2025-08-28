@@ -328,44 +328,69 @@ cv::Vec3f QuadSurface::normal(const cv::Vec3f &ptr, const cv::Vec3f &offset)
     return grid_normal((*_points), p);
 }
 
-void QuadSurface::gen(cv::Mat_<cv::Vec3f> *coords, cv::Mat_<cv::Vec3f> *normals, cv::Size size, const cv::Vec3f &ptr, float scale, const cv::Vec3f &offset)
+void QuadSurface::gen(cv::Mat_<cv::Vec3f>* coords,
+                      cv::Mat_<cv::Vec3f>* normals,
+                      cv::Size size,
+                      const cv::Vec3f& ptr,
+                      float scale,
+                      const cv::Vec3f& offset)
 {
-    bool create_normals = normals || offset[2] || ptr[2];
-    cv::Vec3f upper_left_actual = internal_loc(offset/scale+_center, ptr, _scale);
+    const bool need_normals = (normals != nullptr) || offset[2] || ptr[2];
 
-    int w = size.width;
-    int h = size.height;
+    const cv::Vec3f ul = internal_loc(offset/scale + _center, ptr, _scale);
+    const int w = size.width, h = size.height;
 
-    cv::Mat_<cv::Vec3f> _coords_header;
-    cv::Mat_<cv::Vec3f> _normals_header;
+    cv::Mat_<cv::Vec3f> coords_local, normals_local;
+    if (!coords)  coords  = &coords_local;
+    if (!normals) normals = &normals_local;
 
-    if (!coords)
-        coords = &_coords_header;
-    if (!normals)
-        normals = &_normals_header;
+    coords->create(size + cv::Size(8, 8));
 
-    coords->create(size+cv::Size(8,8));
+    // --- build mapping in double precision, but pass Point2f to OpenCV
+    const double sx = static_cast<double>(_scale[0]) / static_cast<double>(scale);
+    const double sy = static_cast<double>(_scale[1]) / static_cast<double>(scale);
 
-    std::vector<cv::Vec2f> dst = {{0,0},{w+8,0},{0,h+8}};
-    cv::Vec2f off2d = {upper_left_actual[0]-4*_scale[0]/scale, upper_left_actual[1]-4*_scale[1]/scale};
-    std::vector<cv::Vec2f> src = {off2d, off2d+cv::Vec2f((w+8)*_scale[0]/scale,0), off2d+cv::Vec2f(0,(h+8)*_scale[1]/scale)};
+    const double ox = static_cast<double>(ul[0]) - 4.0 * sx;
+    const double oy = static_cast<double>(ul[1]) - 4.0 * sy;
 
-    cv::Mat affine = cv::getAffineTransform(src, dst);
-    cv::warpAffine(*_points, *coords, affine, size+cv::Size(8,8));
+    // 3 points in float, as required by OpenCV 4.6
+    std::array<cv::Point2f,3> srcf = {
+        cv::Point2f(static_cast<float>(ox),                       static_cast<float>(oy)),
+        cv::Point2f(static_cast<float>(ox + (w + 8) * sx),        static_cast<float>(oy)),
+        cv::Point2f(static_cast<float>(ox),                       static_cast<float>(oy + (h + 8) * sy))
+    };
+    std::array<cv::Point2f,3> dstf = {
+        cv::Point2f(0.f, 0.f),
+        cv::Point2f(static_cast<float>(w + 8), 0.f),
+        cv::Point2f(0.f, static_cast<float>(h + 8))
+    };
 
-    if (create_normals) {
+    cv::Mat A = cv::getAffineTransform(srcf.data(), dstf.data());
+
+    // --- warp with a seam-safe border (replicate), not the default zeros
+    cv::warpAffine(*_points, *coords, A, size + cv::Size(8, 8),
+                cv::INTER_LINEAR, cv::BORDER_REPLICATE);
+
+    // --- normals: sample on the SOURCE grid (use Vec3f, z=0)
+    if (need_normals) {
         normals->create(size);
-        for(int j=0;j<h;j++)
-            for(int i=0;i<w;i++)
-                (*normals)(j, i) = grid_normal(*coords, {i+4,j+4});
-
-        *coords = (*coords)(cv::Rect(4,4,size.width,size.height)).clone();
-
-        if (upper_left_actual[2])
-            *coords += (*normals)*upper_left_actual[2];
+        for (int j = 0; j < h; ++j) {
+            const double y = oy + (j + 4.0) * sy;
+            for (int i = 0; i < w; ++i) {
+                const double x = ox + (i + 4.0) * sx;
+                (*normals)(j, i) = grid_normal(*_points,
+                                            cv::Vec3f(static_cast<float>(x),
+                                                        static_cast<float>(y),
+                                                        0.0f));
+            }
+        }
     }
-    else
-        *coords = (*coords)(cv::Rect(4,4,size.width,size.height)).clone();
+
+    // crop halo
+    *coords = (*coords)(cv::Rect(4, 4, w, h)).clone();
+
+    if (need_normals && ul[2] != 0.0f)
+        *coords += (*normals) * ul[2];
 }
 
 static inline float sdist(const cv::Vec3f &a, const cv::Vec3f &b)
