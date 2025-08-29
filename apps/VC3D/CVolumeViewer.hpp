@@ -5,7 +5,7 @@
 #include <set>
 #include <unordered_map>
 #include "PathData.hpp"
-#include "vc/core/util/VCCollection.hpp"
+#include "vc/ui/VCCollection.hpp"
 #include "COutlinedTextItem.hpp"
 #include "CSurfaceCollection.hpp"
 #include "CVolumeViewerView.hpp"

@@ -1,5 +1,5 @@
-#include "vc/core/util/surface_metrics.hpp"
-#include "vc/core/util/VCCollection.hpp"
+#include "vc/ui/surface_metrics.hpp"
+#include "vc/ui/VCCollection.hpp"
 #include "vc/core/util/Surface.hpp"
 #include <opencv2/imgcodecs.hpp>
 #include <boost/program_options.hpp>

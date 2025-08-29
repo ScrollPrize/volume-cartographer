@@ -1,6 +1,5 @@
 cmake_minimum_required(VERSION 3.22 FATAL_ERROR)
 include(FetchContent)
-include(CMakeDependentOption)
 
 set(VC_VERSION 3.0.2)
 
@@ -20,8 +19,8 @@ set(CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
 
 option(VC_USE_OPENMP "Enable OpenMP support" ON)
 
-set(CMAKE_CXX_FLAGS " -Wno-narrowing -std=c++23 -DWITH_BLOSC=1 -DWITH_ZLIB=1 -g3 -gdwarf-5 -funwind-tables -fasynchronous-unwind-tables" )
-set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS}  -g3 -gdwarf-5 -rdynamic")
+set(CMAKE_CXX_FLAGS " ${CMAKE_CXX_FLAGS} -fPIC -Wno-narrowing -std=c++23 -DWITH_BLOSC=1 -DWITH_ZLIB=1 " )
+set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fPIE")
 
 if(NOT CMAKE_BUILD_TYPE)
     message(STATUS "Setting build type to 'Release' as none was specified.")
@@ -29,7 +28,8 @@ if(NOT CMAKE_BUILD_TYPE)
 endif()
 
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -ggdb -O0")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -ggdb -O0 -g3 -gdwarf-5 -funwind-tables -fasynchronous-unwind-tables")
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS}  -g3 -gdwarf-5 -rdynamic -fPIE")
 elseif(CMAKE_BUILD_TYPE STREQUAL "QuickBuild")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O1")
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ")
@@ -153,7 +153,6 @@ if (VC_BUILD_TESTS)
     enable_testing()
 endif()
 
-## VC Libraries ##
 option(VC_DEVELOPER_WARNINGS "For developers: Enable extensive compiler warnings" OFF)
 mark_as_advanced(VC_DEVELOPER_WARNINGS)
 if(VC_DEVELOPER_WARNINGS)
@@ -164,27 +163,10 @@ add_subdirectory(misc)
 add_subdirectory(core)
 
 
-
-## VC Core Apps ##
 if (VC_BUILD_APPS)
     add_subdirectory(apps)
 endif()
 
-## VC Utility apps ##
-
-## VC Example Apps ##
-
-## VC Documentation
-
-# Setup the config files #
 include(VCPackageConfig)
-# Install to system directories
 include(VCInstall)
-
-# Look for the SDL2 package for Audio
-find_package(SDL2 REQUIRED)
-
-# Look for the GNU Scientific Library (GSL) package for interpolation related functionalities
-find_package(GSL REQUIRED)
-
 include(Packing)

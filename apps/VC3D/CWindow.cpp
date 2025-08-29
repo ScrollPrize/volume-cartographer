@@ -29,7 +29,7 @@
 
 #include "CVolumeViewer.hpp"
 #include "CVolumeViewerView.hpp"
-#include "UDataManipulateUtils.hpp"
+#include "vc/ui/UDataManipulateUtils.hpp"
 #include "SettingsDialog.hpp"
 #include "CSurfaceCollection.hpp"
 #include "CPointCollectionWidget.hpp"
@@ -316,6 +316,7 @@ void CWindow::CreateWidgets(void)
     treeWidgetSurfaces->setSelectionMode(QAbstractItemView::ExtendedSelection);
     connect(treeWidgetSurfaces, &QWidget::customContextMenuRequested, this, &CWindow::onSurfaceContextMenuRequested);
     btnReloadSurfaces = ui.btnReloadSurfaces;
+
     wOpsList = new OpsList(ui.dockWidgetOpList);
     ui.dockWidgetOpList->setWidget(wOpsList);
     wOpsSettings = new OpsSettings(ui.dockWidgetOpSettings);

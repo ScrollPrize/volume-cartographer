@@ -12,7 +12,7 @@
 #include <QVBoxLayout>
 #include <QHBoxLayout>
  
-#include "vc/core/util/VCCollection.hpp"
+#include "vc/ui/VCCollection.hpp"
  
 
 

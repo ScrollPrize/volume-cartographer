@@ -7,7 +7,7 @@
 #include <QComboBox>
 #include "ui_VCMain.h"
 
-#include "vc/core/util/VCCollection.hpp"
+#include "vc/ui/VCCollection.hpp"
 
 #include <QShortcut>
 
