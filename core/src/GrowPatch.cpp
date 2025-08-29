@@ -23,6 +23,9 @@
 static float space_trace_dist_w = 1.0;
 float dist_th = 1.5;
 
+// Global CUDA preference controlled via JSON (default true). Used across local/global solves.
+static bool g_use_cuda = true;
+
 
 static int gen_straight_loss(ceres::Problem &problem, const cv::Vec2i &p, const cv::Vec2i &o1, const cv::Vec2i &o2, const cv::Vec2i &o3, cv::Mat_<uint8_t> &state, cv::Mat_<cv::Vec3d> &dpoints, bool optimize_all, float w = 0.5);
 static int gen_dist_loss(ceres::Problem &problem, const cv::Vec2i &p, const cv::Vec2i &off, cv::Mat_<uint8_t> &state, cv::Mat_<cv::Vec3d> &dpoints, float unit, bool optimize_all, ceres::ResidualBlockId *res, float w = 1.0);
@@ -383,16 +386,17 @@ static float local_optimization(int radius, const cv::Vec2i &p, cv::Mat_<uint8_t
 //    }
 #ifdef VC_USE_CUDA_SPARSE
     // Check if Ceres was actually built with CUDA sparse support
-    if (ceres::IsSparseLinearAlgebraLibraryTypeAvailable(ceres::CUDA_SPARSE)) {
-        options.linear_solver_type = ceres::SPARSE_SCHUR;
-        options.sparse_linear_algebra_library_type = ceres::CUDA_SPARSE;
+    if (g_use_cuda) {
+        if (ceres::IsSparseLinearAlgebraLibraryTypeAvailable(ceres::CUDA_SPARSE)) {
+            options.linear_solver_type = ceres::SPARSE_SCHUR;
+            options.sparse_linear_algebra_library_type = ceres::CUDA_SPARSE;
 
-        // Enable mixed precision for SPARSE_SCHUR
-        if (options.linear_solver_type == ceres::SPARSE_SCHUR) {
-            options.use_mixed_precision_solves = true;
+            if (options.linear_solver_type == ceres::SPARSE_SCHUR) {
+                options.use_mixed_precision_solves = true;
+            }
+        } else {
+            std::cerr << "Warning: use_cuda=true but Ceres was not built with CUDA sparse support. Falling back to CPU sparse." << std::endl;
         }
-    } else {
-        std::cerr << "Warning: CUDA_SPARSE requested but Ceres was not built with CUDA sparse support. Falling back to default solver." << std::endl;
     }
 #endif
     ceres::Solver::Summary summary;
@@ -563,6 +567,7 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds,
     float skel_align_w = 0.1f;       // weight for soft alignment residual
     std::string skel_method = "tensor"; // "tensor" (fast) or "thinning"
     int skel_tangent_radius = 5;     // px half-window for tangent calc (tensor)
+    int skel_slice_step = 1;         // stride between Z-slices when building mask
     if (params_opt) {
         const auto &p = *params_opt;
         skel_enable = p.value("skeleton_guidance", false);
@@ -575,12 +580,15 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds,
         skel_align_w = p.value("skeleton_align_weight", skel_align_w);
         skel_method = p.value("skeleton_method", skel_method);
         skel_tangent_radius = p.value("skeleton_tangent_radius", skel_tangent_radius);
+        skel_slice_step = p.value("skeleton_slice_step", skel_slice_step);
+        g_use_cuda = p.value("use_cuda", true);
         if (skel_roi % 2 == 0) skel_roi += 1;
         skel_roi = std::max(17, std::min(257, skel_roi));
         skel_slices = std::max(0, std::min(8, skel_slices));
         skel_min_align = std::max(0.f, std::min(1.f, skel_min_align));
         skel_max_steps = std::max(10, std::min(2000, skel_max_steps));
         skel_tangent_radius = std::max(2, std::min(15, skel_tangent_radius));
+        skel_slice_step = std::max(1, std::min(16, skel_slice_step));
     }
 
     auto compute_skeleton_mask = [&](const cv::Vec3d &center, cv::Mat1b &mask, cv::Point &top_left) {
@@ -591,14 +599,19 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds,
         auto SZ = ds->shape(0);
         auto SY = ds->shape(1);
         auto SX = ds->shape(2);
-        for (int dz=-skel_slices; dz<=skel_slices; ++dz) {
-            int z = std::clamp(c[2] + dz, 0, int(SZ)-1);
-            for (int y=-r; y<=r; ++y) {
-                int yy = std::clamp(c[1] + y, 0, int(SY)-1);
-                for (int x=-r; x<=r; ++x) {
-                    int xx = std::clamp(c[0] + x, 0, int(SX)-1);
+        // Loop over XY first so we can early-exit the Z sweep once a pixel is set.
+        for (int y=-r; y<=r; ++y) {
+            int yy = std::clamp(c[1] + y, 0, int(SY)-1);
+            uint8_t* row = mask.ptr<uint8_t>(y + r);
+            for (int x=-r; x<=r; ++x) {
+                int xx = std::clamp(c[0] + x, 0, int(SX)-1);
+                // If already set from a previous slice, skip Z checks.
+                if (row[x + r]) continue;
+                for (int k=-skel_slices; k<=skel_slices; ++k) {
+                    int dz = k * skel_slice_step;
+                    int z = std::clamp(c[2] + dz, 0, int(SZ)-1);
                     uint8_t v = dbg_tensor(z, yy, xx);
-                    if (v >= skel_thresh) mask(y+r, x+r) = 255;
+                    if (v >= skel_thresh) { row[x + r] = 255; break; }
                 }
             }
         }
@@ -783,16 +796,17 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds,
     options_big.use_nonmonotonic_steps = true;
 #ifdef VC_USE_CUDA_SPARSE
     // Check if Ceres was actually built with CUDA sparse support
-    if (ceres::IsSparseLinearAlgebraLibraryTypeAvailable(ceres::CUDA_SPARSE)) {
-        options_big.linear_solver_type = ceres::SPARSE_SCHUR;
-        options_big.sparse_linear_algebra_library_type = ceres::CUDA_SPARSE;
+    if (g_use_cuda) {
+        if (ceres::IsSparseLinearAlgebraLibraryTypeAvailable(ceres::CUDA_SPARSE)) {
+            options_big.linear_solver_type = ceres::SPARSE_SCHUR;
+            options_big.sparse_linear_algebra_library_type = ceres::CUDA_SPARSE;
 
-        // Enable mixed precision for SPARSE_SCHUR
-        if (options_big.linear_solver_type == ceres::SPARSE_SCHUR) {
-            options_big.use_mixed_precision_solves = true;
+            if (options_big.linear_solver_type == ceres::SPARSE_SCHUR) {
+                options_big.use_mixed_precision_solves = true;
+            }
+        } else {
+            std::cerr << "Warning: use_cuda=true but Ceres was not built with CUDA sparse support. Falling back to CPU sparse." << std::endl;
         }
-    } else {
-        std::cerr << "Warning: CUDA_SPARSE requested but Ceres was not built with CUDA sparse support. Falling back to default solver." << std::endl;
     }
 #endif
     options_big.minimizer_progress_to_stdout = false;
