@@ -21,6 +21,7 @@ option(VC_USE_OPENMP "Enable OpenMP support" ON)
 
 set(CMAKE_CXX_FLAGS " ${CMAKE_CXX_FLAGS} -fPIC -Wno-narrowing -std=c++23 -DWITH_BLOSC=1 -DWITH_ZLIB=1 " )
 set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fPIE")
+include_directories(core/include)
 
 if(NOT CMAKE_BUILD_TYPE)
     message(STATUS "Setting build type to 'Release' as none was specified.")
@@ -138,11 +139,6 @@ include(VCConstants)
 
 # Look for external dependencies.
 include(VCFindDependencies)
-
-# XXX Hack to get ninja output colorized for all source files.
-if (CMAKE_GENERATOR MATCHES "Ninja")
-    add_compile_options(-fdiagnostics-color=always)
-endif()
 
 # Weird bug on macOS where system includes aren't included with the right flag
 if (APPLE)
