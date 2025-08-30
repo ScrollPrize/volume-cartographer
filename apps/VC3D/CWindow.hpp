@@ -82,6 +82,7 @@ public slots:
     void onGrowSeeds(const std::string& segmentId, bool isExpand, bool isRandomSeed = false);
     void onToggleConsoleOutput();
     void onDeleteSegments(const std::vector<std::string>& segmentIds);
+    void onRenameSegment(const std::string& segmentId);
     void onVoxelizePaths();
    void onFocusPOIChanged(std::string name, POI* poi);
     void onPointDoubleClicked(uint64_t pointId);

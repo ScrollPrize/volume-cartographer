@@ -2123,6 +2123,13 @@ void CWindow::onSurfaceContextMenuRequested(const QPoint& pos)
     // Build menu
     contextMenu.addAction(copyPathAction);
     contextMenu.addSeparator();
+    // Rename segment action
+    QAction* renameAction = new QAction(tr("Rename Segment"), this);
+    connect(renameAction, &QAction::triggered, [this, segmentId]() {
+        onRenameSegment(segmentId);
+    });
+    contextMenu.addAction(renameAction);
+    contextMenu.addSeparator();
     contextMenu.addMenu(seedMenu);
     contextMenu.addAction(growSegmentAction);
     contextMenu.addAction(addOverlapAction);

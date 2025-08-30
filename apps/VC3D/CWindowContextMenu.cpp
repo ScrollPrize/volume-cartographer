@@ -10,6 +10,11 @@
 #include <QDateTime>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QInputDialog>
+#include <QRegularExpression>
+#include <QRegularExpressionValidator>
+#include <QFile>
+#include <QTextStream>
 
 #include "vc/core/types/VolumePkg.hpp"
 #include "vc/core/util/Surface.hpp"
@@ -640,5 +645,122 @@ void CWindow::onDeleteSegments(const std::vector<std::string>& segmentIds)
                "This may be due to insufficient permissions. "
                "Try running the application with elevated privileges or manually delete the folders.")
             .arg(failedSegments.join(", ")));
+    }
+}
+
+void CWindow::onRenameSegment(const std::string& segmentId)
+{
+    if (!_vol_qsurfs.count(segmentId)) {
+        QMessageBox::warning(this, tr("Error"), tr("No valid segment selected to rename."));
+        return;
+    }
+
+    const fs::path oldPath = _vol_qsurfs[segmentId]->path; // e.g., .../paths/<folder>
+    const QString currentFolder = QString::fromStdString(oldPath.filename().string());
+
+    // Ask for new name
+    bool ok = false;
+    QString newName = QInputDialog::getText(
+        this,
+        tr("Rename Segment"),
+        tr("New segment name:"),
+        QLineEdit::Normal,
+        currentFolder,
+        &ok
+    );
+    if (!ok) return; // cancelled
+
+    newName = newName.trimmed();
+    if (newName.isEmpty()) {
+        QMessageBox::warning(this, tr("Invalid Name"), tr("Name cannot be empty."));
+        return;
+    }
+    if (newName == currentFolder) {
+        statusBar()->showMessage(tr("Segment name unchanged."), 3000);
+        return;
+    }
+
+    // Basic validation: no path separators
+    if (newName.contains('/') || newName.contains('\\')) {
+        QMessageBox::warning(this, tr("Invalid Name"), tr("Name cannot contain '/' or '\\'."));
+        return;
+    }
+
+    const fs::path parent = oldPath.parent_path();
+    const fs::path newPath = parent / newName.toStdString();
+    if (fs::exists(newPath)) {
+        QMessageBox::warning(this, tr("Already Exists"), tr("A segment with that name already exists."));
+        return;
+    }
+
+    // Confirm rename
+    auto reply = QMessageBox::question(
+        this,
+        tr("Confirm Rename"),
+        tr("Rename '%1' to '%2'?\n\nThis will rename the folder and update meta.json.")
+            .arg(currentFolder, newName),
+        QMessageBox::Yes | QMessageBox::No,
+        QMessageBox::Yes
+    );
+    if (reply != QMessageBox::Yes) return;
+
+    try {
+        const bool wasSelected = (_surfID == segmentId);
+        // 1) Rename folder
+        fs::rename(oldPath, newPath);
+
+        // 2) Update meta.json name field
+        const QString metaPath = QString::fromStdString((newPath / "meta.json").string());
+        QFile metaFile(metaPath);
+        QString newIdStr;
+        if (metaFile.open(QIODevice::ReadOnly)) {
+            const QByteArray content = metaFile.readAll();
+            metaFile.close();
+
+            QJsonParseError parseErr{};
+            QJsonDocument doc = QJsonDocument::fromJson(content, &parseErr);
+            if (parseErr.error == QJsonParseError::NoError && doc.isObject()) {
+                QJsonObject obj = doc.object();
+                obj["name"] = newName;
+                // Set UUID to the provided name
+                newIdStr = newName;
+                obj["uuid"] = newIdStr;
+                doc.setObject(obj);
+
+                if (metaFile.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+                    metaFile.write(doc.toJson(QJsonDocument::Indented));
+                    metaFile.close();
+                } else {
+                    // Non-fatal; folder is renamed but name remains old in metadata
+                    QMessageBox::warning(this, tr("Warning"), tr("Renamed folder, but failed to write updated meta.json."));
+                }
+            } else {
+                QMessageBox::warning(this, tr("Warning"), tr("Renamed folder, but meta.json is invalid JSON."));
+            }
+        } else {
+            QMessageBox::warning(this, tr("Warning"), tr("Renamed folder, but could not open meta.json for update."));
+        }
+
+        // 3) Refresh in-memory segmentation cache and update this one entry safely
+        if (fVpkg) {
+            fVpkg->refreshSegmentations();
+        }
+        // Remove stale UI/state for the old ID and re-add using the new UUID
+        RemoveSingleSegmentation(segmentId);
+        std::string newId = newIdStr.isEmpty() ? segmentId : newIdStr.toStdString();
+        AddSingleSegmentation(newId);
+
+        // Reselect the same segment id
+        if (treeWidgetSurfaces) {
+            if (auto* item = treeWidgetSurfaces->findItemForSurface(newId)) {
+                treeWidgetSurfaces->setCurrentItem(item);
+            }
+        }
+
+        statusBar()->showMessage(tr("Segment renamed to '%1' (uuid updated)").arg(newName), 3000);
+    } catch (const fs::filesystem_error& e) {
+        QMessageBox::critical(this, tr("Rename Failed"), tr("Failed to rename segment:\n%1").arg(QString::fromLocal8Bit(e.what())));
+    } catch (const std::exception& e) {
+        QMessageBox::critical(this, tr("Rename Failed"), tr("Failed to rename segment:\n%1").arg(QString::fromLocal8Bit(e.what())));
     }
 }
