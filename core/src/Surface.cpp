@@ -1310,8 +1310,7 @@ void generate_mask(QuadSurface* surf,
                             cv::Mat_<uint8_t>& img,
                             z5::Dataset* ds_high,
                             z5::Dataset* ds_low,
-                            ChunkCache* cache)
-{
+                            ChunkCache* cache) {
     cv::Mat_<cv::Vec3f> points = surf->rawPoints();
 
     // Choose resolution based on surface size
@@ -1353,6 +1352,7 @@ void generate_mask(QuadSurface* surf,
             }
         }
     }
+}
 
 QuadSurface* surface_diff(QuadSurface* a, QuadSurface* b, float tolerance) {
     cv::Mat_<cv::Vec3f>* diff_points = new cv::Mat_<cv::Vec3f>(a->rawPoints().clone());

@@ -5,7 +5,6 @@
 #include <iostream>
 
 namespace fs = std::filesystem;
-using namespace volcart;
 
 int main(int argc, char *argv[])
 {
@@ -56,7 +55,7 @@ int main(int argc, char *argv[])
 
     // If volume path provided, generate with image data
     if (!volume_path.empty()) {
-        Volume::Pointer volume;
+        std::shared_ptr<Volume> volume;
         ChunkCache* cache = nullptr;
 
         try {
