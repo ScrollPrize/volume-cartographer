@@ -12,19 +12,12 @@
 #include <QPointer>
 #include <opencv2/core.hpp>
 #include <memory>
+
+#include "CSurfaceCollection.hpp"
 #include "PathData.hpp"
+#include "vc/core/types/VolumePkg.hpp"
 #include "vc/core/util/VCCollection.hpp"
 
-namespace volcart {
-    class Volume;
-    class VolumePkg;
-}
-
-class ChunkCache;
-
-namespace ChaoVis {
-
-class CSurfaceCollection;
 
 class SeedingWidget : public QWidget {
     Q_OBJECT
@@ -33,8 +26,8 @@ public:
     explicit SeedingWidget(VCCollection* point_collection, CSurfaceCollection* surface_collection, QWidget* parent = nullptr);
     ~SeedingWidget();
     
-    void setVolumePkg(std::shared_ptr<volcart::VolumePkg> vpkg);
-    void setCurrentVolume(std::shared_ptr<volcart::Volume> volume);
+    void setVolumePkg(std::shared_ptr<VolumePkg> vpkg);
+    void setCurrentVolume(std::shared_ptr<Volume> volume);
     void setCache(ChunkCache* cache);
     
 signals:
@@ -48,7 +41,7 @@ public slots:
     void onCollectionRemoved(uint64_t collectionId);
     
 public slots:
-    void onVolumeChanged(std::shared_ptr<volcart::Volume> vol, const std::string& volumeId);
+    void onVolumeChanged(std::shared_ptr<Volume> vol, const std::string& volumeId);
     void updateCurrentZSlice(int z);
     void onMousePress(cv::Vec3f vol_point, cv::Vec3f normal, Qt::MouseButton button, Qt::KeyboardModifiers modifiers);
     void onMouseMove(cv::Vec3f vol_point, Qt::MouseButtons buttons, Qt::KeyboardModifiers modifiers);
@@ -84,6 +77,10 @@ private:
     void startDrawing(cv::Vec3f startPoint);
     void addPointToPath(cv::Vec3f point);
     void finalizePath();
+    // Label Wraps helpers
+    void finalizePathLabelWraps(bool shiftHeld);
+    void findPeaksAlongPathToCollection(const PathData& path, const std::string& collectionName);
+    void setLabelWrapsMode(bool active);
     QColor generatePathColor();
     void displayPaths();
     void updatePointsDisplay();
@@ -118,11 +115,12 @@ private:
     QPushButton* expandSeedsButton;
     QPushButton* resetPointsButton;
     QPushButton* cancelButton;
+    QPushButton* labelWrapsButton;
     QProgressBar* progressBar;
     
     // Data
-    std::shared_ptr<volcart::VolumePkg> fVpkg;
-    std::shared_ptr<volcart::Volume> currentVolume;
+    std::shared_ptr<VolumePkg> fVpkg;
+    std::shared_ptr<Volume> currentVolume;
     std::string currentVolumeId;
     ChunkCache* chunkCache;
     int currentZSlice;
@@ -136,10 +134,11 @@ private:
     bool isDrawing;
     PathData currentPath;
     int colorIndex;
+    bool labelWrapsMode = false; // special mode built on DrawMode
     
     // Process management
     QList<QPointer<QProcess>> runningProcesses;
     bool jobsRunning;
 };
 
-} // namespace ChaoVis
+

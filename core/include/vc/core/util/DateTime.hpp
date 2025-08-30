@@ -14,8 +14,7 @@
 #include <regex>
 #include <sstream>
 
-namespace volcart
-{
+
 /**
  * @brief Returns a string representation of the current date and time
  *
@@ -125,7 +124,7 @@ auto DurationFromString(const std::string& str) -> Duration
     return d;
 }
 
-}  // namespace volcart
+
 
 static inline std::string get_surface_time_str()
 {

@@ -3,7 +3,7 @@
 #include <QPointF>
 #include <cmath>
 
-namespace ChaoVis {
+
 
 PathData PathData::densify(float samplingInterval) const 
 {
@@ -89,4 +89,4 @@ float PathData::interpolateZ(float percent, float totalLength, const QPainterPat
     return points.back()[2];
 }
 
-} // namespace ChaoVis
+

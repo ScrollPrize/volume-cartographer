@@ -7,10 +7,21 @@
 #include <QComboBox>
 #include "ui_VCMain.h"
 
-#include "CommandLineToolRunner.hpp"
 #include "vc/core/util/VCCollection.hpp"
 
 #include <QShortcut>
+
+#include "CPointCollectionWidget.hpp"
+#include "CSurfaceCollection.hpp"
+#include "CVolumeViewer.hpp"
+#include "DrawingWidget.hpp"
+#include "OpChain.hpp"
+#include "OpsList.hpp"
+#include "OpsSettings.hpp"
+#include "SeedingWidget.hpp"
+#include "vc/core/types/Volume.hpp"
+#include "vc/core/types/VolumePkg.hpp"
+#include "vc/core/util/Surface.hpp"
 
 #define MAX_RECENT_VOLPKG 10
 
@@ -18,35 +29,9 @@
 static constexpr int VOLPKG_MIN_VERSION = 6;
 static constexpr int VOLPKG_SLICE_MIN_INDEX = 0;
 
-// Our own forward declarations
-class ChunkCache;
-class Surface;
-class QuadSurface;
-class SurfaceMeta;
-class OpChain;
 
-namespace volcart {
-    class Volume;
-    class VolumePkg;
-}
-
-// Qt related forward declaration
-class QMdiArea;
-class OpsList;
-class OpsSettings;
-class SurfaceTreeWidget;
-class SurfaceTreeWidgetItem;
-
-namespace ChaoVis
-{
-
-class CVolumeViewer;
-class CSurfaceCollection;
-class POI;
-class CPointCollectionWidget;
-class CSegmentationEditorWindow;
-class SeedingWidget;
-class DrawingWidget;
+//forward declaration to avoid circular inclusion as CommandLineToolRunner needs CWindow.hpp
+class CommandLineToolRunner;
 
 class CWindow : public QMainWindow
 {
@@ -59,7 +44,7 @@ public:
 
 signals:
     void sendLocChanged(int x, int y, int z);
-    void sendVolumeChanged(std::shared_ptr<volcart::Volume> vol, const std::string& volumeId);
+    void sendVolumeChanged(std::shared_ptr<Volume> vol, const std::string& volumeId);
     void sendSliceChanged(std::string,Surface*);
     void sendOpChainSelected(OpChain*);
     void sendSurfacesLoaded();
@@ -120,7 +105,7 @@ private:
     void setWidgetsEnabled(bool state);
 
     bool InitializeVolumePkg(const std::string& nVpkgPath);
-    void setDefaultWindowWidth(std::shared_ptr<volcart::Volume> volume);
+    void setDefaultWindowWidth(std::shared_ptr<Volume> volume);
 
     void OpenVolume(const QString& path);
     void CloseVolume(void);
@@ -139,7 +124,7 @@ private:
     static void audio_callback(void *user_data, uint8_t *raw_buffer, int bytes);
     void playPing();
 
-    void setVolume(std::shared_ptr<volcart::Volume> newvol);
+    void setVolume(std::shared_ptr<Volume> newvol);
 
 private slots:
     void Open(void);
@@ -155,6 +140,9 @@ private slots:
     void onEditMaskPressed();
     void onRefreshSurfaces();
     void onGenerateReviewReport();
+    void onDrawBBoxToggled(bool enabled);
+    void onSurfaceFromSelection();
+    void onSelectionClear();
     void onManualLocationChanged();
     void onZoomIn();
     void onZoomOut();
@@ -162,12 +150,12 @@ private slots:
 
 private:
     bool appInitComplete{false};
-    std::shared_ptr<volcart::VolumePkg> fVpkg;
+    std::shared_ptr<VolumePkg> fVpkg;
     Surface *_seg_surf;
     QString fVpkgPath;
     std::string fVpkgName;
 
-    std::shared_ptr<volcart::Volume> currentVolume;
+    std::shared_ptr<Volume> currentVolume;
     std::string currentVolumeId;
     int loc[3] = {0,0,0};
 
@@ -179,6 +167,7 @@ private:
     QMenu* fEditMenu;
     QMenu* fViewMenu;
     QMenu* fActionsMenu;
+    QMenu* fSelectionMenu;
     QMenu* fHelpMenu;
     QMenu* fRecentVolpkgMenu{};
 
@@ -192,6 +181,13 @@ private:
     QAction* fShowConsoleOutputAct;
     QAction* fReportingAct;
     QAction* fVoxelizePathsAct;
+    QAction* fDrawBBoxAct;
+    QAction* fSelectionSurfaceFromAct;
+    QAction* fSelectionClearAct;
+
+    // Selection dock
+    QDockWidget* _dockSelection = nullptr;
+    QPushButton* _btnSurfaceFromSelection = nullptr;
 
     QComboBox* volSelect;
     QCheckBox* chkFilterFocusPoints;
@@ -260,4 +256,3 @@ private:
 
 };  // class CWindow
 
-}  // namespace ChaoVis

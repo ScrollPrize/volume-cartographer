@@ -165,7 +165,7 @@ int main(int argc, char** argv) {
 
     cv::Mat_<cv::Vec3f> points = surface->rawPoints();
     
-    ChaoVis::VCCollection collection;
+    VCCollection collection;
 
     std::cout << "wtf "  << std::endl;
     for (int i = 0; i < num_collections; ++i) {
@@ -211,7 +211,7 @@ int main(int argc, char** argv) {
 
             int current_winding_int = round(w);
             if (current_winding_int != round(last_winding)) {
-                 ChaoVis::ColPoint pt = collection.addPoint(collection_name, at_int(points, loc));
+                 ColPoint pt = collection.addPoint(collection_name, at_int(points, loc));
                  pt.winding_annotation = w;
                  collection.updatePoint(pt);
                  last_winding = w;

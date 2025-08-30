@@ -2,15 +2,15 @@
 
 #include "vc/core/types/Exceptions.hpp"
 
-namespace fs = std::filesystem;
 
-using namespace volcart;
+
+
 
 // Read a json config from disk
-Metadata::Metadata(fs::path fileLocation) : path_{fileLocation}
+Metadata::Metadata(std::filesystem::path fileLocation) : path_{fileLocation}
 {
     // open the file
-    if (!fs::exists(fileLocation)) {
+    if (!std::filesystem::exists(fileLocation)) {
         auto msg = "could not find json file '" + fileLocation.string() + "'";
         throw IOException(msg);
     }
@@ -28,7 +28,7 @@ Metadata::Metadata(fs::path fileLocation) : path_{fileLocation}
 }
 
 // save the JSON file to disk
-void Metadata::save(const fs::path& path)
+void Metadata::save(const std::filesystem::path& path)
 {
     // open the file
     std::ofstream jsonFile(path.string(), std::ofstream::out);

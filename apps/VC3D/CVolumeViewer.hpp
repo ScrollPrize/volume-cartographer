@@ -1,5 +1,3 @@
-// CVolumeViewer.h
-// Chao Du 2015 April
 #pragma once
 
 #include <QtWidgets>
@@ -9,27 +7,11 @@
 #include "PathData.hpp"
 #include "vc/core/util/VCCollection.hpp"
 #include "COutlinedTextItem.hpp"
+#include "CSurfaceCollection.hpp"
+#include "CVolumeViewerView.hpp"
+#include "vc/core/types/Volume.hpp"
 
-class ChunkCache;
-class Surface;
-class SurfacePointer;
 
-class QGraphicsScene;
-
-namespace volcart {
-    class Volume;
-}
-
-namespace ChaoVis
-{
-
-class CVolumeViewerView;
-class CSurfaceCollection;
-class POI;
-class Intersection;
-class SeedingWidget;
-class VCCollection;
- 
 class CVolumeViewer : public QWidget
 {
     Q_OBJECT
@@ -86,11 +68,21 @@ public:
     float getCurrentScale() const { return _scale; }
     // Transform scene coordinates to volume coordinates
     cv::Vec3f sceneToVolume(const QPointF& scenePoint) const;
+
+    // BBox drawing mode for segmentation view
+    void setBBoxMode(bool enabled);
+    bool isBBoxMode() const { return _bboxMode; }
+    // Create a new QuadSurface with only points inside the given scene-rect
+    QuadSurface* makeBBoxFilteredSurfaceFromSceneRect(const QRectF& sceneRect);
+    // Current stored selections (scene-space rects with colors)
+    auto selections() const -> std::vector<std::pair<QRectF, QColor>>;
+    void clearSelections();
+    void updateSelectionGraphics();
     
     CVolumeViewerView* fGraphicsView;
 
 public slots:
-    void OnVolumeChanged(std::shared_ptr<volcart::Volume> vol);
+    void OnVolumeChanged(std::shared_ptr<Volume> vol);
     void onVolumeClicked(QPointF scene_loc,Qt::MouseButton buttons, Qt::KeyboardModifiers modifiers);
     void onPanRelease(Qt::MouseButton buttons, Qt::KeyboardModifiers modifiers);
     void onPanStart(Qt::MouseButton buttons, Qt::KeyboardModifiers modifiers);
@@ -131,6 +123,7 @@ signals:
     void sendCollectionSelected(uint64_t collectionId);
     void pointSelected(uint64_t pointId);
     void pointClicked(uint64_t pointId);
+    // (kept free for potential future signals)
 
 protected:
     void ScaleImage(double nFactor);
@@ -151,7 +144,7 @@ protected:
 
     QGraphicsPixmapItem* fBaseImageItem;
     
-    std::shared_ptr<volcart::Volume> volume = nullptr;
+    std::shared_ptr<Volume> volume = nullptr;
     Surface *_surf = nullptr;
     cv::Vec3f _ptr = cv::Vec3f(0,0,0);
     cv::Vec2f _vis_center = {0,0};
@@ -227,8 +220,14 @@ protected:
     int _downscale_override = 0;  // 0=auto, 1=2x, 2=4x, 3=8x, 4=16x, 5=32x
     QTimer* _overlayUpdateTimer;
 
+    // BBox tool state
+    bool _bboxMode = false;
+    QPointF _bboxStart;
+    QGraphicsRectItem* _bboxRectItem = nullptr;
+    struct Selection { QRectF surfRect; QColor color; QGraphicsRectItem* item; };
+    std::vector<Selection> _selections;
+
     bool _useFastInterpolation;
 
-};  // class CVolumeViewer
 
-}  // namespace ChaoVis
+};  // class CVolumeViewer

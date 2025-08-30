@@ -1,9 +1,8 @@
-// CSegmentationEditorWindow.cpp
 #include "CSegmentationEditorWindow.hpp"
 #include "CVolumeViewer.hpp"
 #include "CSurfaceCollection.hpp"
 
-namespace ChaoVis {
+
 
 CSegmentationEditorWindow::CSegmentationEditorWindow(CSurfaceCollection* surfCol, QWidget* parent)
     : QMainWindow(parent)
@@ -219,4 +218,4 @@ void CSegmentationEditorWindow::onReset()
     volumeViewer->renderIntersections();
 }
 
-} // namespace ChaoVis
+

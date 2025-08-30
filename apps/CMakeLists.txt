@@ -146,6 +146,15 @@ target_link_libraries(vc_create_segment_mask
 #     VC::slicing
 # )
 
+add_executable(vc_surface_diff src/vc_surface_diff.cpp)
+target_link_libraries(vc_surface_diff
+        z5
+        opencv_core
+        VC::slicing
+        VC::surface
+        Boost::program_options
+)
+
 # Install targets
 if(VC_INSTALL_APPS)
 install(
@@ -158,6 +167,7 @@ install(
         vc_seg_add_overlap
         vc_tifxyz2obj
         vc_obj2tifxyz
+        vc_obj2tifxyz_legacy
         vc_tifxyz_winding
         vc_tifxyz_gengt
         vc_fill_quadmesh

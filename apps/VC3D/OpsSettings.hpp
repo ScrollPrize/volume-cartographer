@@ -1,17 +1,11 @@
-#ifndef OPSSETTINGS_HPP
-#define OPSSETTINGS_HPP
+#pragma once
 
 #include <QWidget>
+#include <ui_OpsSettings.h>
 
-class Surface;
-class QGroupBox;
-class QCheckBox;
-class OpChain;
+#include "OpChain.hpp"
+#include "vc/core/util/Surface.hpp"
 
-namespace Ui
-{
-class OpsSettings;
-}
 
 class OpsSettings : public QWidget
 {
@@ -38,5 +32,3 @@ private:
     
     QWidget *_form = nullptr;
 };
-
-#endif  // OPSSETTINGS_HPP

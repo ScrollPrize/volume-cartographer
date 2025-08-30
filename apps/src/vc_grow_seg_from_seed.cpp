@@ -12,7 +12,7 @@
 #include <omp.h>
 
 using shape = z5::types::ShapeType;
-namespace fs = std::filesystem;
+
 
 using json = nlohmann::json;
 
@@ -40,10 +40,10 @@ float get_val(I &interp, cv::Vec3d l) {
     return v;
 }
 
-bool check_existing_segments(const fs::path& tgt_dir, const cv::Vec3d& origin, 
+bool check_existing_segments(const std::filesystem::path& tgt_dir, const cv::Vec3d& origin,
                            const std::string& name_prefix, int search_effort) {
-    for (const auto& entry : fs::directory_iterator(tgt_dir)) {
-        if (!fs::is_directory(entry)) {
+    for (const auto& entry : std::filesystem::directory_iterator(tgt_dir)) {
+        if (!std::filesystem::is_directory(entry)) {
             continue;
         }
 
@@ -52,8 +52,8 @@ bool check_existing_segments(const fs::path& tgt_dir, const cv::Vec3d& origin,
             continue;
         }
 
-        fs::path meta_fn = entry.path() / "meta.json";
-        if (!fs::exists(meta_fn)) {
+        std::filesystem::path meta_fn = entry.path() / "meta.json";
+        if (!std::filesystem::exists(meta_fn)) {
             continue;
         }
 
@@ -81,8 +81,8 @@ int main(int argc, char *argv[])
         return EXIT_SUCCESS;
     }
 
-    fs::path vol_path = argv[1];
-    fs::path tgt_dir = argv[2];
+    std::filesystem::path vol_path = argv[1];
+    std::filesystem::path tgt_dir = argv[2];
     const char *params_path = argv[3];
 
     std::ifstream params_f(params_path);
@@ -94,6 +94,22 @@ int main(int argc, char *argv[])
 
     std::cout << "zarr dataset size for scale group 0 " << ds->shape() << std::endl;
     std::cout << "chunk shape shape " << ds->chunking().blockShape() << std::endl;
+
+    std::string const fiber_dirs_path = params.value("fiber_dirs_zarr", "");
+    std::vector<std::unique_ptr<z5::Dataset>> h_fiber_dirs_xyz_dss;
+    float fiber_dirs_scale = 1.f;
+    if (!fiber_dirs_path.empty()) {
+        z5::filesystem::handle::Group fiber_dirs_group(fiber_dirs_path, z5::FileMode::FileMode::r);
+        z5::filesystem::handle::Group h_fiber_dirs_group(fiber_dirs_group, "horizontal");
+        int const fiber_dirs_ome_level = params.value("fiber_dirs_scale", 2);
+        fiber_dirs_scale = std::pow(2, -fiber_dirs_ome_level);
+        for (auto dim: std::string("xyz")) {
+            z5::filesystem::handle::Group dim_group(h_fiber_dirs_group, std::string(&dim, 1));
+            z5::filesystem::handle::Dataset h_fiber_dirs_ds_handle(dim_group, std::to_string(fiber_dirs_ome_level), ".");
+            h_fiber_dirs_xyz_dss.push_back(z5::filesystem::openDataset(h_fiber_dirs_ds_handle));
+        }
+        std::cout << "fiber direction dataset shape " << h_fiber_dirs_xyz_dss.front()->shape() << std::endl;
+    }
 
     ChunkCache chunk_cache(params.value("cache_size", 1e9));
 
@@ -143,16 +159,16 @@ int main(int argc, char *argv[])
             //if both still have less than N then grow a seg from the seed
             //after growing, check locations on the new seg agains all existing segs
 
-        for (const auto& entry : fs::directory_iterator(tgt_dir))
-            if (fs::is_directory(entry)) {
+        for (const auto& entry : std::filesystem::directory_iterator(tgt_dir))
+            if (std::filesystem::is_directory(entry)) {
                 std::string name = entry.path().filename();
                 if (name.compare(0, name_prefix.size(), name_prefix))
                     continue;
 
                 std::cout << entry.path() << entry.path().filename() << std::endl;
 
-                fs::path meta_fn = entry.path() / "meta.json";
-                if (!fs::exists(meta_fn))
+                std::filesystem::path meta_fn = entry.path() / "meta.json";
+                if (!std::filesystem::exists(meta_fn))
                     continue;
 
                 std::ifstream meta_f(meta_fn);
@@ -309,7 +325,7 @@ int main(int argc, char *argv[])
     if (thread_limit)
         omp_set_num_threads(thread_limit);
 
-    QuadSurface *surf = space_tracing_quad_phys(ds.get(), 1.0, &chunk_cache, origin, generations, step_size, cache_root, voxelsize);
+    QuadSurface *surf = space_tracing_quad_phys(ds.get(), 1.0, &chunk_cache, origin, generations, step_size, cache_root, voxelsize, h_fiber_dirs_xyz_dss, fiber_dirs_scale);
 
     double area_cm2 = (*surf->meta)["area_cm2"].get<double>();
     if (area_cm2 < min_area_cm)
@@ -322,7 +338,7 @@ int main(int argc, char *argv[])
     if (mode == "expansion")
         (*surf->meta)["seed_overlap"] = count_overlap;
     std::string uuid = name_prefix + time_str();
-    fs::path seg_dir = tgt_dir / uuid;
+    std::filesystem::path seg_dir = tgt_dir / uuid;
     std::cout << "saving " << seg_dir << std::endl;
     surf->save(seg_dir, uuid);
 
@@ -355,8 +371,8 @@ int main(int argc, char *argv[])
             }
 
         // Check for additional surfaces in target directory
-        for (const auto& entry : fs::directory_iterator(tgt_dir))
-            if (fs::is_directory(entry) && !surfs.count(entry.path().filename()))
+        for (const auto& entry : std::filesystem::directory_iterator(tgt_dir))
+            if (std::filesystem::is_directory(entry) && !surfs.count(entry.path().filename()))
             {
                 std::string name = entry.path().filename();
                 if (name.compare(0, name_prefix.size(), name_prefix))
@@ -365,8 +381,8 @@ int main(int argc, char *argv[])
                 if (name == current.name())
                     continue;
 
-                fs::path meta_fn = entry.path() / "meta.json";
-                if (!fs::exists(meta_fn))
+                std::filesystem::path meta_fn = entry.path() / "meta.json";
+                if (!std::filesystem::exists(meta_fn))
                     continue;
 
                 std::ifstream meta_f(meta_fn);

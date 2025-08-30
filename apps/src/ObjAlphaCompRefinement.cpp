@@ -16,17 +16,10 @@
 
 #include "vc/core/util/Slicing.hpp"
 #include "vc/core/util/Surface.hpp"
-#include "vc/core/io/PointSetIO.hpp"
 #include "vc/core/util/StreamOperators.hpp"
 
 
 #include <filesystem>
-
-using shape = z5::types::ShapeType;
-using namespace xt::placeholders;
-namespace fs = std::filesystem; 
-
-using json = nlohmann::json;
 
 
 
@@ -98,7 +91,7 @@ float alphacomp_offset(DSReader &reader, cv::Vec3f point, cv::Vec3f normal, floa
     return integ_z;
 }
 
-int process_obj(const std::string &src, const std::string &tgt, DSReader &reader, const json &params)
+int process_obj(const std::string &src, const std::string &tgt, DSReader &reader, const nlohmann::json &params)
 {
     std::ifstream obj(src);
     std::ofstream out(tgt);
@@ -208,7 +201,7 @@ int main(int argc, char *argv[])
     const char *params_path = argv[4];
 
     std::ifstream params_f(params_path);
-    json params = json::parse(params_f);
+    nlohmann::json params = nlohmann::json::parse(params_f);
   
     z5::filesystem::handle::Group group(vol_path, z5::FileMode::FileMode::r);
     z5::filesystem::handle::Dataset ds_handle(group, "1", "/");

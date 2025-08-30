@@ -1,5 +1,3 @@
-// CVolumeViewer.cpp
-// Chao Du 2015 April
 #include "CVolumeViewer.hpp"
 #include "UDataManipulateUtils.hpp"
 
@@ -19,7 +17,6 @@
 
 #include "OpChain.hpp"
 
-using namespace ChaoVis;
 using qga = QGuiApplication;
 
 #define BGND_RECT_MARGIN 8
@@ -35,6 +32,85 @@ using qga = QGuiApplication;
 
 constexpr float MIN_ZOOM = 0.03125f;
 constexpr float MAX_ZOOM = 4.0f;
+
+#include <limits>
+#include <algorithm>
+
+// Helper: remove spatial outliers based on robust neighbor-distance stats
+static cv::Mat_<cv::Vec3f> clean_surface_outliers(const cv::Mat_<cv::Vec3f>& points, float distance_threshold = 5.0f)
+{
+    cv::Mat_<cv::Vec3f> cleaned = points.clone();
+
+    std::vector<float> all_neighbor_dists;
+    all_neighbor_dists.reserve(points.rows * points.cols);
+
+    // First pass: gather neighbor distances
+    for (int j = 0; j < points.rows; ++j) {
+        for (int i = 0; i < points.cols; ++i) {
+            if (points(j, i)[0] == -1) continue;
+            const cv::Vec3f center = points(j, i);
+            for (int dy = -1; dy <= 1; ++dy) {
+                for (int dx = -1; dx <= 1; ++dx) {
+                    if (dx == 0 && dy == 0) continue;
+                    const int ny = j + dy;
+                    const int nx = i + dx;
+                    if (ny >= 0 && ny < points.rows && nx >= 0 && nx < points.cols) {
+                        if (points(ny, nx)[0] != -1) {
+                            const cv::Vec3f neighbor = points(ny, nx);
+                            float dist = cv::norm(center - neighbor);
+                            if (std::isfinite(dist) && dist > 0) {
+                                all_neighbor_dists.push_back(dist);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    float median_dist = 0.0f;
+    float mad = 0.0f;
+    if (!all_neighbor_dists.empty()) {
+        std::sort(all_neighbor_dists.begin(), all_neighbor_dists.end());
+        median_dist = all_neighbor_dists[all_neighbor_dists.size() / 2];
+        std::vector<float> abs_devs;
+        abs_devs.reserve(all_neighbor_dists.size());
+        for (float d : all_neighbor_dists) abs_devs.push_back(std::abs(d - median_dist));
+        std::sort(abs_devs.begin(), abs_devs.end());
+        mad = abs_devs[abs_devs.size() / 2];
+    }
+    const float threshold = median_dist + distance_threshold * (mad / 0.6745f);
+
+    // Second pass: invalidate isolated/far points
+    for (int j = 0; j < points.rows; ++j) {
+        for (int i = 0; i < points.cols; ++i) {
+            if (points(j, i)[0] == -1) continue;
+            const cv::Vec3f center = points(j, i);
+            float min_neighbor = std::numeric_limits<float>::infinity();
+            int neighbor_count = 0;
+            for (int dy = -1; dy <= 1; ++dy) {
+                for (int dx = -1; dx <= 1; ++dx) {
+                    if (dx == 0 && dy == 0) continue;
+                    const int ny = j + dy;
+                    const int nx = i + dx;
+                    if (ny >= 0 && ny < points.rows && nx >= 0 && nx < points.cols) {
+                        if (points(ny, nx)[0] != -1) {
+                            float dist = cv::norm(center - points(ny, nx));
+                            if (std::isfinite(dist)) {
+                                min_neighbor = std::min(min_neighbor, dist);
+                                neighbor_count++;
+                            }
+                        }
+                    }
+                }
+            }
+            if (neighbor_count == 0 || (min_neighbor > threshold && threshold > 0)) {
+                cleaned(j, i) = cv::Vec3f(-1.f, -1.f, -1.f);
+            }
+        }
+    }
+    return cleaned;
+}
 
 
 CVolumeViewer::CVolumeViewer(CSurfaceCollection *col, QWidget* parent)
@@ -303,6 +379,7 @@ void CVolumeViewer::onZoom(int steps, QPointF scene_loc, Qt::KeyboardModifiers m
 
         }
         renderVisible();
+        updateSelectionGraphics();
     }
 
     _lbl->setText(QString("%1x %2").arg(_scale).arg(_z_off));
@@ -311,7 +388,7 @@ void CVolumeViewer::onZoom(int steps, QPointF scene_loc, Qt::KeyboardModifiers m
     _overlayUpdateTimer->start();
 }
 
-void CVolumeViewer::OnVolumeChanged(volcart::Volume::Pointer volume_)
+void CVolumeViewer::OnVolumeChanged(std::shared_ptr<Volume> volume_)
 {
     volume = volume_;
     
@@ -1410,6 +1487,29 @@ void CVolumeViewer::onPathsChanged(const QList<PathData>& paths)
 
 void CVolumeViewer::onMousePress(QPointF scene_loc, Qt::MouseButton button, Qt::KeyboardModifiers modifiers)
 {
+    // BBox drawing consumes mouse events on segmentation view
+    if (_bboxMode && _surf_name == "segmentation") {
+        if (button == Qt::LeftButton) {
+            // Convert to surface parameter coords (unscaled)
+            cv::Vec3f p, n;
+            if (!scene2vol(p, n, _surf, _surf_name, _surf_col, scene_loc, _vis_center, _scale)) return;
+            auto* quad = dynamic_cast<QuadSurface*>(_surf);
+            if (!quad) return;
+            auto ptr = quad->pointer();
+            quad->pointTo(ptr, p, 2.0f, 100);
+            cv::Vec3f sp = quad->loc(ptr); // unscaled surface coords
+            _bboxStart = QPointF(sp[0], sp[1]);
+            if (_bboxRectItem) {
+                fScene->removeItem(_bboxRectItem);
+                delete _bboxRectItem;
+                _bboxRectItem = nullptr;
+            }
+            QRectF r(QPointF(_bboxStart.x()*_scale, _bboxStart.y()*_scale), QPointF(_bboxStart.x()*_scale, _bboxStart.y()*_scale));
+            _bboxRectItem = fScene->addRect(r, QPen(QColor(255, 220, 0), 2, Qt::DashLine));
+            _bboxRectItem->setZValue(100);
+        }
+        return; // consume in bbox mode
+    }
     if (!_point_collection || !_surf) return;
 
     if (button == Qt::LeftButton) {
@@ -1433,6 +1533,22 @@ void CVolumeViewer::onMousePress(QPointF scene_loc, Qt::MouseButton button, Qt::
 
 void CVolumeViewer::onMouseMove(QPointF scene_loc, Qt::MouseButtons buttons, Qt::KeyboardModifiers modifiers)
 {
+    // BBox drawing consumes mouse events on segmentation view
+    if (_bboxMode && _surf_name == "segmentation") {
+        if (_bboxRectItem && (buttons & Qt::LeftButton)) {
+            cv::Vec3f p, n;
+            if (!scene2vol(p, n, _surf, _surf_name, _surf_col, scene_loc, _vis_center, _scale)) return;
+            auto* quad = dynamic_cast<QuadSurface*>(_surf);
+            if (!quad) return;
+            auto ptr = quad->pointer();
+            quad->pointTo(ptr, p, 2.0f, 100);
+            cv::Vec3f sp = quad->loc(ptr); // unscaled
+            QPointF cur(sp[0], sp[1]);
+            QRectF r(QPointF(_bboxStart.x()*_scale, _bboxStart.y()*_scale), QPointF(cur.x()*_scale, cur.y()*_scale));
+            _bboxRectItem->setRect(r.normalized());
+        }
+        return; // consume in bbox mode
+    }
     onCursorMove(scene_loc); // Keep highlighting up to date
 
     if ((buttons & Qt::LeftButton) && _dragged_point_id != 0) {
@@ -1459,6 +1575,23 @@ void CVolumeViewer::onMouseMove(QPointF scene_loc, Qt::MouseButtons buttons, Qt:
 
 void CVolumeViewer::onMouseRelease(QPointF scene_loc, Qt::MouseButton button, Qt::KeyboardModifiers modifiers)
 {
+    // BBox drawing consumes mouse events on segmentation view
+    if (_bboxMode && _surf_name == "segmentation") {
+        if (button == Qt::LeftButton && _bboxRectItem) {
+            // Determine final rect in surface parameter coords
+            QRectF rScene = _bboxRectItem->rect().normalized();
+            QRectF rSurf(QPointF(rScene.left()/_scale, rScene.top()/_scale), QPointF(rScene.right()/_scale, rScene.bottom()/_scale));
+            // Promote this rectangle into a persistent selection with unique color (stored unscaled)
+            // Generate a distinct color using HSV cycling
+            int idx = static_cast<int>(_selections.size());
+            QColor col = QColor::fromHsv((idx * 53) % 360, 200, 255);
+            // Create persistent item with current scale
+            _bboxRectItem->setPen(QPen(col, 2, Qt::DashLine));
+            _selections.push_back({rSurf, col, _bboxRectItem});
+            _bboxRectItem = nullptr; // end active drag
+        }
+        return; // consume in bbox mode
+    }
     if (button == Qt::LeftButton && _dragged_point_id != 0) {
         _dragged_point_id = 0;
         // Re-run highlight logic
@@ -1474,6 +1607,132 @@ void CVolumeViewer::onMouseRelease(QPointF scene_loc, Qt::MouseButton button, Qt
             emit sendMouseReleaseVolume(p, button, modifiers);
         else
             std::cout << "FIXME: onMouseRelease()" << std::endl;
+    }
+}
+
+void CVolumeViewer::setBBoxMode(bool enabled)
+{
+    _bboxMode = enabled;
+    if (!enabled && _bboxRectItem) {
+        fScene->removeItem(_bboxRectItem);
+        delete _bboxRectItem;
+        _bboxRectItem = nullptr;
+    }
+}
+
+QuadSurface* CVolumeViewer::makeBBoxFilteredSurfaceFromSceneRect(const QRectF& sceneRect)
+{
+    if (_surf_name != "segmentation") return nullptr;
+    auto* quad = dynamic_cast<QuadSurface*>(_surf);
+    if (!quad) return nullptr;
+
+    const cv::Mat_<cv::Vec3f> src = quad->rawPoints();
+    const int H = src.rows;
+    const int W = src.cols;
+
+    // Convert scene-space rect to surface-parameter rect (nominal units)
+    QRectF rSurf(QPointF(sceneRect.left()/_scale,  sceneRect.top()/_scale),
+                 QPointF(sceneRect.right()/_scale, sceneRect.bottom()/_scale));
+    rSurf = rSurf.normalized();
+
+    // Compute tight index bounds from surface-parameter rect
+    const double cx = W * 0.5; // cols/2
+    const double cy = H * 0.5; // rows/2
+    const cv::Vec2f sc = quad->scale();
+    int i0 = std::max(0,               (int)std::floor(cx + rSurf.left()   * sc[0]));
+    int i1 = std::min(W - 1,           (int)std::ceil (cx + rSurf.right()  * sc[0]));
+    int j0 = std::max(0,               (int)std::floor(cy + rSurf.top()    * sc[1]));
+    int j1 = std::min(H - 1,           (int)std::ceil (cy + rSurf.bottom() * sc[1]));
+    if (i0 > i1 || j0 > j1) return nullptr;
+
+    const int outW = (i1 - i0 + 1);
+    const int outH = (j1 - j0 + 1);
+    cv::Mat_<cv::Vec3f> cropped(outH, outW, cv::Vec3f(-1.f, -1.f, -1.f));
+
+    // Keep only points whose parameter coords fall inside rSurf (cheap, linear mapping)
+    for (int j = j0; j <= j1; ++j) {
+        for (int i = i0; i <= i1; ++i) {
+            const cv::Vec3f& p = src(j, i);
+            if (p[0] == -1.0f && p[1] == -1.0f && p[2] == -1.0f) continue;
+            const double u = (i - cx) / sc[0];
+            const double v = (j - cy) / sc[1];
+            if (u >= rSurf.left() && u <= rSurf.right() && v >= rSurf.top() && v <= rSurf.bottom()) {
+                cropped(j - j0, i - i0) = p;
+            }
+        }
+    }
+
+    // Remove spatial outliers, then trim to minimal grid again
+    cv::Mat_<cv::Vec3f> cleaned = clean_surface_outliers(cropped);
+
+    // Optional heuristic: tighten edges by requiring a minimum number of valid
+    // points per border row/column to consider it part of the crop.
+    auto countValidInCol = [&](int c) {
+        int cnt = 0; for (int r = 0; r < cleaned.rows; ++r) if (cleaned(r,c)[0] != -1) ++cnt; return cnt; };
+    auto countValidInRow = [&](int r) {
+        int cnt = 0; for (int c = 0; c < cleaned.cols; ++c) if (cleaned(r,c)[0] != -1) ++cnt; return cnt; };
+    int minValidCol = std::max(1, std::min(3, cleaned.rows));
+    int minValidRow = std::max(1, std::min(3, cleaned.cols));
+
+    int left = 0, right = cleaned.cols - 1, top = 0, bottom = cleaned.rows - 1;
+    while (left <= right && countValidInCol(left) < minValidCol) ++left;
+    while (right >= left && countValidInCol(right) < minValidCol) --right;
+    while (top <= bottom && countValidInRow(top) < minValidRow) ++top;
+    while (bottom >= top && countValidInRow(bottom) < minValidRow) --bottom;
+
+    // Fallback to bounding any valid cell if heuristic removed everything
+    if (left > right || top > bottom) {
+        left = cleaned.cols; right = -1; top = cleaned.rows; bottom = -1;
+        for (int j = 0; j < cleaned.rows; ++j)
+            for (int i = 0; i < cleaned.cols; ++i)
+                if (cleaned(j,i)[0] != -1) {
+                    left = std::min(left, i); right = std::max(right, i);
+                    top  = std::min(top,  j); bottom= std::max(bottom,j);
+                }
+        if (right < 0 || bottom < 0) return nullptr; // all removed
+    }
+
+    const int fW = (right - left + 1);
+    const int fH = (bottom - top + 1);
+    cv::Mat_<cv::Vec3f> finalPts(fH, fW, cv::Vec3f(-1.f, -1.f, -1.f));
+    for (int j = top; j <= bottom; ++j)
+        for (int i = left; i <= right; ++i)
+            finalPts(j - top, i - left) = cleaned(j, i);
+
+    auto* out = new QuadSurface(finalPts, quad->_scale);
+    return out;
+}
+
+auto CVolumeViewer::selections() const -> std::vector<std::pair<QRectF, QColor>>
+{
+    std::vector<std::pair<QRectF, QColor>> out;
+    out.reserve(_selections.size());
+    for (const auto& s : _selections) {
+        QRectF sceneRect(QPointF(s.surfRect.left()*_scale,  s.surfRect.top()*_scale),
+                         QPointF(s.surfRect.right()*_scale, s.surfRect.bottom()*_scale));
+        out.emplace_back(sceneRect.normalized(), s.color);
+    }
+    return out;
+}
+
+void CVolumeViewer::clearSelections()
+{
+    for (auto& s : _selections) {
+        if (s.item) {
+            fScene->removeItem(s.item);
+            delete s.item;
+        }
+    }
+    _selections.clear();
+}
+
+void CVolumeViewer::updateSelectionGraphics()
+{
+    for (auto& s : _selections) {
+        if (!s.item) continue;
+        QRectF sceneRect(QPointF(s.surfRect.left()*_scale,  s.surfRect.top()*_scale),
+                         QPointF(s.surfRect.right()*_scale, s.surfRect.bottom()*_scale));
+        s.item->setRect(sceneRect.normalized());
     }
 }
 

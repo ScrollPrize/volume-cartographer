@@ -1,5 +1,3 @@
-// CWindow.cpp
-// Chao Du 2014 Dec
 #include "CWindow.hpp"
 
 #include <QKeySequence>
@@ -22,6 +20,7 @@
 #include <QComboBox>
 #include <QFutureWatcher>
 #include <QRegularExpressionValidator>
+#include <QDockWidget>
 
 #include <atomic>
 #include <omp.h>
@@ -40,22 +39,22 @@
 #include "SurfaceTreeWidget.hpp"
 #include "SeedingWidget.hpp"
 #include "DrawingWidget.hpp"
+#include "CommandLineToolRunner.hpp"
 
 #include "vc/core/types/Exceptions.hpp"
 #include "vc/core/util/Logging.hpp"
 #include "vc/core/types/Volume.hpp"
 #include "vc/core/types/VolumePkg.hpp"
-
 #include "vc/core/util/Surface.hpp"
 #include "vc/core/util/Slicing.hpp"
 #include "vc/core/util/SurfaceVoxelizer.hpp"
 
 
 
-namespace vc = volcart;
-using namespace ChaoVis;
+
+
 using qga = QGuiApplication;
-namespace fs = std::filesystem;
+
 
 // Constructor
 CWindow::CWindow() :
@@ -248,7 +247,7 @@ CVolumeViewer *CWindow::newConnectedCVolumeViewer(std::string surfaceName, QStri
     return volView;
 }
 
-void CWindow::setVolume(std::shared_ptr<volcart::Volume> newvol)
+void CWindow::setVolume(std::shared_ptr<Volume> newvol)
 {
     bool keep_poi = false;
     if (currentVolume && currentVolume->sliceWidth() == newvol->sliceWidth() && currentVolume->sliceHeight() == newvol->sliceHeight() && currentVolume->numSlices() == newvol->numSlices()) {
@@ -332,7 +331,7 @@ void CWindow::CreateWidgets(void)
     ui.dockWidgetDrawing->setWidget(_drawingWidget);
 
     connect(this, &CWindow::sendVolumeChanged, _drawingWidget, 
-            static_cast<void (DrawingWidget::*)(std::shared_ptr<volcart::Volume>, const std::string&)>(&DrawingWidget::onVolumeChanged));
+            static_cast<void (DrawingWidget::*)(std::shared_ptr<Volume>, const std::string&)>(&DrawingWidget::onVolumeChanged));
     connect(_drawingWidget, &DrawingWidget::sendStatusMessageAvailable, this, &CWindow::onShowStatusMessage);
     connect(this, &CWindow::sendSurfacesLoaded, _drawingWidget, &DrawingWidget::onSurfacesLoaded);
 
@@ -343,7 +342,7 @@ void CWindow::CreateWidgets(void)
     ui.dockWidgetDistanceTransform->setWidget(_seedingWidget);
     
     connect(this, &CWindow::sendVolumeChanged, _seedingWidget, 
-            static_cast<void (SeedingWidget::*)(std::shared_ptr<volcart::Volume>, const std::string&)>(&SeedingWidget::onVolumeChanged));
+            static_cast<void (SeedingWidget::*)(std::shared_ptr<Volume>, const std::string&)>(&SeedingWidget::onVolumeChanged));
     connect(_seedingWidget, &SeedingWidget::sendStatusMessageAvailable, this, &CWindow::onShowStatusMessage);
     connect(this, &CWindow::sendSurfacesLoaded, _seedingWidget, &SeedingWidget::onSurfacesLoaded);
     
@@ -368,6 +367,8 @@ void CWindow::CreateWidgets(void)
                 _drawingWidget, &DrawingWidget::onMouseRelease);
         connect(viewer, &CVolumeViewer::sendZSliceChanged,
                 _drawingWidget, &DrawingWidget::updateCurrentZSlice);
+
+        // Selection is stored in the viewer; actions are triggered from Selection dock
         
         // Connect drawing mode signal to update cursor
         connect(_drawingWidget, &DrawingWidget::sendDrawingModeActive,
@@ -395,6 +396,8 @@ void CWindow::CreateWidgets(void)
     _point_collection_widget = new CPointCollectionWidget(_point_collection, this);
     _point_collection_widget->setObjectName("pointCollectionDock");
     addDockWidget(Qt::RightDockWidgetArea, _point_collection_widget);
+
+    // Selection dock (removed per request; selection actions remain in the menu)
 
     for (auto& viewer : _viewers) {
         connect(_point_collection_widget, &CPointCollectionWidget::collectionSelected, viewer, &CVolumeViewer::onCollectionSelected);
@@ -476,7 +479,7 @@ void CWindow::CreateWidgets(void)
     volSelect = ui.volSelect;
     connect(
         volSelect, &QComboBox::currentIndexChanged, [this](const int& index) {
-            vc::Volume::Pointer newVolume;
+            std::shared_ptr<Volume> newVolume;
             try {
                 newVolume = fVpkg->volume(volSelect->currentData().toString().toStdString());
             } catch (const std::out_of_range& e) {
@@ -683,6 +686,81 @@ void CWindow::CreateWidgets(void)
 
 }
 
+void CWindow::onDrawBBoxToggled(bool enabled)
+{
+    // Toggle bbox mode on the segmentation viewer
+    for (auto* viewer : _viewers) {
+        if (viewer->surfName() == "segmentation") {
+            viewer->setBBoxMode(enabled);
+            statusBar()->showMessage(enabled ? tr("BBox mode active: drag on Surface view")
+                                             : tr("BBox mode off"), 3000);
+            break;
+        }
+    }
+}
+
+void CWindow::onSurfaceFromSelection()
+{
+    // Use the segmentation viewer's stored selections to create surfaces
+    CVolumeViewer* segViewer = nullptr;
+    for (auto* v : _viewers) if (v->surfName() == "segmentation") { segViewer = v; break; }
+    if (!segViewer) { statusBar()->showMessage(tr("No Surface viewer found"), 3000); return; }
+
+    auto sels = segViewer->selections();
+    if (sels.empty()) {
+        statusBar()->showMessage(tr("No selections to convert"), 3000);
+        return;
+    }
+
+    if (_surfID.empty() || !_vol_qsurfs.count(_surfID)) {
+        statusBar()->showMessage(tr("Select a segmentation first"), 3000);
+        return;
+    }
+
+
+    std::filesystem::path baseSegPath = _vol_qsurfs[_surfID]->path; // .../paths/<uuid>
+    std::filesystem::path parentDir = baseSegPath.parent_path();
+
+    int idx = 1;
+    int created = 0;
+    QString ts = QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss");
+    for (const auto& pr : sels) {
+        const QRectF& rect = pr.first;
+        std::unique_ptr<QuadSurface> filtered(segViewer->makeBBoxFilteredSurfaceFromSceneRect(rect));
+        if (!filtered) continue;
+        std::string newId = _surfID + std::string("_sel_") + ts.toStdString() + std::string("_") + std::to_string(idx++);
+        std::filesystem::path outDir = parentDir / newId;
+        try {
+            filtered->save(outDir.string(), newId);
+            created++;
+        } catch (const std::exception& e) {
+            statusBar()->showMessage(tr("Failed to save selection: ") + e.what(), 5000);
+        }
+    }
+
+    if (created > 0) {
+        try {
+            fVpkg->refreshSegmentations();
+            LoadSurfacesIncremental();
+            statusBar()->showMessage(tr("Created ") + QString::number(created) + tr(" surface(s) from selection"), 5000);
+        } catch (...) {
+            statusBar()->showMessage(tr("Created surfaces but failed to refresh"), 5000);
+        }
+    } else {
+        statusBar()->showMessage(tr("No surfaces created from selection"), 3000);
+    }
+}
+
+void CWindow::onSelectionClear()
+{
+    // Clear all stored selections on the segmentation (Surface) viewer
+    CVolumeViewer* segViewer = nullptr;
+    for (auto* v : _viewers) if (v->surfName() == "segmentation") { segViewer = v; break; }
+    if (!segViewer) { statusBar()->showMessage(tr("No Surface viewer found"), 3000); return; }
+    segViewer->clearSelections();
+    statusBar()->showMessage(tr("Selections cleared"), 2000);
+}
+
 // Create menus
 void CWindow::CreateMenus(void)
 {
@@ -727,6 +805,11 @@ void CWindow::CreateMenus(void)
 
     fActionsMenu = new QMenu(tr("&Actions"), this);
     fActionsMenu->addAction(fVoxelizePathsAct);
+    fActionsMenu->addAction(fDrawBBoxAct);
+
+    fSelectionMenu = new QMenu(tr("&Selection"), this);
+    fSelectionMenu->addAction(fSelectionSurfaceFromAct);
+    fSelectionMenu->addAction(fSelectionClearAct);
 
     fHelpMenu = new QMenu(tr("&Help"), this);
     fHelpMenu->addAction(fKeybinds);
@@ -738,6 +821,7 @@ void CWindow::CreateMenus(void)
     menuBar()->addMenu(fEditMenu);
     menuBar()->addMenu(fViewMenu);
     menuBar()->addMenu(fActionsMenu);
+    menuBar()->addMenu(fSelectionMenu);
     menuBar()->addMenu(fHelpMenu);
 }
 
@@ -784,6 +868,16 @@ void CWindow::CreateActions(void)
     
     fVoxelizePathsAct = new QAction(tr("&Voxelize Paths..."), this);
     connect(fVoxelizePathsAct, &QAction::triggered, this, &CWindow::onVoxelizePaths);
+
+    fDrawBBoxAct = new QAction(tr("Draw BBox"), this);
+    fDrawBBoxAct->setCheckable(true);
+    connect(fDrawBBoxAct, &QAction::toggled, this, &CWindow::onDrawBBoxToggled);
+
+    // Selection menu actions
+    fSelectionSurfaceFromAct = new QAction(tr("Surface from Selection"), this);
+    connect(fSelectionSurfaceFromAct, &QAction::triggered, this, &CWindow::onSurfaceFromSelection);
+    fSelectionClearAct = new QAction(tr("Clear"), this);
+    connect(fSelectionClearAct, &QAction::triggered, this, &CWindow::onSelectionClear);
 }
 
 void CWindow::UpdateRecentVolpkgActions()
@@ -877,13 +971,13 @@ auto CWindow::InitializeVolumePkg(const std::string& nVpkgPath) -> bool
     fVpkg = nullptr;
 
     try {
-        fVpkg = vc::VolumePkg::New(nVpkgPath);
+        fVpkg = VolumePkg::New(nVpkgPath);
     } catch (const std::exception& e) {
-        vc::Logger()->error("Failed to initialize volpkg: {}", e.what());
+        Logger()->error("Failed to initialize volpkg: {}", e.what());
     }
 
     if (fVpkg == nullptr) {
-        vc::Logger()->error("Cannot open .volpkg: {}", nVpkgPath);
+        Logger()->error("Cannot open .volpkg: {}", nVpkgPath);
         QMessageBox::warning(
             this, "Error",
             "Volume package failed to load. Package might be corrupt.");
@@ -925,7 +1019,7 @@ void CWindow::onShowStatusMessage(QString text, int timeout)
     statusBar()->showMessage(text, timeout);
 }
 
-fs::path seg_path_name(const fs::path &path)
+std::filesystem::path seg_path_name(const std::filesystem::path &path)
 {
     std::string name;
     bool store = false;
@@ -951,7 +1045,7 @@ void CWindow::OpenVolume(const QString& path)
             QFileDialog::ShowDirsOnly | QFileDialog::DontResolveSymlinks | QFileDialog::ReadOnly | QFileDialog::DontUseNativeDialog);
         // Dialog box cancelled
         if (aVpkgPath.length() == 0) {
-            vc::Logger()->info("Open .volpkg canceled");
+            Logger()->info("Open .volpkg canceled");
             return;
         }
     }
@@ -963,7 +1057,7 @@ void CWindow::OpenVolume(const QString& path)
         QMessageBox::warning(
             this, tr("ERROR"),
             "The selected file is not of the correct type: \".volpkg\"");
-        vc::Logger()->error(
+        Logger()->error(
             "Selected file is not .volpkg: {}", aVpkgPath.toStdString());
         fVpkg = nullptr;  // Is needed for User Experience, clears screen.
         return;
@@ -980,7 +1074,7 @@ void CWindow::OpenVolume(const QString& path)
                          std::to_string(fVpkg->version()) +
                          " but this program requires version " +
                          std::to_string(VOLPKG_MIN_VERSION) + "+.";
-        vc::Logger()->error(msg);
+        Logger()->error(msg);
         QMessageBox::warning(this, tr("ERROR"), QString(msg.c_str()));
         fVpkg = nullptr;
         return;
@@ -1868,9 +1962,9 @@ void CWindow::onEditMaskPressed(void)
     
     cv::Mat_<cv::Vec3f> points = _surf->rawPoints();
 
-    fs::path path = _surf->path/"mask.tif";
+    std::filesystem::path path = _surf->path/"mask.tif";
     
-    if (!fs::exists(path)) {
+    if (!std::filesystem::exists(path)) {
         cv::Mat_<uint8_t> img;
         cv::Mat_<uint8_t> mask;
         //TODO make this aim for some target size instead of a hardcoded decision
@@ -2422,7 +2516,7 @@ void CWindow::onVoxelizePaths()
     }
     
     // Set up volume info from current volume
-    volcart::SurfaceVoxelizer::VolumeInfo volumeInfo;
+    SurfaceVoxelizer::VolumeInfo volumeInfo;
     volumeInfo.width = currentVolume->sliceWidth();
     volumeInfo.height = currentVolume->sliceHeight();
     volumeInfo.depth = currentVolume->numSlices();
@@ -2439,7 +2533,7 @@ void CWindow::onVoxelizePaths()
     volumeInfo.voxelSize = voxelSize;
     
     // Set up parameters
-    volcart::SurfaceVoxelizer::VoxelizationParams params;
+    SurfaceVoxelizer::VoxelizationParams params;
     params.voxelSize = volumeInfo.voxelSize; // Match volume voxel size
     params.samplingDensity = 0.5f; // Sample every 0.5 surface units
     params.fillGaps = true;
@@ -2467,7 +2561,7 @@ void CWindow::onVoxelizePaths()
     
     QFuture<void> future = QtConcurrent::run([this, outputStr, surfaces, volumeInfo, params, progress, &cancelled]() {
         try {
-            volcart::SurfaceVoxelizer::voxelizeSurfaces(
+            SurfaceVoxelizer::voxelizeSurfaces(
                 outputStr,
                 surfaces,
                 volumeInfo,

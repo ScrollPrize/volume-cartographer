@@ -1,15 +1,10 @@
-#ifndef FORMSETSRC_HPP
-#define FORMSETSRC_HPP
+#pragma once
 
 #include <QWidget>
+#include <ui_formsetsrc.h>
+
 #include "OpChain.hpp"
 
-namespace Ui
-{
-class FormSetSrc;
-}
-
-class QComboBox;
 
 class FormSetSrc : public QWidget
 {
@@ -32,4 +27,3 @@ private:
     QComboBox *_combo;
 };
 
-#endif  // FORMSETSRC_HPP

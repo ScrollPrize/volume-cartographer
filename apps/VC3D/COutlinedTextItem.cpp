@@ -2,7 +2,7 @@
 #include <QPainterPath>
 #include <QPen>
 
-namespace ChaoVis {
+
 
 COutlinedTextItem::COutlinedTextItem(QGraphicsItem *parent)
     : QGraphicsTextItem(parent)
@@ -42,4 +42,4 @@ QRectF COutlinedTextItem::boundingRect() const
     return QGraphicsTextItem::boundingRect().adjusted(-5,-5,5,5);
 }
 
-} // namespace ChaoVis
+

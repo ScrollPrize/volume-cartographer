@@ -12,7 +12,6 @@ set(srcs
     UDataManipulateUtils.cpp
     CVolumeViewer.cpp
     CVolumeViewerView.cpp
-    ColorFrame.hpp
     SettingsDialog.cpp
     CSurfaceCollection.cpp
     OpChain.cpp

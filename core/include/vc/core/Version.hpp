@@ -5,9 +5,6 @@
 #include <cstdint>
 #include <string>
 
-namespace volcart
-{
-
 /** Provides programmatic access to codebase information */
 struct ProjectInfo {
     /** Get the library name */
@@ -29,5 +26,3 @@ struct ProjectInfo {
     /** Get the short hash for the current git commit */
     static auto RepositoryShortHash() -> std::string;
 };
-
-}  // namespace volcart
