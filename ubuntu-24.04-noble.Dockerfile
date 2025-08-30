@@ -64,6 +64,13 @@ RUN dpkg -i /src/build/pkgs/vc3d*.deb
 RUN apt -y autoremove
 RUN rm -r /src
 
+# Wrapper: forwards all args to VC3D with nice/ionice and per-call OMP envs
+RUN install -m 0755 /dev/stdin /usr/local/bin/vc3d <<'BASH'
+#!/usr/bin/env bash
+set -euo pipefail
+exec env OMP_NUM_THREADS=8 OMP_WAIT_POLICY=PASSIVE OMP_NESTED=FALSE nice ionice VC3D "$@"
+BASH
+
 COPY docker_s3_entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 

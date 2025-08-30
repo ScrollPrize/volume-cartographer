@@ -3,8 +3,7 @@
 #include "ui_VCSettings.h"
 #include <QStringList>
 
-namespace ChaoVis
-{
+
 
 class SettingsDialog : public QDialog, private Ui_VCSettingsDlg
 {
@@ -22,4 +21,3 @@ class SettingsDialog : public QDialog, private Ui_VCSettingsDlg
         void accept() override;
 };
 
-}

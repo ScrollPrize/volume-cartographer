@@ -5,26 +5,18 @@
 #include <QMap>
 #include <QColor>
 #include <memory>
+#include <QCheckBox>
+#include <QLabel>
+#include <QPushButton>
+#include <QRadioButton>
+#include <QSlider>
+#include <QSpinBox>
 #include <opencv2/core.hpp>
 
 #include "PathData.hpp"
+#include "vc/core/types/VolumePkg.hpp"
+#include "vc/core/util/Slicing.hpp"
 
-class QLabel;
-class QSpinBox;
-class QSlider;
-class QPushButton;
-class QCheckBox;
-class QRadioButton;
-class QButtonGroup;
-
-namespace volcart {
-class Volume;
-class VolumePkg;
-}
-
-class ChunkCache;
-
-namespace ChaoVis {
 
 /**
  * @brief Widget for freehand drawing on volume surfaces
@@ -41,10 +33,10 @@ public:
     ~DrawingWidget();
     
     /** Set the volume package */
-    void setVolumePkg(std::shared_ptr<volcart::VolumePkg> vpkg);
+    void setVolumePkg(std::shared_ptr<VolumePkg> vpkg);
     
     /** Set the current volume */
-    void setCurrentVolume(std::shared_ptr<volcart::Volume> volume);
+    void setCurrentVolume(std::shared_ptr<Volume> volume);
     
     /** Set the cache for volume data access */
     void setCache(ChunkCache* cache);
@@ -72,8 +64,8 @@ public:
 
 public slots:
     /** Handle volume change */
-    void onVolumeChanged(std::shared_ptr<volcart::Volume> vol);
-    void onVolumeChanged(std::shared_ptr<volcart::Volume> vol, const std::string& volumeId);
+    void onVolumeChanged(std::shared_ptr<Volume> vol);
+    void onVolumeChanged(std::shared_ptr<Volume> vol, const std::string& volumeId);
     
     /** Handle mouse events from volume viewers */
     void onMousePress(cv::Vec3f vol_point, cv::Vec3f normal, Qt::MouseButton button, Qt::KeyboardModifiers modifiers);
@@ -150,8 +142,8 @@ private:
 
 private:
     // Volume data
-    std::shared_ptr<volcart::VolumePkg> fVpkg;
-    std::shared_ptr<volcart::Volume> currentVolume;
+    std::shared_ptr<VolumePkg> fVpkg;
+    std::shared_ptr<Volume> currentVolume;
     std::string currentVolumeId;
     ChunkCache* chunkCache;
     
@@ -196,4 +188,4 @@ private:
     QPushButton* saveAsMaskButton;
 };
 
-} // namespace ChaoVis
+

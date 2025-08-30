@@ -1,12 +1,10 @@
-// SettingsDialog.cpp
-// Philip Allgaier 2023 October
 #include "SettingsDialog.hpp"
 
 #include <QSettings>
 #include <QMessageBox>
 #include <QToolTip>
 
-using namespace ChaoVis;
+
 
 SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent)
 {

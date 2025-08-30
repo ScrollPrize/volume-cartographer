@@ -4,6 +4,9 @@
 
 #include <opencv2/core.hpp> 
 #include <nlohmann/json_fwd.hpp>
+#include <z5/dataset.hxx>
+
+#include "Slicing.hpp"
 
 
 #define Z_DBG_GEN_PREFIX "auto_grown_"
@@ -241,3 +244,4 @@ std::set<std::string> read_overlapping_json(const std::filesystem::path& seg_pat
 QuadSurface* surface_diff(QuadSurface* a, QuadSurface* b, float tolerance = 2.0);
 QuadSurface* surface_union(QuadSurface* a, QuadSurface* b, float tolerance = 2.0);
 QuadSurface* surface_intersection(QuadSurface* a, QuadSurface* b, float tolerance = 2.0);
+

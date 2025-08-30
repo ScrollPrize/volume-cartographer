@@ -5,11 +5,9 @@
 
 #include <vc/core/util/HashFunctions.hpp>
 
-class Surface;
+#include "vc/core/util/Surface.hpp"
 
-namespace ChaoVis
-{
-    
+
 struct POI
 {
     cv::Vec3f p = {0,0,0};
@@ -58,4 +56,3 @@ protected:
     std::unordered_map<std::pair<std::string,std::string>, Intersection*, string_pair_hash> _intersections;
 };
 
-}

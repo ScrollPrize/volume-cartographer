@@ -538,7 +538,7 @@ int main(int argc, char *argv[])
     const bool invert_affine = parsed["invert-affine"].as<bool>();
     int flip_axis = parsed["flip"].as<int>();
     const bool include_tifs = parsed["include-tifs"].as<bool>();
-    
+
     // Load affine transform if provided
     AffineTransform affineTransform;
     bool hasAffine = false;
@@ -681,7 +681,7 @@ int main(int argc, char *argv[])
     bool orientationDetermined = false;
     cv::Vec3f meshCentroid;
 
-    if ((tgt_size.width >= 25000 || tgt_size.height >= 25000) && num_slices > 1)
+    if ((tgt_size.width >= 10000 || tgt_size.height >= 10000) && num_slices > 1)
         slice_gen = true;
     else {
         // Center at pixel centers: -(W-1)/2, -(H-1)/2
@@ -715,7 +715,6 @@ int main(int argc, char *argv[])
         const size_t CH = 128, CW = 128;
         const size_t baseZ = std::max(1, num_slices);
         const size_t CZ = baseZ;
-        // Match XY size to what the TIF path would output (accounts for rotation)
         cv::Size zarr_xy_size = tgt_size;
         if (std::abs(rotate_angle) > 1e-6) {
             // Compute rotated bounding box dimensions without materializing an image

@@ -7,11 +7,7 @@
 #include <vc/core/util/HashFunctions.hpp>
 
 #include <shared_mutex>
-
-namespace z5
-{
-    class Dataset;
-}
+#include <z5/dataset.hxx>
 
 //TODO generation overrun
 //TODO groupkey overrun

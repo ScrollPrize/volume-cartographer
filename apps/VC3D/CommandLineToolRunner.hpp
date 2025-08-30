@@ -4,21 +4,17 @@
 #include <QString>
 #include <QStringList>
 #include <QProcess>
-#include <QMessageBox>
-#include <QApplication>
-#include <QClipboard>
 #include <QDialog>
-#include <QJsonDocument>
-#include <QJsonObject>
 #include <QFile>
 
+#include "CWindow.hpp"
 #include "ProgressUtil.hpp"
 #include "ConsoleOutputWidget.hpp"
 
-namespace ChaoVis {
+
 
 // Forward declaration
-class CWindow;
+
 
 /**
  * @brief Class to manage execution of command-line tools
@@ -150,4 +146,4 @@ private:
     int _ompThreads{-1};
 };
 
-} // namespace ChaoVis
+

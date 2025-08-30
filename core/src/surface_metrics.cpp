@@ -8,9 +8,6 @@
 #include <opencv2/imgproc.hpp>
 #include <nlohmann/json.hpp>
 
-namespace vc::apps
-{
-
 // Helper to get point-to-line-segment squared distance
 static float dist_point_segment_sq(const cv::Vec3f& p, const cv::Vec3f& a, const cv::Vec3f& b) {
     cv::Vec3f ab = b - a;
@@ -123,7 +120,7 @@ static cv::Vec2f find_closest_intersection(QuadSurface* surface, const cv::Vec3f
 }
 
 
-nlohmann::json calc_point_metrics(const ChaoVis::VCCollection& collection, QuadSurface* surface, const cv::Mat_<float>& winding)
+nlohmann::json calc_point_metrics(const VCCollection& collection, QuadSurface* surface, const cv::Mat_<float>& winding)
 {
     nlohmann::json results;
 
@@ -136,7 +133,7 @@ nlohmann::json calc_point_metrics(const ChaoVis::VCCollection& collection, QuadS
     for (const auto& pair : collection.getAllCollections()) {
         const auto& coll = pair.second;
 
-        std::vector<ChaoVis::ColPoint> points_with_winding;
+        std::vector<ColPoint> points_with_winding;
         for (const auto& p_pair : coll.points) {
             if (!std::isnan(p_pair.second.winding_annotation)) {
                 points_with_winding.push_back(p_pair.second);
@@ -201,5 +198,3 @@ nlohmann::json calc_point_metrics(const ChaoVis::VCCollection& collection, QuadS
 
     return results;
 }
-
-} // namespace vc::apps
