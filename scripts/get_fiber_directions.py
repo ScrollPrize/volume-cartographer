@@ -148,7 +148,10 @@ def comb_global(fiber_points, fiber_directions, subsample_factor=10):
         for j in range(i + 1, n_fibers):
             points_j = fiber_points_pth[j]
             distances = torch.cdist(points_i, points_j)
-            dist = torch.quantile(distances, 0.25)
+            try:
+                dist = torch.quantile(distances, 0.1)
+            except:
+                dist = torch.amin(distances)
             fiber_distances[i, j] = fiber_distances[j, i] = dist.item()
     
     def find_nearest_unvisited_fiber(visited_set):
