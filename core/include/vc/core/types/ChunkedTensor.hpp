@@ -625,14 +625,15 @@ private:
 
 struct Chunked3dVec3fFromUint8
 {
-    Chunked3dVec3fFromUint8(std::vector<std::unique_ptr<z5::Dataset>> const &dss, float scale, ChunkCache *cache, std::string const &cache_root, std::string const &unique_id) :
+    Chunked3dVec3fFromUint8(std::vector<std::unique_ptr<z5::Dataset>> &&dss, float scale, ChunkCache *cache, std::string const &cache_root, std::string const &unique_id) :
         _passthrough_x{unique_id + "_x"},
         _passthrough_y{unique_id + "_y"},
         _passthrough_z{unique_id + "_z"},
         _x(_passthrough_x, dss[0].get(), cache, cache_root),
         _y(_passthrough_y, dss[1].get(), cache, cache_root),
         _z(_passthrough_z, dss[2].get(), cache, cache_root),
-        _scale(scale)  // multiplying by this maps indices of the 'canonical' volume to indices of our three volumes
+        _scale(scale),  // multiplying by this maps indices of the 'canonical' volume to indices of our three volumes
+        _dss(std::move(dss))  // take ownership of the datasets here, as Chunked3d accesses them through a bare pointer
     {
     }
 
@@ -655,4 +656,5 @@ struct Chunked3dVec3fFromUint8
     passTroughComputor _passthrough_x, _passthrough_y, _passthrough_z;
     Chunked3d<uint8_t, passTroughComputor> _x, _y, _z;
     float _scale;
+    std::vector<std::unique_ptr<z5::Dataset>> _dss;
 };

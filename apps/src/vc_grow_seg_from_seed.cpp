@@ -73,6 +73,37 @@ bool check_existing_segments(const std::filesystem::path& tgt_dir, const cv::Vec
     return false;
 }
 
+static auto load_direction_fields(json const&params, ChunkCache *chunk_cache, std::filesystem::path const &cache_root)
+{
+    std::vector<DirectionField> direction_fields;
+    if (params.contains("direction_fields")) {
+        if (!params["direction_fields"].is_array()) {
+            std::cerr << "WARNING: direction_fields must be an array; ignoring" << std::endl;
+        }
+        for (auto const& direction_field : params["direction_fields"]) {
+            std::string const zarr_path = direction_field["zarr"];
+            std::string const direction = direction_field["dir"];
+            if (!std::ranges::contains(std::vector{"horizontal", "vertical", "normal"}, direction)) {
+                std::cerr << "WARNING: invalid direction in direction_field " << zarr_path << "; skipping" << std::endl;
+                continue;
+            }
+            int const ome_scale = direction_field["scale"];
+            float scale_factor = std::pow(2, -ome_scale);
+            z5::filesystem::handle::Group dirs_group(zarr_path, z5::FileMode::FileMode::r);
+            std::vector<std::unique_ptr<z5::Dataset>> direction_dss;
+            for (auto dim : std::string("xyz")) {
+                z5::filesystem::handle::Group dim_group(dirs_group, std::string(&dim, 1));
+                z5::filesystem::handle::Dataset dirs_ds_handle(dim_group, std::to_string(ome_scale), ".");
+                direction_dss.push_back(z5::filesystem::openDataset(dirs_ds_handle));
+            }
+            std::cout << "direction field dataset shape " << direction_dss.front()->shape() << std::endl;
+            std::string const unique_id = std::to_string(std::hash<std::string>{}(dirs_group.path().string() + std::to_string(ome_scale)));
+            direction_fields.emplace_back(direction, std::make_unique<Chunked3dVec3fFromUint8>(std::move(direction_dss), scale_factor, chunk_cache, cache_root, unique_id));
+        }
+    }
+    return direction_fields;
+}
+
 int main(int argc, char *argv[])
 {
     if (argc != 7 && argc != 4) {
@@ -94,22 +125,6 @@ int main(int argc, char *argv[])
 
     std::cout << "zarr dataset size for scale group 0 " << ds->shape() << std::endl;
     std::cout << "chunk shape shape " << ds->chunking().blockShape() << std::endl;
-
-    std::string const fiber_dirs_path = params.value("fiber_dirs_zarr", "");
-    std::vector<std::unique_ptr<z5::Dataset>> h_fiber_dirs_xyz_dss;
-    float fiber_dirs_scale = 1.f;
-    if (!fiber_dirs_path.empty()) {
-        z5::filesystem::handle::Group fiber_dirs_group(fiber_dirs_path, z5::FileMode::FileMode::r);
-        z5::filesystem::handle::Group h_fiber_dirs_group(fiber_dirs_group, "horizontal");
-        int const fiber_dirs_ome_level = params.value("fiber_dirs_scale", 2);
-        fiber_dirs_scale = std::pow(2, -fiber_dirs_ome_level);
-        for (auto dim: std::string("xyz")) {
-            z5::filesystem::handle::Group dim_group(h_fiber_dirs_group, std::string(&dim, 1));
-            z5::filesystem::handle::Dataset h_fiber_dirs_ds_handle(dim_group, std::to_string(fiber_dirs_ome_level), ".");
-            h_fiber_dirs_xyz_dss.push_back(z5::filesystem::openDataset(h_fiber_dirs_ds_handle));
-        }
-        std::cout << "fiber direction dataset shape " << h_fiber_dirs_xyz_dss.front()->shape() << std::endl;
-    }
 
     ChunkCache chunk_cache(params.value("cache_size", 1e9));
 
@@ -141,6 +156,8 @@ int main(int argc, char *argv[])
     std::cout << "step size: " << step_size << std::endl;
     std::cout << "min_area_cm: " << min_area_cm << std::endl;
     std::cout << "tgt_overlap_count: " << tgt_overlap_count << std::endl;
+
+    auto direction_fields = load_direction_fields(params, &chunk_cache, cache_root);
 
     std::unordered_map<std::string,SurfaceMeta*> surfs;
     std::vector<SurfaceMeta*> surfs_v;
@@ -325,7 +342,7 @@ int main(int argc, char *argv[])
     if (thread_limit)
         omp_set_num_threads(thread_limit);
 
-    QuadSurface *surf = space_tracing_quad_phys(ds.get(), 1.0, &chunk_cache, origin, generations, step_size, cache_root, voxelsize, h_fiber_dirs_xyz_dss, fiber_dirs_scale);
+    QuadSurface *surf = space_tracing_quad_phys(ds.get(), 1.0, &chunk_cache, origin, generations, step_size, cache_root, voxelsize, direction_fields);
 
     double area_cm2 = (*surf->meta)["area_cm2"].get<double>();
     if (area_cm2 < min_area_cm)

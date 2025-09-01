@@ -11,10 +11,17 @@
 
 #define Z_DBG_GEN_PREFIX "auto_grown_"
 
+class Chunked3dVec3fFromUint8;
 
 struct Rect3D {
     cv::Vec3f low = {0,0,0};
     cv::Vec3f high = {0,0,0};
+};
+
+struct DirectionField
+{
+    std::string direction;
+    std::unique_ptr<Chunked3dVec3fFromUint8> field_ptr;
 };
 
 bool intersect(const Rect3D &a, const Rect3D &b);
@@ -206,7 +213,7 @@ public:
 };
 
 QuadSurface *load_quad_from_tifxyz(const std::string &path);
-QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *cache, cv::Vec3f origin, int generations = 100, float step = 10, const std::string &cache_root = "", float voxelsize = 1.0, std::vector<std::unique_ptr<z5::Dataset>> const &h_fiber_ds = {}, float fibers_scale = 1.f);
+QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *cache, cv::Vec3f origin, int generations = 100, float step = 10, const std::string &cache_root = "", float voxelsize = 1.0, std::vector<DirectionField> const &direction_fields = {});
 QuadSurface *regularized_local_quad(QuadSurface *src, const cv::Vec3f &ptr, int w, int h, int step_search = 100, int step_out = 5);
 QuadSurface *smooth_vc_segmentation(QuadSurface *src);
 

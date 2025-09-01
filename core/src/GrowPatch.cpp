@@ -197,31 +197,44 @@ static int gen_space_line_loss(ceres::Problem &problem, const cv::Vec2i &p, cons
     return 1;
 }
 
-int gen_fiber_loss(ceres::Problem &problem, const cv::Vec2i &p, const int u_off, cv::Mat_<uint8_t> &state,
-    cv::Mat_<cv::Vec3d> &loc, std::optional<Chunked3dVec3fFromUint8> &h_fiber_dirs, float w = 1.f)
+int gen_direction_loss(ceres::Problem &problem, const cv::Vec2i &p, const int off_dist, cv::Mat_<uint8_t> &state,
+    cv::Mat_<cv::Vec3d> &loc, std::vector<DirectionField> const &direction_fields, float w = 1.f)
 {
-    // Add a loss saying that if loc(p) is on a horizontal fiber, then the vector toward the adjacent point along
-    // the U-axis should be aligned with the fiber direction
-
-    if (!h_fiber_dirs)
-        return 0;
-
-    cv::Vec2i const p_off{p[0], p[1] + u_off};
+    // Add losses saying that the local basis vectors of the patch at loc(p) should match those of the given fields
 
     if (!loc_valid(state(p)))
         return 0;
-    if (!loc_valid(state(p_off)))
-        return 0;
 
-    problem.AddResidualBlock(HorizontalFiberLoss::Create(*h_fiber_dirs, w), nullptr, &loc(p)[0], &loc(p_off)[0]);
+    cv::Vec2i const p_off_horz{p[0], p[1] + off_dist};
+    cv::Vec2i const p_off_vert{p[0] + off_dist, p[1]};
 
-    return 1;
+    int count = 0;
+    for (auto &field: direction_fields) {
+        if (field.direction == "horizontal") {
+            if (!loc_valid(state(p_off_horz)))
+                continue;
+            problem.AddResidualBlock(FiberDirectionLoss::Create(*field.field_ptr, w), nullptr, &loc(p)[0], &loc(p_off_horz)[0]);
+        } else if (field.direction == "vertical") {
+            if (!loc_valid(state(p_off_vert)))
+                continue;
+            problem.AddResidualBlock(FiberDirectionLoss::Create(*field.field_ptr, w), nullptr, &loc(p)[0], &loc(p_off_vert)[0]);
+        } else if (field.direction == "normal") {
+            if (!loc_valid(state(p_off_horz)) || !loc_valid(state(p_off_vert)))
+                continue;
+            problem.AddResidualBlock(NormalDirectionLoss::Create(*field.field_ptr, w), nullptr, &loc(p)[0], &loc(p_off_horz)[0], &loc(p_off_vert)[0]);
+        } else {
+            assert(false);
+        }
+        ++count;
+    }
+
+    return count;
 }
 
 //create all valid losses for this point
 template <typename I, typename T, typename C>
 static int emptytrace_create_centered_losses(ceres::Problem &problem, const cv::Vec2i &p, cv::Mat_<uint8_t> &state,
-    cv::Mat_<cv::Vec3d> &loc, const I &interp, Chunked3d<T,C> &t, std::optional<Chunked3dVec3fFromUint8> &h_fiber_dirs,
+    cv::Mat_<cv::Vec3d> &loc, const I &interp, Chunked3d<T,C> &t, std::vector<DirectionField> const &direction_fields,
     float unit, int flags = 0)
 {
     //generate losses for point p
@@ -257,8 +270,8 @@ static int emptytrace_create_centered_losses(ceres::Problem &problem, const cv::
         count += gen_space_line_loss(problem, p, {0,1}, state, loc, t, unit);
         count += gen_space_line_loss(problem, p, {0,-1}, state, loc, t, unit);
 
-        count += gen_fiber_loss(problem, p, 1, state, loc, h_fiber_dirs);
-        count += gen_fiber_loss(problem, p, -1, state, loc, h_fiber_dirs);
+        count += gen_direction_loss(problem, p, 1, state, loc, direction_fields);
+        count += gen_direction_loss(problem, p, -1, state, loc, direction_fields);
     }
 
     return count;
@@ -274,20 +287,20 @@ static int conditional_spaceline_loss(int bit, const cv::Vec2i &p, const cv::Vec
     return set;
 };
 
-static int conditional_fiber_loss(int bit, const cv::Vec2i &p, const int u_off, cv::Mat_<uint16_t> &loss_status,
-    ceres::Problem &problem, cv::Mat_<uint8_t> &state, cv::Mat_<cv::Vec3d> &loc, std::optional<Chunked3dVec3fFromUint8> &h_fiber_dirs)
+static int conditional_direction_loss(int bit, const cv::Vec2i &p, const int u_off, cv::Mat_<uint16_t> &loss_status,
+    ceres::Problem &problem, cv::Mat_<uint8_t> &state, cv::Mat_<cv::Vec3d> &loc, std::vector<DirectionField> const &direction_fields)
 {
     int set = 0;
     cv::Vec2i const off{0, u_off};
     if (!loss_mask(bit, p, off, loss_status))
-        set = set_loss_mask(bit, p, off, loss_status, gen_fiber_loss(problem, p, u_off, state, loc, h_fiber_dirs));
+        set = set_loss_mask(bit, p, off, loss_status, gen_direction_loss(problem, p, u_off, state, loc, direction_fields));
     return set;
 };
 
 //create only missing losses so we can optimize the whole problem
 template <typename I, typename T, typename C>
 static int emptytrace_create_missing_centered_losses(ceres::Problem &problem, cv::Mat_<uint16_t> &loss_status, const cv::Vec2i &p,
-    cv::Mat_<uint8_t> &state, cv::Mat_<cv::Vec3d> &loc, const I &interp, Chunked3d<T,C> &t, std::optional<Chunked3dVec3fFromUint8> &h_fiber_dirs,
+    cv::Mat_<uint8_t> &state, cv::Mat_<cv::Vec3d> &loc, const I &interp, Chunked3d<T,C> &t, std::vector<DirectionField> const &direction_fields,
     float unit, int flags = SPACE_LOSS | OPTIMIZE_ALL)
 {
     //generate losses for point p
@@ -330,8 +343,8 @@ static int emptytrace_create_missing_centered_losses(ceres::Problem &problem, cv
         count += conditional_spaceline_loss(8, p, {0,1}, loss_status, problem, state, loc, t, unit);
         count += conditional_spaceline_loss(8, p, {0,-1}, loss_status, problem, state, loc, t, unit);
 
-        count += conditional_fiber_loss(9, p, 1, loss_status, problem, state, loc, h_fiber_dirs);
-        count += conditional_fiber_loss(9, p, -1, loss_status, problem, state, loc, h_fiber_dirs);
+        count += conditional_direction_loss(9, p, 1, loss_status, problem, state, loc, direction_fields);
+        count += conditional_direction_loss(9, p, -1, loss_status, problem, state, loc, direction_fields);
     }
 
     return count;
@@ -340,7 +353,8 @@ static int emptytrace_create_missing_centered_losses(ceres::Problem &problem, cv
 //optimize within a radius, setting edge points to constant
 template <typename I, typename T, typename C>
 static float local_optimization(int radius, const cv::Vec2i &p, cv::Mat_<uint8_t> &state, cv::Mat_<cv::Vec3d> &locs,
-    const I &interp, Chunked3d<T,C> &t, std::optional<Chunked3dVec3fFromUint8> &h_fiber_dirs, float unit, bool quiet = false)
+    const I &interp, Chunked3d<T,C> &t, std::vector<DirectionField> const &direction_fields,
+    float unit, bool quiet = false)
 {
     ceres::Problem problem;
     cv::Mat_<uint16_t> loss_status(state.size());
@@ -355,7 +369,7 @@ static float local_optimization(int radius, const cv::Vec2i &p, cv::Mat_<uint8_t
         for(int ox=std::max(p[1]-radius,0);ox<=std::min(p[1]+radius,locs.cols-1);ox++) {
             cv::Vec2i op = {oy, ox};
             if (cv::norm(p-op) <= radius)
-                emptytrace_create_missing_centered_losses(problem, loss_status, op, state, locs, interp, t, h_fiber_dirs, unit);
+                emptytrace_create_missing_centered_losses(problem, loss_status, op, state, locs, interp, t, direction_fields, unit);
         }
     for(int oy=std::max(p[0]-r_outer,0);oy<=std::min(p[0]+r_outer,locs.rows-1);oy++)
         for(int ox=std::max(p[1]-r_outer,0);ox<=std::min(p[1]+r_outer,locs.cols-1);ox++) {
@@ -503,7 +517,7 @@ struct thresholdedDistance
 };
 
 
-QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *cache, cv::Vec3f origin, int stop_gen, float step, const std::string &cache_root, float voxelsize, std::vector<std::unique_ptr<z5::Dataset>> const &h_fiber_ds, float fibers_scale)
+QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *cache, cv::Vec3f origin, int stop_gen, float step, const std::string &cache_root, float voxelsize, std::vector<DirectionField> const &direction_fields)
 {
     ALifeTime f_timer("empty space tracing\n");
     DSReader reader = {ds,scale,cache};
@@ -521,9 +535,6 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *c
     // Together these represent the cached distance-transform of the thresholded surface volume
     thresholdedDistance compute;
     Chunked3d<uint8_t,thresholdedDistance> proc_tensor(compute, ds, cache, cache_root);
-
-    // Prepare a cached version of the fiber direction volume
-    auto h_fiber_dir_tensor = h_fiber_ds.size() > 0 ? std::make_optional<Chunked3dVec3fFromUint8>(h_fiber_ds, fibers_scale, cache, cache_root, "h-fiber-dir") : std::nullopt;
 
     // Debug: test the chunk cache by reading one voxel
     passTroughComputor pass;
@@ -575,10 +586,10 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *c
 
     // Add losses for every 'active' surface point (just the four currently) that doesn't yet have them
     int loss_count = 0;
-    loss_count += emptytrace_create_missing_centered_losses(big_problem, loss_status, {y0,x0}, state, locs, interp_global, proc_tensor, h_fiber_dir_tensor, Ts);
-    loss_count += emptytrace_create_missing_centered_losses(big_problem, loss_status, {y0+1,x0}, state, locs,  interp_global, proc_tensor, h_fiber_dir_tensor, Ts);
-    loss_count += emptytrace_create_missing_centered_losses(big_problem, loss_status, {y0,x0+1}, state, locs,  interp_global, proc_tensor, h_fiber_dir_tensor, Ts);
-    loss_count += emptytrace_create_missing_centered_losses(big_problem, loss_status, {y0+1,x0+1}, state, locs,  interp_global, proc_tensor, h_fiber_dir_tensor, Ts);
+    loss_count += emptytrace_create_missing_centered_losses(big_problem, loss_status, {y0,x0}, state, locs, interp_global, proc_tensor, direction_fields, Ts);
+    loss_count += emptytrace_create_missing_centered_losses(big_problem, loss_status, {y0+1,x0}, state, locs,  interp_global, proc_tensor, direction_fields, Ts);
+    loss_count += emptytrace_create_missing_centered_losses(big_problem, loss_status, {y0,x0+1}, state, locs,  interp_global, proc_tensor, direction_fields, Ts);
+    loss_count += emptytrace_create_missing_centered_losses(big_problem, loss_status, {y0+1,x0+1}, state, locs,  interp_global, proc_tensor, direction_fields, Ts);
 
     std::cout << "init loss count " << loss_count << std::endl;
 
@@ -762,7 +773,7 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *c
                 ceres::Problem problem;
 
                 state(p) = STATE_LOC_VALID | STATE_COORD_VALID;
-                int local_loss_count = emptytrace_create_centered_losses(problem, p, state, locs, interp, proc_tensor, h_fiber_dir_tensor, Ts);
+                int local_loss_count = emptytrace_create_centered_losses(problem, p, state, locs, interp, proc_tensor, direction_fields, Ts);
 
                 ceres::Solver::Summary summary;
                 ceres::Solve(options, &problem, &summary);
@@ -801,8 +812,8 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *c
                 gen_space_line_loss(problem, p, {0,1}, state, locs, proc_tensor, T, 0.1, 100);
                 gen_space_line_loss(problem, p, {0,-1}, state, locs, proc_tensor, T, 0.1, 100);
 
-                gen_fiber_loss(problem, p, 1, state, locs, h_fiber_dir_tensor);
-                gen_fiber_loss(problem, p, -1, state, locs, h_fiber_dir_tensor);
+                gen_direction_loss(problem, p, 1, state, locs, direction_fields);
+                gen_direction_loss(problem, p, -1, state, locs, direction_fields);
 
                 // Re-solve the updated local problem
                 ceres::Solve(options, &problem, &summary);
@@ -835,7 +846,7 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *c
                     if (global_opt) {
 #pragma omp critical
                         loss_count += emptytrace_create_missing_centered_losses(big_problem, loss_status, p, state, locs,
-                                                                                interp_global, proc_tensor, h_fiber_dir_tensor, Ts, OPTIMIZE_ALL);
+                                                                                interp_global, proc_tensor, direction_fields, Ts, OPTIMIZE_ALL);
                     }
                     if (loss1 > phys_fail_th) {
                         // If even the first local solve (geometry only) was bad, try a less-local re-solve, that also adjusts the
@@ -844,7 +855,7 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *c
 
                         float err = 0;
                         for(int range = 1; range<=max_local_opt_r;range++) {
-                            err = local_optimization(range, p, state, locs, interp, proc_tensor, h_fiber_dir_tensor, Ts);
+                            err = local_optimization(range, p, state, locs, interp, proc_tensor, direction_fields, Ts);
                             if (err <= phys_fail_th)
                                 break;
                         }
@@ -863,7 +874,7 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *c
                     if (global_opt) {
 #pragma omp critical
                         loss_count += emptytrace_create_missing_centered_losses(big_problem, loss_status, p, state, locs,
-                                                                                interp_global, proc_tensor, h_fiber_dir_tensor, Ts);
+                                                                                interp_global, proc_tensor, direction_fields, Ts);
                     }
 #pragma omp atomic
                     succ++;
@@ -934,7 +945,7 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *c
                     if (p[0] == -1)
                         break;
 
-                    local_optimization(8, p, state, locs, interp, proc_tensor, h_fiber_dir_tensor, Ts, true);
+                    local_optimization(8, p, state, locs, interp, proc_tensor, direction_fields, Ts, true);
                 }
             }
         }
@@ -965,7 +976,7 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *c
         for(int j=0;j<locs_crop.rows;j++)
             for(int i=0;i<locs_crop.cols;i++) {
                 ceres::Problem problem;
-                emptytrace_create_centered_losses(problem, {j,i}, state_crop, locs_crop, interp_global, proc_tensor, h_fiber_dir_tensor, Ts);
+                emptytrace_create_centered_losses(problem, {j,i}, state_crop, locs_crop, interp_global, proc_tensor, direction_fields, Ts);
                 double cost = 0.0;
                 problem.Evaluate(ceres::Problem::EvaluateOptions(), &cost, nullptr, nullptr, nullptr);
                 max_cost = std::max(max_cost, cost);
@@ -995,7 +1006,7 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *c
     for(int j=0;j<locs.rows;j++)
         for(int i=0;i<locs.cols;i++) {
             ceres::Problem problem;
-            emptytrace_create_centered_losses(problem, {j,i}, state, locs, interp_global, proc_tensor, h_fiber_dir_tensor, Ts);
+            emptytrace_create_centered_losses(problem, {j,i}, state, locs, interp_global, proc_tensor, direction_fields, Ts);
             double cost = 0.0;
             problem.Evaluate(ceres::Problem::EvaluateOptions(), &cost, nullptr, nullptr, nullptr);
             max_cost = std::max(max_cost, cost);
