@@ -231,3 +231,9 @@ QuadSurface* surface_diff(QuadSurface* a, QuadSurface* b, float tolerance = 2.0)
 QuadSurface* surface_union(QuadSurface* a, QuadSurface* b, float tolerance = 2.0);
 QuadSurface* surface_intersection(QuadSurface* a, QuadSurface* b, float tolerance = 2.0);
 
+void generate_mask(QuadSurface* surf,
+                            cv::Mat_<uint8_t>& mask,
+                            cv::Mat_<uint8_t>& img,
+                            z5::Dataset* ds_high = nullptr,
+                            z5::Dataset* ds_low = nullptr,
+                            ChunkCache* cache = nullptr);

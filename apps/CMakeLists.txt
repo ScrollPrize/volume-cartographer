@@ -129,6 +129,23 @@ target_link_libraries(vc_render_bench
     VC::slicing
 )
 
+add_executable(vc_create_segment_mask src/vc_create_segment_mask.cpp)
+target_link_libraries(vc_create_segment_mask
+        VC::metrics
+        VC::surface
+        Boost::program_options
+)
+
+
+## experiements for flattening ##
+# add_executable(vc_zarralphacomp src/ZarrAlphaComp.cpp)
+# target_link_libraries(vc_zarralphacomp
+#     nlohmann_json::nlohmann_json
+#     z5
+#     opencv_highgui
+#     VC::slicing
+# )
+
 add_executable(vc_surface_diff src/vc_surface_diff.cpp)
 target_link_libraries(vc_surface_diff
         z5
