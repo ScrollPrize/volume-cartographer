@@ -183,7 +183,7 @@ nlohmann::json calc_point_metrics(const VCCollection& collection, QuadSurface* s
     }
 
     if (total_points_for_in_surface_metric > 0) {
-        results["in_surface_metric"] = (float)valid_in_surface_points / total_points_for_in_surface_metric;
+        results["in_surface_frac_valid"] = (float)valid_in_surface_points / total_points_for_in_surface_metric;
     }
 
     return results;
@@ -262,7 +262,7 @@ nlohmann::json calc_point_winding_metrics(const VCCollection& collection, QuadSu
     }
 
     if (total_comparisons > 0) {
-        results["winding_error_fraction"] = (float)(total_comparisons - std::max(total_correct_winding, total_correct_winding_inv)) / total_comparisons;
+        results["winding_valid_fraction"] = (float)std::max(total_correct_winding, total_correct_winding_inv) / total_comparisons;
     }
 
     return results;
