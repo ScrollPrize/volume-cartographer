@@ -7,6 +7,7 @@ RUN apt -y update
 RUN apt -y upgrade
 RUN apt -y full-upgrade
 RUN apt -y install build-essential libc6-dev git cmake qt6-base-dev libboost-system-dev libboost-program-options-dev libceres-dev xtensor-dev libopencv-dev libxsimd-dev libblosc-dev libspdlog-dev libgsl-dev libsdl2-dev libcurl4-openssl-dev file curl unzip ca-certificates bzip2 curl wget unzip fuse jq gimp desktop-file-utils ninja-build libpthread-stubs0-dev
+RUN ldconfig
 
 # ----- Python 3.10 env (micromamba) -----
 RUN ARCH=$(uname -m) && \
