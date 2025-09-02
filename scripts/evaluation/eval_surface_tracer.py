@@ -3,7 +3,6 @@ import os
 import json
 import time
 import click
-import wandb
 import logging
 import subprocess
 from pathlib import Path
@@ -353,6 +352,7 @@ class SurfaceTracerEvaluation:
             logger.info(f'  {metric_name}: {mean}')
 
         if "wandb_project" in self.config:
+            import wandb
             wandb.init(
                 project=self.config["wandb_project"],
                 config=self.config,
