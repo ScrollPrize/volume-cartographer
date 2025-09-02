@@ -6,10 +6,16 @@
 #include "z5/factory.hxx"
 #include <nlohmann/json.hpp>
 
-#include <opencv2/highgui.hpp>
 #include <opencv2/imgproc.hpp>
 #include <fstream>
+#include <iomanip>
+#include <sstream>
+#include <algorithm>
+#include <atomic>
 #include <boost/program_options.hpp>
+#include <tiffio.h>
+#include <mutex>
+#include <cmath>
 
 
 namespace po = boost::program_options;
@@ -78,44 +84,6 @@ AffineTransform loadAffineTransform(const std::string& filename) {
     return transform;
 }
 
-/**
- * @brief Print bounds and in-bounds coverage of a point field against a dataset
- */
-static void debugPrintPointBounds(const cv::Mat_<cv::Vec3f>& pts,
-                                  const z5::Dataset* ds,
-                                  const std::string& tag)
-{
-    if (pts.empty()) return;
-    double minx=std::numeric_limits<double>::infinity(),
-           miny=std::numeric_limits<double>::infinity(),
-           minz=std::numeric_limits<double>::infinity();
-    double maxx=-std::numeric_limits<double>::infinity(),
-           maxy=-std::numeric_limits<double>::infinity(),
-           maxz=-std::numeric_limits<double>::infinity();
-    size_t total=0, inb=0;
-    const auto shape = ds->shape(); // [Z, Y, X]
-    const double Xmax = static_cast<double>(shape[2]-1);
-    const double Ymax = static_cast<double>(shape[1]-1);
-    const double Zmax = static_cast<double>(shape[0]-1);
-    for (int r=0; r<pts.rows; ++r) {
-        for (int c=0; c<pts.cols; ++c) {
-            const cv::Vec3f& p = pts(r,c);
-            if (std::isnan(p[0]) || std::isnan(p[1]) || std::isnan(p[2])) continue;
-            minx = std::min(minx, (double)p[0]); maxx = std::max(maxx, (double)p[0]);
-            miny = std::min(miny, (double)p[1]); maxy = std::max(maxy, (double)p[1]);
-            minz = std::min(minz, (double)p[2]); maxz = std::max(maxz, (double)p[2]);
-            ++total;
-            if (p[0] >= 0.0 && p[0] <= Xmax &&
-                p[1] >= 0.0 && p[1] <= Ymax &&
-                p[2] >= 0.0 && p[2] <= Zmax) ++inb;
-        }
-    }
-    const double pct = total ? (100.0 * (double)inb / (double)total) : 0.0;
-    std::cout << std::fixed << std::setprecision(2)
-              << "[bounds:" << tag << "] X[" << minx << "," << maxx << "]  "
-              << "Y[" << miny << "," << maxy << "]  Z[" << minz << "," << maxz << "]  "
-              << "in-bounds " << pct << "% of " << total << " pts\n";
-}
 
 
 /**
@@ -291,38 +259,6 @@ void applyNormalOrientation(cv::Mat_<cv::Vec3f>& normals, bool shouldFlip)
 }
 
 /**
- * @brief Apply rotation to an image
- *
- * @param img Image to rotate (modified in-place)
- * @param angleDegrees Rotation angle in degrees (counterclockwise)
- */
-void rotateImage(cv::Mat& img, double angleDegrees)
-{
-    if (std::abs(angleDegrees) < 1e-6) {
-        return; // No rotation needed
-    }
-
-    // Get the center of the image
-    cv::Point2f center(img.cols / 2.0f, img.rows / 2.0f);
-
-    // Get the rotation matrix
-    cv::Mat rotMatrix = cv::getRotationMatrix2D(center, angleDegrees, 1.0);
-
-    // Calculate the new image bounds
-    cv::Rect2f bbox = cv::RotatedRect(cv::Point2f(), img.size(), angleDegrees).boundingRect2f();
-
-    // Adjust transformation matrix to account for translation
-    rotMatrix.at<double>(0, 2) += bbox.width / 2.0 - img.cols / 2.0;
-    rotMatrix.at<double>(1, 2) += bbox.height / 2.0 - img.rows / 2.0;
-
-    // Apply the rotation
-    cv::Mat rotated;
-    cv::warpAffine(img, rotated, rotMatrix, bbox.size(), cv::INTER_LINEAR, cv::BORDER_CONSTANT, cv::Scalar(0));
-
-    img = rotated;
-}
-
-/**
  * @brief Apply flip transformation to an image
  *
  * @param img Image to flip (modified in-place)
@@ -346,89 +282,200 @@ void flipImage(cv::Mat& img, int flipType)
     }
 }
 
-
-// UV-stretch estimation for canvas sizing =====
-static bool _vc_valid3(const cv::Vec3f& p) {
-    return !(std::isnan(p[0]) || std::isnan(p[1]) || std::isnan(p[2]));
+static inline int normalizeQuadrantRotation(double angleDeg, double tolDeg = 0.5)
+{
+    // Map to [0, 360)
+    double a = std::fmod(angleDeg, 360.0);
+    if (a < 0) a += 360.0;
+    // Find nearest multiple of 90
+    static const double q[4] = {0.0, 90.0, 180.0, 270.0};
+    int best = 0;
+    double bestDiff = std::numeric_limits<double>::infinity();
+    for (int i = 0; i < 4; ++i) {
+        double d = std::abs(a - q[i]);
+        if (d < bestDiff) { bestDiff = d; best = i; }
+    }
+    return (bestDiff <= tolDeg) ? best : -1;
 }
 
-struct UVScale { double sx{1.0}, sy{1.0}; };
-
-static UVScale estimateUVScaleFromAffine(const cv::Mat_<cv::Vec3f>& raw,
-                                         const AffineTransform& T,
-                                         double seg_scale)
+static inline void applyRightAngleRotation(cv::Mat& m, int quad)
 {
-    const cv::Matx33d A(
-        T.matrix(0,0), T.matrix(0,1), T.matrix(0,2),
-        T.matrix(1,0), T.matrix(1,1), T.matrix(1,2),
-        T.matrix(2,0), T.matrix(2,1), T.matrix(2,2)
-    );
+    if (quad == 1)      cv::rotate(m, m, cv::ROTATE_90_COUNTERCLOCKWISE);
+    else if (quad == 2) cv::rotate(m, m, cv::ROTATE_180);
+    else if (quad == 3) cv::rotate(m, m, cv::ROTATE_90_CLOCKWISE);
+}
 
-    // --- remove isotropic scale so canvas reacts only to anisotropy ---
-    cv::Matx33d A_used = A;
-    double detA = cv::determinant(cv::Mat(A));           // det of 3x3 linear part
-    double scale_factor = 1.0;
-    if (std::isfinite(detA) && std::abs(detA) > 1e-18) {
-        scale_factor = std::cbrt(std::abs(detA));  // isotropic scale factor (>=0)
-        if (scale_factor > 0.0) {
-            std::cout << "[affine] det(A)=" << detA << "  isotropic scale=" << scale_factor << "  CLI segmentation-scale=" << seg_scale << "\n";
+// Convenience: apply optional right-angle rotation and optional flip in one place
+static inline void rotateFlipIfNeeded(cv::Mat& m, int rotQuad, int flip_axis)
+{
+    if (rotQuad >= 0) applyRightAngleRotation(m, rotQuad);
+    if (flip_axis >= 0) flipImage(m, flip_axis);
+}
+
+// Map source tile index (tx,ty) in a grid (tilesX,tilesY) to destination index
+// after applying a 90-degree-multiple rotation followed by optional flip.
+static inline void mapTileIndex(int tx, int ty,
+                                int tilesX, int tilesY,
+                                int quadRot, int flipType,
+                                int& outTx, int& outTy,
+                                int& outTilesX, int& outTilesY)
+{
+    const bool swap = (quadRot % 2) == 1;
+    const int rTilesX = swap ? tilesY : tilesX;
+    const int rTilesY = swap ? tilesX : tilesY;
+
+    int rx = tx, ry = ty;
+    switch (quadRot) {
+        case 0: rx = tx;                ry = ty;                break;
+        case 1: rx = ty;                ry = (tilesX - 1 - tx); break; // 90 CCW
+        case 2: rx = (tilesX - 1 - tx); ry = (tilesY - 1 - ty); break; // 180
+        case 3: rx = (tilesY - 1 - ty); ry = tx;                break; // 270 CCW
+        default: rx = tx; ry = ty; break;
+    }
+
+    int fx = rx, fy = ry;
+    if (flipType == 0) {
+        // Vertical flip: flip rows
+        fy = (rTilesY - 1 - ry);
+    } else if (flipType == 1) {
+        // Horizontal flip: flip columns
+        fx = (rTilesX - 1 - rx);
+    } else if (flipType == 2) {
+        // Both
+        fx = (rTilesX - 1 - rx);
+        fy = (rTilesY - 1 - ry);
+    }
+
+    outTx = fx;
+    outTy = fy;
+    outTilesX = rTilesX;
+    outTilesY = rTilesY;
+}
+
+// Normalize a matrix of 3D vectors in-place; skip NaNs and zero-length
+static inline void normalizeNormals(cv::Mat_<cv::Vec3f>& nrm)
+{
+    for (int yy = 0; yy < nrm.rows; ++yy)
+        for (int xx = 0; xx < nrm.cols; ++xx) {
+            cv::Vec3f& v = nrm(yy, xx);
+            if (std::isnan(v[0]) || std::isnan(v[1]) || std::isnan(v[2])) continue;
+            float L = std::sqrt(v[0]*v[0] + v[1]*v[1] + v[2]*v[2]);
+            if (L > 0) v /= L;
         }
-        else {
-            std::cout << "[WARNING] scale factor < 0! [affine] det(A)=" << detA << "  isotropic scale=" << scale_factor << "  CLI segmentation-scale=" << seg_scale << "\n";
+}
+
+// Compute a global normal orientation flip decision using a small probe tile
+static inline bool computeGlobalFlipDecision(
+    QuadSurface* surf,
+    int dx0,
+    int dy0,
+    float u0,
+    float v0,
+    float render_scale,
+    float scale_seg,
+    bool hasAffine,
+    const AffineTransform& affineTransform,
+    cv::Vec3f& outCentroid)
+{
+    cv::Mat_<cv::Vec3f> _tp, _tn;
+    surf->gen(&_tp, &_tn,
+              cv::Size(dx0, dy0),
+              cv::Vec3f(0,0,0),
+              render_scale,
+              cv::Vec3f(u0, v0, 0.0f));
+
+    _tp *= scale_seg;
+    if (hasAffine) {
+        applyAffineTransform(_tp, _tn, affineTransform);
+    }
+    outCentroid = calculateMeshCentroid(_tp);
+    return shouldFlipNormals(_tp, _tn, outCentroid);
+}
+
+// Given raw tile points/normals, produce dataset-space base points and normalized step dirs
+static inline void prepareBasePointsAndStepDirs(
+    const cv::Mat_<cv::Vec3f>& tilePoints,
+    const cv::Mat_<cv::Vec3f>& tileNormals,
+    float scale_seg,
+    float ds_scale,
+    bool hasAffine,
+    const AffineTransform& affineTransform,
+    bool globalFlipDecision,
+    cv::Mat_<cv::Vec3f>& basePointsOut,
+    cv::Mat_<cv::Vec3f>& stepDirsOut)
+{
+    basePointsOut = tilePoints.clone();
+    basePointsOut *= scale_seg;
+    stepDirsOut = tileNormals.clone();
+    if (hasAffine) {
+        applyAffineTransform(basePointsOut, stepDirsOut, affineTransform);
+    }
+    applyNormalOrientation(stepDirsOut, globalFlipDecision);
+    normalizeNormals(stepDirsOut);
+    basePointsOut *= ds_scale;
+}
+
+// Compute canvas-centered origin (u0,v0) for given target size
+static inline void computeCanvasOrigin(const cv::Size& size, float& u0, float& v0)
+{
+    u0 = -0.5f * (static_cast<float>(size.width)  - 1.0f);
+    v0 = -0.5f * (static_cast<float>(size.height) - 1.0f);
+}
+
+// Compute per-tile origin by offsetting the canvas origin by (x0_src,y0_src)
+static inline void computeTileOrigin(const cv::Size& fullSize, size_t x0_src, size_t y0_src, float& u0, float& v0)
+{
+    computeCanvasOrigin(fullSize, u0, v0);
+    u0 += static_cast<float>(x0_src);
+    v0 += static_cast<float>(y0_src);
+}
+
+// Thin wrapper around QuadSurface::gen with consistent parameters
+static inline void genTile(
+    QuadSurface* surf,
+    const cv::Size& size,
+    float render_scale,
+    float u0, float v0,
+    cv::Mat_<cv::Vec3f>& points,
+    cv::Mat_<cv::Vec3f>& normals)
+{
+    surf->gen(&points, &normals, size, cv::Vec3f(0,0,0), render_scale, cv::Vec3f(u0, v0, 0.0f));
+}
+
+// Render one slice from base points and unit step directions at offset `off`
+static inline void renderSliceFromBase(
+    cv::Mat& out,
+    z5::Dataset* ds,
+    ChunkCache* cache,
+    const cv::Mat_<cv::Vec3f>& basePoints,
+    const cv::Mat_<cv::Vec3f>& stepDirs,
+    float off,
+    float ds_scale)
+{
+    cv::Mat_<cv::Vec3f> coords(basePoints.size());
+    for (int yy = 0; yy < coords.rows; ++yy) {
+        for (int xx = 0; xx < coords.cols; ++xx) {
+            const cv::Vec3f& p = basePoints(yy, xx);
+            const cv::Vec3f& d = stepDirs(yy, xx);
+            coords(yy, xx) = p + off * d * static_cast<float>(ds_scale);
         }
     }
-    // ----------------------------------------------------------------------
-
-    std::vector<double> sxv, syv;
-    auto push = [&](int y, int x){
-        if (x+1 >= raw.cols || y+1 >= raw.rows) return;
-        const cv::Vec3f &p  = raw(y,x);
-        const cv::Vec3f &px = raw(y,x+1);
-        const cv::Vec3f &py = raw(y+1,x);
-        if (!_vc_valid3(p) || !_vc_valid3(px) || !_vc_valid3(py)) return;
-
-        cv::Vec3d duA = (cv::Vec3d)(px - p);
-        cv::Vec3d dvA = (cv::Vec3d)(py - p);
-
-        cv::Vec3d duBg = scale_factor * seg_scale * duA;
-        cv::Vec3d dvBg = scale_factor * seg_scale * dvA;
-
-        const double duA_len = cv::norm(duA);
-        const double dvA_len = cv::norm(dvA);
-        if (duA_len > 1e-12) sxv.push_back(cv::norm(duBg) / duA_len);
-        if (dvA_len > 1e-12) syv.push_back(cv::norm(dvBg) / dvA_len);
-    };
-
-    // Sample a few representative locations (corners + center)
-    const int ys[] = {0, raw.rows/2, std::max(0, raw.rows-2)};
-    const int xs[] = {0, raw.cols/2, std::max(0, raw.cols-2)};
-    for (int y : ys) for (int x : xs) push(y, x);
-
-    auto median = [](std::vector<double>& v)->double{
-        if (v.empty()) return 1.0;
-        size_t k = v.size()/2;
-        std::nth_element(v.begin(), v.begin()+k, v.end());
-        return v[k];
-    };
-
-    UVScale S;
-    S.sx = median(sxv);
-    S.sy = median(syv);
-    return S;
+    cv::Mat_<uint8_t> tmp;
+    readInterpolated3D(tmp, ds, coords, cache);
+    out = tmp;
 }
+
+
 
 int main(int argc, char *argv[])
 {
-    ///// Parse the command line options /////
     // clang-format off
     po::options_description required("Required arguments");
     required.add_options()
         ("volume,v", po::value<std::string>()->required(),
             "Path to the OME-Zarr volume")
         ("output,o", po::value<std::string>()->required(),
-            "Output path/pattern for rendered images")
-        ("segmentation,s", po::value<std::string>()->required(),
-            "Path to the segmentation file")
+            "Output path or name (Zarr: name without extension; TIF: filename or printf pattern)")
         ("scale", po::value<float>()->required(),
             "Pixels per level-g voxel (Pg)")
         ("group-idx,g", po::value<int>()->required(),
@@ -437,6 +484,14 @@ int main(int argc, char *argv[])
     po::options_description optional("Optional arguments");
     optional.add_options()
         ("help,h", "Show this help message")
+        ("segmentation,s", po::value<std::string>(),
+            "Path to a single tifxyz segmentation folder (ignored if --render-folder is set)")
+        ("render-folder", po::value<std::string>(),
+            "Folder containing tifxyz segmentation folders to batch render")
+        ("cache-gb", po::value<size_t>()->default_value(16),
+            "Zarr chunk cache size in gigabytes (default: 16)")
+        ("format", po::value<std::string>(),
+            "When using --render-folder, choose 'zarr' or 'tif' output")
         ("num-slices,n", po::value<int>()->default_value(1),
             "Number of slices to render")
         ("crop-x", po::value<int>()->default_value(0),
@@ -456,18 +511,18 @@ int main(int argc, char *argv[])
         ("rotate", po::value<double>()->default_value(0.0),
             "Rotate output image by angle in degrees (counterclockwise)")
         ("flip", po::value<int>()->default_value(-1),
-            "Flip output image. 0=Vertical, 1=Horizontal, 2=Both");
+            "Flip output image. 0=Vertical, 1=Horizontal, 2=Both")
+        ("include-tifs", po::bool_switch()->default_value(false),
+            "If output is Zarr, also export per-Z TIFF slices to layers_{zarrname}");
     // clang-format on
 
     po::options_description all("Usage");
     all.add(required).add(optional);
 
-    // Parse command line
     po::variables_map parsed;
     try {
         po::store(po::command_line_parser(argc, argv).options(all).run(), parsed);
-        
-        // Show help message
+
         if (parsed.count("help") > 0 || argc < 2) {
             std::cout << "vc_render_tifxyz: Render volume data using segmentation surfaces\n\n";
             std::cout << all << '\n';
@@ -481,22 +536,48 @@ int main(int argc, char *argv[])
         return EXIT_FAILURE;
     }
 
-    // Extract parsed arguments
     std::filesystem::path vol_path = parsed["volume"].as<std::string>();
-    std::string tgt_ptn = parsed["output"].as<std::string>();
-    std::filesystem::path seg_path = parsed["segmentation"].as<std::string>();
+    std::string base_output_arg = parsed["output"].as<std::string>();
+    const bool has_render_folder = parsed.count("render-folder") > 0;
+    std::filesystem::path render_folder_path;
+    std::string batch_format;
+    if (has_render_folder) {
+        render_folder_path = std::filesystem::path(parsed["render-folder"].as<std::string>());
+        if (parsed.count("format") == 0) {
+            std::cerr << "Error: --format is required when using --render-folder (zarr|tif).\n";
+            return EXIT_FAILURE;
+        }
+        batch_format = parsed["format"].as<std::string>();
+        std::transform(batch_format.begin(), batch_format.end(), batch_format.begin(), ::tolower);
+        if (batch_format != "zarr" && batch_format != "tif") {
+            std::cerr << "Error: --format must be 'zarr' or 'tif'.\n";
+            return EXIT_FAILURE;
+        }
+        if (!std::filesystem::exists(render_folder_path) || !std::filesystem::is_directory(render_folder_path)) {
+            std::cerr << "Error: --render-folder path is not a directory: " << render_folder_path << "\n";
+            return EXIT_FAILURE;
+        }
+    }
+    std::filesystem::path seg_path;
+    if (!has_render_folder) {
+        if (parsed.count("segmentation") == 0) {
+            std::cerr << "Error: --segmentation is required unless --render-folder is used.\n";
+            return EXIT_FAILURE;
+        }
+        seg_path = parsed["segmentation"].as<std::string>();
+    }
     float tgt_scale = parsed["scale"].as<float>();
     int group_idx = parsed["group-idx"].as<int>();
     int num_slices = parsed["num-slices"].as<int>();
     // Downsample factor for this OME-Zarr pyramid level: g=0 -> 1, g=1 -> 0.5, ...
     const float ds_scale = std::ldexp(1.0f, -group_idx);  // 2^(-group_idx)
     float scale_seg = parsed["scale-segmentation"].as<float>();
-    // Transformation parameters
+
     double rotate_angle = parsed["rotate"].as<double>();
     const bool invert_affine = parsed["invert-affine"].as<bool>();
     int flip_axis = parsed["flip"].as<int>();
-    
-    // Load affine transform if provided
+    const bool include_tifs = parsed["include-tifs"].as<bool>();
+
     AffineTransform affineTransform;
     bool hasAffine = false;
     
@@ -507,7 +588,6 @@ int main(int argc, char *argv[])
             hasAffine = true;
             std::cout << "Loaded affine transform from: " << affineFile << std::endl;
             if (invert_affine) {
-                // Invert full 4x4 (double precision)
                 cv::Mat inv = cv::Mat(affineTransform.matrix).inv();
                 if (inv.empty()) {
                     std::cerr << "Error: affine matrix is non-invertible.\n";
@@ -528,28 +608,67 @@ int main(int argc, char *argv[])
 
     std::cout << "zarr dataset size for scale group " << group_idx << ds->shape() << std::endl;
     std::cout << "chunk shape shape " << ds->chunking().blockShape() << std::endl;
-    std::cout << "saving output to " << tgt_ptn << std::endl;
+    std::cout << "output argument: " << base_output_arg << std::endl;
 
+    // Enforce 90-degree-increment rotations only
+    int rotQuadGlobal = -1;
     if (std::abs(rotate_angle) > 1e-6) {
+        rotQuadGlobal = normalizeQuadrantRotation(rotate_angle);
+        if (rotQuadGlobal < 0) {
+            std::cerr << "Error: only 0/90/180/270 degree rotations are supported." << std::endl;
+            return EXIT_FAILURE;
+        }
+        rotate_angle = rotQuadGlobal * 90.0; // normalize
         std::cout << "Rotation: " << rotate_angle << " degrees" << std::endl;
     }
     if (flip_axis >= 0) {
         std::cout << "Flip: " << (flip_axis == 0 ? "Vertical" : flip_axis == 1 ? "Horizontal" : "Both") << std::endl;
     }
 
-    std::filesystem::path output_path(tgt_ptn);
-    std::filesystem::create_directories(output_path.parent_path());
-    
-    ChunkCache chunk_cache(16ull * 1024 * 1024 * 1024);
+    std::filesystem::path output_path(base_output_arg);
+    {
+        const auto parent = output_path.parent_path();
+        if (!parent.empty()) {
+            std::filesystem::create_directories(parent);
+        }
+    }
 
-    QuadSurface *surf = nullptr;
-    try {
-        surf = load_quad_from_tifxyz(seg_path);
-    }
-    catch (...) {
-        std::cout << "error when loading: " << seg_path << std::endl;
-        return EXIT_FAILURE;
-    }
+    const size_t cache_gb = parsed["cache-gb"].as<size_t>();
+    const size_t cache_bytes = cache_gb * 1024ull * 1024ull * 1024ull;
+    std::cout << "Chunk cache: " << cache_gb << " GB (" << cache_bytes << " bytes)" << std::endl;
+    ChunkCache chunk_cache(cache_bytes);
+
+    auto process_one = [&](const std::filesystem::path& seg_folder, const std::string& out_arg, bool force_zarr) -> void {
+        std::filesystem::path output_path_local(out_arg);
+        if (force_zarr) {
+            // ensure .zarr extension
+            if (output_path_local.extension() != ".zarr")
+                output_path_local = output_path_local.string() + ".zarr";
+        }
+        bool output_is_zarr = force_zarr || (output_path_local.extension() == ".zarr");
+        if (!output_is_zarr) {
+            // May be a directory target (no printf pattern): create directory
+            if (output_path_local.string().find('%') == std::string::npos) {
+                std::filesystem::create_directories(output_path_local);
+            } else {
+                std::filesystem::create_directories(output_path_local.parent_path());
+            }
+        }
+
+        std::cout << "Rendering segmentation: "
+                  << seg_folder.string() << " -> "
+                  << output_path_local.string()
+                  << (output_is_zarr?" (zarr)":" (tif)")
+                  << std::endl;
+
+        QuadSurface *surf = nullptr;
+        try {
+            surf = load_quad_from_tifxyz(seg_folder);
+        }
+        catch (...) {
+            std::cout << "error when loading: " << seg_folder << std::endl;
+            return;
+        }
 
     cv::Mat_<cv::Vec3f> *raw_points = surf->rawPointsPtr();
     for(int j=0;j<raw_points->rows;j++)
@@ -619,198 +738,576 @@ int main(int argc, char *argv[])
     if ((tgt_size.width >= 10000 || tgt_size.height >= 10000) && num_slices > 1)
         slice_gen = true;
     else {
-        // Center at pixel centers: -(W-1)/2, -(H-1)/2
-        const float u0 = -0.5f * (static_cast<float>(tgt_size.width)  - 1.0f);
-        const float v0 = -0.5f * (static_cast<float>(tgt_size.height) - 1.0f);
-        surf->gen(&points, &normals,
-                  tgt_size, cv::Vec3f(0,0,0),
-                  static_cast<float>(render_scale),
-                  cv::Vec3f(u0, v0, 0.0f));
+        float u0, v0; computeCanvasOrigin(tgt_size, u0, v0);
+        genTile(surf, tgt_size, static_cast<float>(render_scale), u0, v0, points, normals);
     }
 
-    cv::Mat_<uint8_t> img;
+    if (output_is_zarr) {
+        const double render_scale_zarr = render_scale;
 
-    if (num_slices == 1) {
-        // Scale the segmentation points if requested
-        points *= scale_seg;
+        cv::Mat_<cv::Vec3f> points, normals;
+        const float u0_full = -0.5f * (static_cast<float>(tgt_size.width)  - 1.0f);
+        const float v0_full = -0.5f * (static_cast<float>(tgt_size.height) - 1.0f);
+        const size_t CH = 128, CW = 128;
+        const size_t baseZ = std::max(1, num_slices);
+        const size_t CZ = baseZ;
+        const int rotQuad = normalizeQuadrantRotation(rotate_angle);
+        cv::Size zarr_xy_size = tgt_size;
 
-        // Apply affine transform if provided
-        if (hasAffine) {
-            std::cout << "Applying affine transform to points and normals for single slice" << std::endl;
-            applyAffineTransform(points, normals, affineTransform);
+        if (rotQuad >= 0) {
+            if ((rotQuad % 2) == 1) std::swap(zarr_xy_size.width, zarr_xy_size.height);
+        }
+        const size_t baseY = static_cast<size_t>(zarr_xy_size.height);
+        const size_t baseX = static_cast<size_t>(zarr_xy_size.width);
+
+        z5::filesystem::handle::File outFile(output_path_local);
+        z5::createFile(outFile, true);
+
+        auto make_shape = [](size_t z, size_t y, size_t x){
+            return std::vector<size_t>{z, y, x};
+        };
+
+        auto make_chunks = [](size_t z, size_t y, size_t x){
+            return std::vector<size_t>{z, y, x};
+        };
+
+        std::vector<size_t> shape0 = make_shape(baseZ, baseY, baseX);
+        std::vector<size_t> chunks0 = make_chunks(shape0[0], std::min(CH, shape0[1]), std::min(CW, shape0[2]));
+        nlohmann::json compOpts0 = {
+            {"cname",   "zstd"},
+            {"clevel",  1},
+            {"shuffle", 0}
+        };
+        auto dsOut0 = z5::createDataset(outFile, "0", "uint8", shape0, chunks0, std::string("blosc"), compOpts0);
+
+        const size_t tilesY_src = (static_cast<size_t>(tgt_size.height) + CH - 1) / CH;
+        const size_t tilesX_src = (static_cast<size_t>(tgt_size.width)  + CW - 1) / CW;
+        const size_t totalTiles = tilesY_src * tilesX_src;
+        std::atomic<size_t> tilesDone{0};
+
+        bool globalFlipDecision = false;
+        {
+            const int dx0 = static_cast<int>(std::min(CW, shape0[2]));
+            const int dy0 = static_cast<int>(std::min(CH, shape0[1]));
+            const float u0 = u0_full;
+            const float v0 = v0_full;
+            globalFlipDecision = computeGlobalFlipDecision(
+                surf, dx0, dy0, u0, v0,
+                static_cast<float>(render_scale_zarr),
+                scale_seg, hasAffine, affineTransform,
+                meshCentroid);
         }
 
-        // Apply downsample scaling AFTER affine so translation is scaled too
-        points *= ds_scale;
+        // Iterate output chunks and render directly into them (parallel over XY tiles)
+        for (size_t z0 = 0; z0 < shape0[0]; z0 += CZ) {
+            const size_t dz = std::min(CZ, shape0[0] - z0);
+            #pragma omp parallel for schedule(dynamic) collapse(2)
+            for (long long ty = 0; ty < static_cast<long long>(tilesY_src); ++ty) {
+                for (long long tx = 0; tx < static_cast<long long>(tilesX_src); ++tx) {
+                    const size_t y0_src = static_cast<size_t>(ty) * CH;
+                    const size_t x0_src = static_cast<size_t>(tx) * CW;
+                    const size_t dy = std::min(static_cast<size_t>(CH), static_cast<size_t>(tgt_size.height) - y0_src);
+                    const size_t dx = std::min(static_cast<size_t>(CW), static_cast<size_t>(tgt_size.width)  - x0_src);
 
-        // Decide global orientation after full transform (once)
-        if (!orientationDetermined) {
-            meshCentroid = calculateMeshCentroid(points);
-            globalFlipDecision = shouldFlipNormals(points, normals, meshCentroid);
-            orientationDetermined = true;
-            std::cout << "Orienting normals to point consistently ("
-                      << (globalFlipDecision ? "flipped" : "not flipped") << ")" << std::endl;
-        }
-        applyNormalOrientation(normals, globalFlipDecision);
+                    float u0, v0; computeTileOrigin(tgt_size, x0_src, y0_src, u0, v0);
 
-        readInterpolated3D(img, ds.get(), points, &chunk_cache);
+                    cv::Mat_<cv::Vec3f> tilePoints, tileNormals;
+                    genTile(surf, cv::Size(static_cast<int>(dx), static_cast<int>(dy)),
+                            static_cast<float>(render_scale_zarr), u0, v0, tilePoints, tileNormals);
 
-        // Debug: where did we sample?
-        debugPrintPointBounds(points, ds.get(), "single-slice/post-affine+ds");
+                    cv::Mat_<cv::Vec3f> basePoints, stepDirs;
+                    prepareBasePointsAndStepDirs(
+                        tilePoints, tileNormals,
+                        scale_seg, ds_scale,
+                        hasAffine, affineTransform,
+                        globalFlipDecision,
+                        basePoints, stepDirs);
 
-        // Apply transformations
-        if (std::abs(rotate_angle) > 1e-6) {
-            rotateImage(img, rotate_angle);
-        }
-        if (flip_axis >= 0) {
-            flipImage(img, flip_axis);
-        }
+                    const bool swapWH = (rotQuad % 2) == 1 && rotQuad >= 0;
+                    const size_t dy_dst = swapWH ? dx : dy;
+                    const size_t dx_dst = swapWH ? dy : dx;
+                    xt::xarray<uint8_t> outChunk = xt::empty<uint8_t>({dz, dy_dst, dx_dst});
 
-        cv::imwrite(tgt_ptn.c_str(), img);
-    }
-    else {
-        char buf[1024];
-        for(int i=0;i<num_slices;i++) {
-            float off = i - 0.5f * (num_slices - 1);
-            if (slice_gen) {
-                img.create(tgt_size);
+                    cv::Mat tileOut; // CV_8UC1
+                    for (size_t zi = 0; zi < dz; ++zi) {
+                        const size_t sliceIndex = z0 + zi;
+                        const float off = static_cast<float>(static_cast<double>(sliceIndex) - 0.5 * (static_cast<double>(baseZ) - 1.0));
+                        renderSliceFromBase(tileOut, ds.get(), &chunk_cache, basePoints, stepDirs, off, static_cast<float>(ds_scale));
 
-                // For chunked processing, we need to determine orientation from the first chunk
-                // or a representative sample to ensure consistency
-                for(int x=crop.x;x<crop.x+crop.width;x+=1024) {
-                    int w = std::min(tgt_size.width+crop.x-x, 1024);
-                    // Independent-crop FOV: local chunk origin inside the crop
-                    const float u0 = -0.5f * (static_cast<float>(tgt_size.width)  - 1.0f)
-                                   + static_cast<float>(x - crop.x);
-                    const float v0 = -0.5f * (static_cast<float>(tgt_size.height) - 1.0f);
-                    surf->gen(&points, &normals,
-                              cv::Size(w, crop.height),
-                              cv::Vec3f(0,0,0),
-                              static_cast<float>(render_scale),
-                              cv::Vec3f(u0, v0, 0.0f));
-                    // Scale the segmentation points if requested
-                    points *= scale_seg;
-
-                    // Apply affine transform if provided
-                    if (hasAffine) {
-                        std::cout << "Applying affine transform to points and normals for slice " << i << std::endl;
-                        applyAffineTransform(points, normals, affineTransform);
-                    }
-                    // Build forward step vectors: use the already-correct transformed normals
-                    // (n' ∝ inv(A)^T * n, normalized inside applyAffineTransform).
-                    cv::Mat_<cv::Vec3f> stepDirs = normals.clone();
-                    // Ensure unit length even when hasAffine == false.
-                    for (int yy = 0; yy < stepDirs.rows; ++yy)
-                        for (int xx = 0; xx < stepDirs.cols; ++xx) {
-                            cv::Vec3f &v = stepDirs(yy,xx);
-                            if (std::isnan(v[0]) || std::isnan(v[1]) || std::isnan(v[2])) continue;
-                            float L = std::sqrt(v[0]*v[0] + v[1]*v[1] + v[2]*v[2]);
-                            if (L > 0) v /= L;
+                        if (rotQuad >= 0 || flip_axis >= 0) {
+                            rotateFlipIfNeeded(tileOut, rotQuad, flip_axis);
                         }
-                    // Determine orientation from first chunk if not yet determined
-                    if (!orientationDetermined) {
-                        meshCentroid = calculateMeshCentroid(points);
-                        globalFlipDecision = shouldFlipNormals(points, normals, meshCentroid);
-                        orientationDetermined = true;
 
-                        if (globalFlipDecision) {
-                            std::cout << "Orienting normals to point consistently (flipped) - determined from first chunk" << std::endl;
-                        } else {
-                            std::cout << "Orienting normals to point consistently (not flipped) - determined from first chunk" << std::endl;
+                        // Copy into outChunk
+                        const size_t cH = static_cast<size_t>(tileOut.rows);
+                        const size_t cW = static_cast<size_t>(tileOut.cols);
+                        for (size_t yy = 0; yy < cH; ++yy) {
+                            for (size_t xx = 0; xx < cW; ++xx) {
+                                outChunk(zi, yy, xx) = tileOut.at<uint8_t>(static_cast<int>(yy), static_cast<int>(xx));
+                            }
                         }
                     }
 
-                    // Apply the consistent orientation decision to all chunks
-                    applyNormalOrientation(normals, globalFlipDecision);
-                    applyNormalOrientation(stepDirs, globalFlipDecision);
+                    int dstTx = static_cast<int>(tx), dstTy = static_cast<int>(ty);
+                    int dstTilesX = static_cast<int>(tilesX_src), dstTilesY = static_cast<int>(tilesY_src);
+                    if (rotQuad >= 0 || flip_axis >= 0) {
+                        mapTileIndex(static_cast<int>(tx), static_cast<int>(ty),
+                                     static_cast<int>(tilesX_src), static_cast<int>(tilesY_src),
+                                     std::max(rotQuad, 0), flip_axis,
+                                     dstTx, dstTy, dstTilesX, dstTilesY);
+                    }
+                    const size_t x0_dst = static_cast<size_t>(dstTx) * CW;
+                    const size_t y0_dst = static_cast<size_t>(dstTy) * CH;
 
-                    cv::Mat_<uint8_t> slice;
-                    readInterpolated3D(slice, ds.get(),
-                        points*ds_scale + off*stepDirs*ds_scale, &chunk_cache);
-                    debugPrintPointBounds(points*ds_scale + off*stepDirs*ds_scale,
-                                          ds.get(), "chunk/post-affine+ds");
-                    slice.copyTo(img(cv::Rect(x-crop.x,0,w,crop.height)));
+                    z5::types::ShapeType outOffset = {z0, y0_dst, x0_dst};
+                    z5::multiarray::writeSubarray<uint8_t>(dsOut0, outChunk, outOffset.begin());
+
+                    size_t done = ++tilesDone;
+                    int pct = static_cast<int>(100.0 * double(done) / double(totalTiles));
+                    #pragma omp critical(progress_print)
+                    {
+                        std::cout << "\r[render L0] tile " << done << "/" << totalTiles
+                                  << " (" << pct << "%)" << std::flush;
+                    }
                 }
             }
-            else {
-                // Build base coordinates in dataset space: scale_seg -> affine -> ds_scale
-                cv::Mat_<cv::Vec3f> basePoints = points.clone();
+        }
 
-                // Scale segmentation points
-                basePoints *= scale_seg;
+        // After finishing L0 tiles, add newline for the progress line
+        std::cout << std::endl;
 
-                // Apply affine to points and normals
-                if (hasAffine) {
-                    std::cout << "Applying affine transform to points and normals for slice " << i << " for non-slice_gen case" << std::endl;
-                    cv::Mat_<cv::Vec3f> tmpNormals = normals.clone();
-                    applyAffineTransform(basePoints, tmpNormals, affineTransform);
-                    // Decide/apply consistent normal orientation once
-                    if (!orientationDetermined) {
-                        meshCentroid = calculateMeshCentroid(basePoints);
-                        globalFlipDecision = shouldFlipNormals(basePoints, tmpNormals, meshCentroid);
-                        orientationDetermined = true;
-                        std::cout << "Orienting normals to point consistently ("
-                                  << (globalFlipDecision ? "flipped" : "not flipped")
-                                  << ") - determined from first slice" << std::endl;
-                    }
-                    applyNormalOrientation(tmpNormals, globalFlipDecision);
-                    // Compute forward step directions from the corrected normals
-                    cv::Mat_<cv::Vec3f> stepDirs = tmpNormals.clone();
-                    // Ensure unit length and orientation are consistent
-                    for (int yy = 0; yy < stepDirs.rows; ++yy)
-                        for (int xx = 0; xx < stepDirs.cols; ++xx) {
-                            cv::Vec3f &v = stepDirs(yy,xx);
-                            if (std::isnan(v[0]) || std::isnan(v[1]) || std::isnan(v[2])) continue;
-                            float L = std::sqrt(v[0]*v[0] + v[1]*v[1] + v[2]*v[2]);
-                            if (L > 0) v /= L;
+        // Build multi-resolution pyramid levels 1..5 by averaging 2x blocks in Z, Y, and X
+        auto downsample_avg = [&](int targetLevel){
+            auto src = z5::openDataset(outFile, std::to_string(targetLevel - 1));
+            const auto& sShape = src->shape();
+            // Downsample Z, Y and X by 2 (handle odd sizes)
+            std::vector<size_t> dShape = {
+                (sShape[0] + 1) / 2,
+                (sShape[1] + 1) / 2,
+                (sShape[2] + 1) / 2
+            };
+            // Chunk Z equals number of slices at this level (full Z), XY = 128
+            std::vector<size_t> dChunks = make_chunks(dShape[0], std::min(CH, dShape[1]), std::min(CW, dShape[2]));
+            nlohmann::json compOpts = {
+                {"cname",   "zstd"},
+                {"clevel",  1},
+                {"shuffle", 0}
+            };
+            auto dst = z5::createDataset(outFile, std::to_string(targetLevel), "uint8", dShape, dChunks, std::string("blosc"), compOpts);
+
+            const size_t tileZ = dShape[0], tileY = CH, tileX = CW;
+            const size_t tilesY = (dShape[1] + tileY - 1) / tileY;
+            const size_t tilesX = (dShape[2] + tileX - 1) / tileX;
+            const size_t totalTiles = tilesY * tilesX;
+            std::atomic<size_t> tilesDone{0};
+
+            for (size_t z = 0; z < dShape[0]; z += tileZ) {
+                const size_t lz = std::min(tileZ, dShape[0] - z);
+                #pragma omp parallel for schedule(dynamic) collapse(2)
+                for (long long y = 0; y < static_cast<long long>(dShape[1]); y += tileY) {
+                    for (long long x = 0; x < static_cast<long long>(dShape[2]); x += tileX) {
+                        const size_t ly = std::min(tileY, static_cast<size_t>(dShape[1] - y));
+                        const size_t lx = std::min(tileX, static_cast<size_t>(dShape[2] - x));
+
+                        const size_t sz = std::min<size_t>(2*lz, sShape[0] - 2*z);
+                        const size_t sy = std::min<size_t>(2*ly, sShape[1] - y*2);
+                        const size_t sx = std::min<size_t>(2*lx, sShape[2] - x*2);
+
+                        xt::xarray<uint8_t> srcChunk = xt::empty<uint8_t>({sz, sy, sx});
+                        {
+                            z5::types::ShapeType sOff = {static_cast<size_t>(2*z), static_cast<size_t>(2*y), static_cast<size_t>(2*x)};
+                            z5::multiarray::readSubarray<uint8_t>(src, srcChunk, sOff.begin());
                         }
-                    applyNormalOrientation(stepDirs, globalFlipDecision);
-                    // Apply downsample scaling AFTER affine so translation is scaled too
-                    basePoints *= ds_scale;
-                    cv::Mat_<cv::Vec3f> offsetPoints = basePoints + off * stepDirs * ds_scale;
-                    readInterpolated3D(img, ds.get(), offsetPoints, &chunk_cache);
-                    debugPrintPointBounds(offsetPoints, ds.get(),
-                                          "noslice/post-affine+ds");
-                } else {
-                    // No affine: decide/apply consistent normal orientation once here if needed
-                    if (!orientationDetermined) {
-                        meshCentroid = calculateMeshCentroid(basePoints);
-                        globalFlipDecision = shouldFlipNormals(basePoints, normals, meshCentroid);
-                        orientationDetermined = true;
-                        std::cout << "Orienting normals to point consistently ("
-                                  << (globalFlipDecision ? "flipped" : "not flipped")
-                                  << ") - determined without affine" << std::endl;
-                    }
-                    // Forward step = raw normals (normalize + orient)
-                    cv::Mat_<cv::Vec3f> stepDirs = normals.clone();
-                    for (int yy = 0; yy < stepDirs.rows; ++yy)
-                        for (int xx = 0; xx < stepDirs.cols; ++xx) {
-                            cv::Vec3f &v = stepDirs(yy,xx);
-                            if (std::isnan(v[0]) || std::isnan(v[1]) || std::isnan(v[2])) continue;
-                            float L = std::sqrt(v[0]*v[0] + v[1]*v[1] + v[2]*v[2]);
-                            if (L > 0) v /= L;
+
+                        xt::xarray<uint8_t> dstChunk = xt::empty<uint8_t>({lz, ly, lx});
+                        for (size_t zz = 0; zz < lz; ++zz) {
+                            for (size_t yy = 0; yy < ly; ++yy) {
+                                for (size_t xx = 0; xx < lx; ++xx) {
+                                    int sum = 0;
+                                    int cnt = 0;
+                                    for (int dz2 = 0; dz2 < 2 && (2*zz + dz2) < sz; ++dz2)
+                                        for (int dy2 = 0; dy2 < 2 && (2*yy + dy2) < sy; ++dy2)
+                                            for (int dx2 = 0; dx2 < 2 && (2*xx + dx2) < sx; ++dx2) {
+                                                sum += srcChunk(2*zz + dz2, 2*yy + dy2, 2*xx + dx2);
+                                                cnt += 1;
+                                            }
+                                    dstChunk(zz, yy, xx) = static_cast<uint8_t>((sum + (cnt/2)) / std::max(1, cnt));
+                                }
+                            }
                         }
-                    applyNormalOrientation(stepDirs, globalFlipDecision);
-                    // Apply downsample scaling AFTER (no affine)
-                    basePoints *= ds_scale;
-                    cv::Mat_<cv::Vec3f> offsetPoints = basePoints + off * stepDirs * ds_scale;
-                    readInterpolated3D(img, ds.get(), offsetPoints, &chunk_cache);
+
+                        z5::types::ShapeType dOff = {z, static_cast<size_t>(y), static_cast<size_t>(x)};
+                        z5::multiarray::writeSubarray<uint8_t>(dst, dstChunk, dOff.begin());
+
+                        size_t done = ++tilesDone;
+                        int pct = static_cast<int>(100.0 * double(done) / double(totalTiles));
+                        #pragma omp critical(progress_print)
+                        {
+                            std::cout << "\r[render L" << targetLevel << "] tile " << done << "/" << totalTiles
+                                      << " (" << pct << "%)" << std::flush;
+                        }
+                    }
                 }
             }
-            
-            // Apply transformations
-            if (std::abs(rotate_angle) > 1e-6) {
-                rotateImage(img, rotate_angle);
-            }
-            if (flip_axis >= 0) {
-                flipImage(img, flip_axis);
-            }
-            snprintf(buf, 1024, tgt_ptn.c_str(), i);
-            cv::imwrite(buf, img);
+            std::cout << std::endl;
+        };
+
+        for (int level = 1; level <= 5; ++level) {
+            downsample_avg(level);
         }
+
+        nlohmann::json attrs;
+        attrs["source_zarr"] = vol_path.string();
+        attrs["source_group"] = group_idx;
+        attrs["num_slices"] = baseZ;
+        {
+            cv::Size attr_xy = tgt_size;
+            const int rotQuadAttr = normalizeQuadrantRotation(rotate_angle);
+            if (rotQuadAttr >= 0 && (rotQuadAttr % 2) == 1) std::swap(attr_xy.width, attr_xy.height);
+            attrs["canvas_size"] = {attr_xy.width, attr_xy.height};
+        }
+        attrs["chunk_size"] = {static_cast<int>(CZ), static_cast<int>(CH), static_cast<int>(CW)};
+        attrs["note_axes_order"] = "ZYX (slice, row, col)";
+
+        nlohmann::json multiscale;
+        multiscale["version"] = "0.4";
+        multiscale["name"] = "render";
+        multiscale["axes"] = nlohmann::json::array({
+            nlohmann::json{{"name","z"},{"type","space"},{"unit","pixel"}},
+            nlohmann::json{{"name","y"},{"type","space"},{"unit","pixel"}},
+            nlohmann::json{{"name","x"},{"type","space"},{"unit","pixel"}}
+        });
+        multiscale["datasets"] = nlohmann::json::array();
+        for (int level = 0; level <= 5; ++level) {
+            const double s = std::pow(2.0, level);
+            nlohmann::json dset;
+            dset["path"] = std::to_string(level);
+            dset["coordinateTransformations"] = nlohmann::json::array({
+                // Z, Y and X scale by 2^level
+                nlohmann::json{{"type","scale"},{"scale", nlohmann::json::array({s, s, s})}},
+                nlohmann::json{{"type","translation"},{"translation", nlohmann::json::array({0.0, 0.0, 0.0})}}
+            });
+            multiscale["datasets"].push_back(dset);
+        }
+        multiscale["metadata"] = nlohmann::json{{"downsampling_method","mean"}};
+        attrs["multiscales"] = nlohmann::json::array({multiscale});
+
+        z5::filesystem::writeAttributes(outFile, attrs);
+
+        // Optionally export per-Z TIFFs from level 0 into layers_{zarrname}
+        if (include_tifs) {
+            try {
+                auto dsL0 = z5::openDataset(outFile, "0");
+                const auto& shape0_check = dsL0->shape(); // [Z, Y, X]
+                const size_t Z = shape0_check[0];
+                const int Y = static_cast<int>(shape0_check[1]);
+                const int X = static_cast<int>(shape0_check[2]);
+
+                std::string zname = output_path_local.stem().string();
+                std::filesystem::path layers_dir = output_path_local.parent_path() / (std::string("layers_") + zname);
+                std::filesystem::create_directories(layers_dir);
+
+                int pad = 2;
+                size_t maxIndex = (Z > 0) ? (Z - 1) : 0;
+                while (maxIndex >= 100) { pad++; maxIndex /= 10; }
+
+                bool all_exist = true;
+                for (size_t z = 0; z < Z; ++z) {
+                    std::ostringstream fn;
+                    fn << std::setw(pad) << std::setfill('0') << z;
+                    std::filesystem::path outPath = layers_dir / (fn.str() + std::string(".tif"));
+                    if (!std::filesystem::exists(outPath)) { all_exist = false; break; }
+                }
+                if (all_exist) {
+                    std::cout << "[tif export] all slices exist in " << layers_dir.string() << ", skipping." << std::endl;
+                    // Nothing else to do
+                    delete surf;
+                    return;
+                }
+
+                const uint32_t tileW = static_cast<uint32_t>(CW);
+                const uint32_t tileH = static_cast<uint32_t>(CH);
+                const uint32_t tilesX_src = (static_cast<uint32_t>(X) + tileW - 1) / tileW;
+                const uint32_t tilesY_src = (static_cast<uint32_t>(Y) + tileH - 1) / tileH;
+                // Zarr L0 already has rotation/flip applied; TIFFs should match L0 exactly
+                const uint32_t outW = static_cast<uint32_t>(X);
+                const uint32_t outH = static_cast<uint32_t>(Y);
+                const size_t totalTiles = static_cast<size_t>(tilesX_src) * static_cast<size_t>(tilesY_src);
+                std::atomic<size_t> tilesDone{0};
+
+                std::vector<TIFF*> tiffs(Z, nullptr);
+                std::vector<std::mutex> tiffLocks(Z); // per-slice locks
+                for (size_t z = 0; z < Z; ++z) {
+                    std::ostringstream fn;
+                    fn << std::setw(pad) << std::setfill('0') << z;
+                    std::filesystem::path outPath = layers_dir / (fn.str() + std::string(".tif"));
+                    TIFF* tf = TIFFOpen(outPath.string().c_str(), "w8");
+                    if (!tf) throw std::runtime_error("failed to open TIFF for writing: " + outPath.string());
+                    TIFFSetField(tf, TIFFTAG_IMAGEWIDTH, outW);
+                    TIFFSetField(tf, TIFFTAG_IMAGELENGTH, outH);
+                    TIFFSetField(tf, TIFFTAG_SAMPLESPERPIXEL, 1);
+                    TIFFSetField(tf, TIFFTAG_BITSPERSAMPLE, 8);
+                    TIFFSetField(tf, TIFFTAG_PHOTOMETRIC, PHOTOMETRIC_MINISBLACK);
+                    TIFFSetField(tf, TIFFTAG_PLANARCONFIG, PLANARCONFIG_CONTIG);
+                    TIFFSetField(tf, TIFFTAG_COMPRESSION, COMPRESSION_LZW);
+                    TIFFSetField(tf, TIFFTAG_PREDICTOR, 2);
+                    TIFFSetField(tf, TIFFTAG_TILEWIDTH, tileW);
+                    TIFFSetField(tf, TIFFTAG_TILELENGTH, tileH);
+                    tiffs[z] = tf;
+                }
+
+                // Per-thread tile buffer padded to tile size
+                #pragma omp parallel for schedule(dynamic) collapse(2)
+                for (long long ty = 0; ty < static_cast<long long>(tilesY_src); ++ty) {
+                    for (long long tx = 0; tx < static_cast<long long>(tilesX_src); ++tx) {
+                        const uint32_t x0_src = static_cast<uint32_t>(tx) * tileW;
+                        const uint32_t y0_src = static_cast<uint32_t>(ty) * tileH;
+                        const uint32_t dx = std::min<uint32_t>(tileW, static_cast<uint32_t>(X) - x0_src);
+                        const uint32_t dy = std::min<uint32_t>(tileH, static_cast<uint32_t>(Y) - y0_src);
+
+                        xt::xarray<uint8_t> tile = xt::empty<uint8_t>({Z, static_cast<size_t>(dy), static_cast<size_t>(dx)});
+                        {
+                            z5::types::ShapeType off = {0, static_cast<size_t>(y0_src), static_cast<size_t>(x0_src)};
+                            z5::multiarray::readSubarray<uint8_t>(dsL0, tile, off.begin());
+                        }
+
+                        std::vector<uint8_t> tileBuf(tileW * tileH, 0);
+                        for (size_t z = 0; z < Z; ++z) {
+                            cv::Mat srcTile(static_cast<int>(dy), static_cast<int>(dx), CV_8UC1);
+                            for (uint32_t yy = 0; yy < dy; ++yy) {
+                                uint8_t* dst = srcTile.ptr<uint8_t>(static_cast<int>(yy));
+                                for (uint32_t xx = 0; xx < dx; ++xx) dst[xx] = tile(z, yy, xx);
+                            }
+                            // No additional rotate/flip here; L0 is final orientation
+                            cv::Mat& dstTile = srcTile;
+                            const uint32_t x0_dst = static_cast<uint32_t>(tx) * tileW;
+                            const uint32_t y0_dst = static_cast<uint32_t>(ty) * tileH;
+
+                            const uint32_t ddy = static_cast<uint32_t>(dstTile.rows);
+                            const uint32_t ddx = static_cast<uint32_t>(dstTile.cols);
+                            // Fill pad buffer
+                            std::fill(tileBuf.begin(), tileBuf.end(), 0);
+                            for (uint32_t yy = 0; yy < ddy; ++yy) {
+                                const uint8_t* src = dstTile.ptr<uint8_t>(static_cast<int>(yy));
+                                std::memcpy(tileBuf.data() + yy * tileW, src, ddx);
+                            }
+
+                            // Write tile to the corresponding TIFF (per-slice lock)
+                            {
+                                std::lock_guard<std::mutex> guard(tiffLocks[z]);
+                                TIFF* tf = tiffs[z];
+                                const uint32_t tileIndex = TIFFComputeTile(tf, x0_dst, y0_dst, 0, 0);
+                                (void)tileIndex;
+                                if (TIFFWriteEncodedTile(tf, tileIndex, tileBuf.data(), static_cast<tmsize_t>(tileBuf.size())) < 0) {
+                                    // ignore individual tile write errors for now
+                                }
+                            }
+                        }
+
+                        size_t done = ++tilesDone;
+                        int pct = static_cast<int>(100.0 * double(done) / double(totalTiles));
+                        #pragma omp critical(progress_print)
+                        {
+                            std::cout << "\r[tif export] tiles " << done << "/" << totalTiles
+                                      << " (" << pct << "%)" << std::flush;
+                        }
+                    }
+                }
+
+                for (auto* tf : tiffs) {
+                    TIFFClose(tf);
+                }
+
+                std::cout << std::endl;
+            } catch (const std::exception& e) {
+                std::cerr << "[tif export] warning: failed to export TIFFs: " << e.what() << std::endl;
+            }
+        }
+
+        delete surf;
+        return;
     }
+
+    {
+        {
+            try {
+                const int rotQuad = normalizeQuadrantRotation(rotate_angle);
+                if (std::abs(rotate_angle) > 1e-6 && rotQuad < 0) {
+                    throw std::runtime_error("non-right-angle rotation not supported in tiled-TIFF path");
+                }
+
+                const int outW = ((rotQuad >= 0) && (rotQuad % 2 == 1)) ? tgt_size.height : tgt_size.width;
+                const int outH = ((rotQuad >= 0) && (rotQuad % 2 == 1)) ? tgt_size.width  : tgt_size.height;
+
+                const uint32_t tileW = 128;
+                const uint32_t tileH = 128;
+
+                std::vector<TIFF*> tiffs(static_cast<size_t>(num_slices), nullptr);
+                std::vector<std::mutex> tiffLocks(static_cast<size_t>(num_slices));
+
+                auto make_out_path = [&](int sliceIdx) -> std::filesystem::path {
+                    if (output_path_local.string().find('%') == std::string::npos) {
+                        //
+                        int pad = 2; int v = std::max(0, num_slices-1);
+                        while (v >= 100) { pad++; v /= 10; }
+                        std::ostringstream fn;
+                        fn << std::setw(pad) << std::setfill('0') << sliceIdx;
+                        return output_path_local / (fn.str() + ".tif");
+                    } else {
+                        char buf[1024];
+                        snprintf(buf, sizeof(buf), output_path_local.string().c_str(), sliceIdx);
+                        return std::filesystem::path(buf);
+                    }
+                };
+
+                // If all expected TIFFs exist, skip this segmentation
+                {
+                    bool all_exist = true;
+                    for (int z = 0; z < num_slices; ++z) {
+                        std::filesystem::path outPath = make_out_path(z);
+                        if (!std::filesystem::exists(outPath)) { all_exist = false; break; }
+                    }
+                    if (all_exist) {
+                        std::cout << "[tif tiled] all slices exist in " << output_path_local.string() << ", skipping." << std::endl;
+                        delete surf;
+                        return;
+                    }
+                }
+
+                for (int z = 0; z < num_slices; ++z) {
+                    std::filesystem::path outPath = make_out_path(z);
+                    TIFF* tf = TIFFOpen(outPath.string().c_str(), "w8");
+                    if (!tf) throw std::runtime_error(std::string("failed to open TIFF for writing: ") + outPath.string());
+                    TIFFSetField(tf, TIFFTAG_IMAGEWIDTH, static_cast<uint32_t>(outW));
+                    TIFFSetField(tf, TIFFTAG_IMAGELENGTH, static_cast<uint32_t>(outH));
+                    TIFFSetField(tf, TIFFTAG_SAMPLESPERPIXEL, 1);
+                    TIFFSetField(tf, TIFFTAG_BITSPERSAMPLE, 8);
+                    TIFFSetField(tf, TIFFTAG_PHOTOMETRIC, PHOTOMETRIC_MINISBLACK);
+                    TIFFSetField(tf, TIFFTAG_PLANARCONFIG, PLANARCONFIG_CONTIG);
+                    TIFFSetField(tf, TIFFTAG_COMPRESSION, COMPRESSION_LZW);
+                    TIFFSetField(tf, TIFFTAG_PREDICTOR, 2);
+                    TIFFSetField(tf, TIFFTAG_TILEWIDTH, tileW);
+                    TIFFSetField(tf, TIFFTAG_TILELENGTH, tileH);
+                    tiffs[static_cast<size_t>(z)] = tf;
+                }
+
+                {
+                    const int dx0 = std::min<int>(static_cast<int>(tileW), tgt_size.width);
+                    const int dy0 = std::min<int>(static_cast<int>(tileH), tgt_size.height);
+                    float u0, v0; computeCanvasOrigin(tgt_size, u0, v0);
+                    globalFlipDecision = computeGlobalFlipDecision(
+                        surf, dx0, dy0, u0, v0,
+                        static_cast<float>(render_scale),
+                        scale_seg, hasAffine, affineTransform,
+                        meshCentroid);
+                }
+
+                const uint32_t tilesX_src = (static_cast<uint32_t>(tgt_size.width)  + tileW - 1) / tileW;
+                const uint32_t tilesY_src = (static_cast<uint32_t>(tgt_size.height) + tileH - 1) / tileH;
+                const size_t totalTiles = static_cast<size_t>(tilesX_src) * static_cast<size_t>(tilesY_src);
+                std::atomic<size_t> tilesDone{0};
+
+                #pragma omp parallel for schedule(dynamic) collapse(2)
+                for (long long ty = 0; ty < static_cast<long long>(tilesY_src); ++ty) {
+                    for (long long tx = 0; tx < static_cast<long long>(tilesX_src); ++tx) {
+                        const uint32_t x0_src = static_cast<uint32_t>(tx) * tileW;
+                        const uint32_t y0_src = static_cast<uint32_t>(ty) * tileH;
+                        const uint32_t dx = std::min<uint32_t>(tileW, static_cast<uint32_t>(tgt_size.width)  - x0_src);
+                        const uint32_t dy = std::min<uint32_t>(tileH, static_cast<uint32_t>(tgt_size.height) - y0_src);
+
+                        // Generate base coordinates/normals for this tile once
+                        float u0, v0; computeTileOrigin(tgt_size, x0_src, y0_src, u0, v0);
+                        cv::Mat_<cv::Vec3f> tilePoints, tileNormals;
+                        genTile(surf, cv::Size(static_cast<int>(dx), static_cast<int>(dy)),
+                                static_cast<float>(render_scale), u0, v0, tilePoints, tileNormals);
+
+                        cv::Mat_<cv::Vec3f> basePoints, stepDirs;
+                        prepareBasePointsAndStepDirs(
+                            tilePoints, tileNormals,
+                            scale_seg, ds_scale,
+                            hasAffine, affineTransform,
+                            globalFlipDecision,
+                            basePoints, stepDirs);
+
+                        std::vector<uint8_t> tileBuf(tileW * tileH, 0);
+                        cv::Mat_<uint8_t> tileOut;
+                        for (int zi = 0; zi < num_slices; ++zi) {
+                            const float off = static_cast<float>(static_cast<double>(zi) - 0.5 * (static_cast<double>(num_slices) - 1.0));
+                            renderSliceFromBase(tileOut, ds.get(), &chunk_cache, basePoints, stepDirs, off, static_cast<float>(ds_scale));
+
+                            cv::Mat tileTransformed = tileOut;
+                            rotateFlipIfNeeded(tileTransformed, rotQuad, flip_axis);
+
+                            const uint32_t dty = static_cast<uint32_t>(tileTransformed.rows);
+                            const uint32_t dtx = static_cast<uint32_t>(tileTransformed.cols);
+                            std::fill(tileBuf.begin(), tileBuf.end(), 0);
+                            for (uint32_t yy = 0; yy < dty; ++yy) {
+                                const uint8_t* src = tileTransformed.ptr<uint8_t>(static_cast<int>(yy));
+                                std::memcpy(tileBuf.data() + yy * tileW, src, dtx);
+                            }
+
+                            int dstTx, dstTy, rTilesX, rTilesY;
+                            mapTileIndex(static_cast<int>(tx), static_cast<int>(ty),
+                                         static_cast<int>(tilesX_src), static_cast<int>(tilesY_src),
+                                         std::max(rotQuad, 0), flip_axis,
+                                         dstTx, dstTy, rTilesX, rTilesY);
+                            const uint32_t x0_dst = static_cast<uint32_t>(dstTx) * tileW;
+                            const uint32_t y0_dst = static_cast<uint32_t>(dstTy) * tileH;
+
+                            {
+                                std::lock_guard<std::mutex> guard(tiffLocks[static_cast<size_t>(zi)]);
+                                TIFF* tf = tiffs[static_cast<size_t>(zi)];
+                                const uint32_t tileIndex = TIFFComputeTile(tf, x0_dst, y0_dst, 0, 0);
+                                TIFFWriteEncodedTile(tf, tileIndex, tileBuf.data(), static_cast<tmsize_t>(tileBuf.size()));
+                            }
+                        }
+
+                        size_t done = ++tilesDone;
+                        int pct = static_cast<int>(100.0 * double(done) / double(totalTiles));
+                        #pragma omp critical(progress_print)
+                        {
+                            std::cout << "\r[tif tiled] tiles " << done << "/" << totalTiles
+                                      << " (" << pct << "%)" << std::flush;
+                        }
+                    }
+                }
+
+                for (auto* tf : tiffs) {
+                    TIFFClose(tf);
+                }
+                std::cout << std::endl;
+
+
+                delete surf;
+                return;
+            } catch (const std::exception& e) {
+                std::cerr << "[tif tiled] error: " << e.what() << std::endl;
+                delete surf;
+                return;
+            }
+        }
+
+        }
 
     delete surf;
+    };
+
+
+    if (has_render_folder) {
+        // iterate through folders in render_folder_path
+        for (const auto& entry : std::filesystem::directory_iterator(render_folder_path)) {
+            if (entry.is_directory()) {
+                std::string out_arg;
+                // For both TIFF and Zarr, write inside each segmentation folder
+                // using the -o value as the subdirectory/basename.
+                // Zarr path will get ".zarr" appended in process_one when force_zarr=true.
+                out_arg = (entry.path() / base_output_arg).string();
+                process_one(entry.path(), out_arg, batch_format == "zarr");
+            }
+        }
+    } else {
+        process_one(seg_path, base_output_arg, false);
+    }
 
     return EXIT_SUCCESS;
 }

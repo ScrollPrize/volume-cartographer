@@ -24,6 +24,7 @@ target_link_libraries(vc_render_tifxyz
     VC::slicing
     VC::surface
     Boost::program_options
+    tiff
 )
 
 add_executable(vc_objrefine src/ObjAlphaCompRefinement.cpp)
