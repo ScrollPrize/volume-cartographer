@@ -22,6 +22,8 @@ else()
     find_package(z5 REQUIRED)
 endif()
 
+find_package(Threads REQUIRED)
+
 if((VC_BUILD_APPS OR VC_BUILD_UTILS) AND VC_BUILD_GUI)
     find_package(Qt6 QUIET REQUIRED COMPONENTS Widgets Gui Core Network)
     # qt_standard_project_setup() #NOTE below settings for QT < 6.3, commented command for qt >= 6.3, ubuntu 22.04 has qt 6.2!
