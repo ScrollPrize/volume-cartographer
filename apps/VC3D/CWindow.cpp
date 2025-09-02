@@ -684,6 +684,17 @@ void CWindow::CreateWidgets(void)
     chkFilterCurrentOnly = ui.chkFilterCurrentOnly;
     connect(chkFilterCurrentOnly, &QCheckBox::toggled, [this]() { onSegFilterChanged(0); });
 
+    // Connect Stop tools button from Tools dock
+    if (ui.btnStopTools) {
+        connect(ui.btnStopTools, &QPushButton::clicked, this, [this]() {
+            if (!initializeCommandLineRunner()) return;
+            if (_cmdRunner) {
+                _cmdRunner->cancel();
+                statusBar()->showMessage(tr("Cancelling running tools..."), 3000);
+            }
+        });
+    }
+
 }
 
 void CWindow::onDrawBBoxToggled(bool enabled)
@@ -1132,6 +1143,7 @@ void CWindow::OpenVolume(const QString& path)
        qobject_cast<QStandardItemModel*>(cmbPointSetFilter->model())->appendRow(item);
    }
 }
+
 void CWindow::CloseVolume(void)
 {
     // Notify viewers to clear their surface pointers before we delete them
@@ -1284,15 +1296,6 @@ void CWindow::About(void)
 void CWindow::ShowSettings()
 {
     auto pDlg = new SettingsDialog(this);
-    
-    // If we have volumes loaded, update the volume list in settings
-    if (fVpkg && fVpkg->numberOfVolumes() > 0) {
-        QStringList volIds;
-        for (const auto& id : fVpkg->volumeIDs()) {
-            volIds << QString::fromStdString(id);
-        }
-        pDlg->updateVolumeList(volIds);
-    }
     
     pDlg->exec();
     // Apply updated settings immediately to viewers
