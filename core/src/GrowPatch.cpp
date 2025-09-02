@@ -17,6 +17,10 @@
 static float space_trace_dist_w = 1.0;
 float dist_th = 1.5;
 
+// global CUDA to allow use to set to false globally
+// in the case they have cuda avail, but do not want to use it
+static bool g_use_cuda = true;
+
 
 static int gen_straight_loss(ceres::Problem &problem, const cv::Vec2i &p, const cv::Vec2i &o1, const cv::Vec2i &o2, const cv::Vec2i &o3, cv::Mat_<uint8_t> &state, cv::Mat_<cv::Vec3d> &dpoints, bool optimize_all, float w = 0.5);
 static int gen_dist_loss(ceres::Problem &problem, const cv::Vec2i &p, const cv::Vec2i &off, cv::Mat_<uint8_t> &state, cv::Mat_<cv::Vec3d> &dpoints, float unit, bool optimize_all, ceres::ResidualBlockId *res, float w = 1.0);
@@ -391,16 +395,17 @@ static float local_optimization(int radius, const cv::Vec2i &p, cv::Mat_<uint8_t
 //    }
 #ifdef VC_USE_CUDA_SPARSE
     // Check if Ceres was actually built with CUDA sparse support
-    if (ceres::IsSparseLinearAlgebraLibraryTypeAvailable(ceres::CUDA_SPARSE)) {
-        options.linear_solver_type = ceres::SPARSE_SCHUR;
-        options.sparse_linear_algebra_library_type = ceres::CUDA_SPARSE;
+    if (g_use_cuda) {
+        if (ceres::IsSparseLinearAlgebraLibraryTypeAvailable(ceres::CUDA_SPARSE)) {
+            options.linear_solver_type = ceres::SPARSE_SCHUR;
+            options.sparse_linear_algebra_library_type = ceres::CUDA_SPARSE;
 
-        // Enable mixed precision for SPARSE_SCHUR
-        if (options.linear_solver_type == ceres::SPARSE_SCHUR) {
-            options.use_mixed_precision_solves = true;
+            if (options.linear_solver_type == ceres::SPARSE_SCHUR) {
+                options.use_mixed_precision_solves = true;
+            }
+        } else {
+            std::cerr << "Warning: use_cuda=true but Ceres was not built with CUDA sparse support. Falling back to CPU sparse." << std::endl;
         }
-    } else {
-        std::cerr << "Warning: CUDA_SPARSE requested but Ceres was not built with CUDA sparse support. Falling back to default solver." << std::endl;
     }
 #endif
     ceres::Solver::Summary summary;
@@ -517,7 +522,7 @@ struct thresholdedDistance
 };
 
 
-QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *cache, cv::Vec3f origin, int stop_gen, float step, const std::string &cache_root, float voxelsize, std::vector<DirectionField> const &direction_fields)
+QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *cache, cv::Vec3f origin, int stop_gen, float step, const std::string &cache_root, const nlohmann::json* params_opt, float voxelsize, std::vector<DirectionField> const &direction_fields)
 {
     ALifeTime f_timer("empty space tracing\n");
     DSReader reader = {ds,scale,cache};
@@ -598,16 +603,17 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *c
     options_big.use_nonmonotonic_steps = true;
 #ifdef VC_USE_CUDA_SPARSE
     // Check if Ceres was actually built with CUDA sparse support
-    if (ceres::IsSparseLinearAlgebraLibraryTypeAvailable(ceres::CUDA_SPARSE)) {
-        options_big.linear_solver_type = ceres::SPARSE_SCHUR;
-        options_big.sparse_linear_algebra_library_type = ceres::CUDA_SPARSE;
+    if (g_use_cuda) {
+        if (ceres::IsSparseLinearAlgebraLibraryTypeAvailable(ceres::CUDA_SPARSE)) {
+            options_big.linear_solver_type = ceres::SPARSE_SCHUR;
+            options_big.sparse_linear_algebra_library_type = ceres::CUDA_SPARSE;
 
-        // Enable mixed precision for SPARSE_SCHUR
-        if (options_big.linear_solver_type == ceres::SPARSE_SCHUR) {
-            options_big.use_mixed_precision_solves = true;
+            if (options_big.linear_solver_type == ceres::SPARSE_SCHUR) {
+                options_big.use_mixed_precision_solves = true;
+            }
+        } else {
+            std::cerr << "Warning: use_cuda=true but Ceres was not built with CUDA sparse support. Falling back to CPU sparse." << std::endl;
         }
-    } else {
-        std::cerr << "Warning: CUDA_SPARSE requested but Ceres was not built with CUDA sparse support. Falling back to default solver." << std::endl;
     }
 #endif
     options_big.minimizer_progress_to_stdout = false;
