@@ -120,7 +120,88 @@ static cv::Vec2f find_closest_intersection(QuadSurface* surface, const cv::Vec3f
 }
 
 
-nlohmann::json calc_point_metrics(const VCCollection& collection, QuadSurface* surface, const cv::Mat_<float>& winding)
+nlohmann::json calc_point_metrics(const VCCollection& collection, QuadSurface* surface)
+{
+    nlohmann::json results;
+    int total_points_for_in_surface_metric = 0;
+    int valid_in_surface_points = 0;
+
+    for (const auto& pair : collection.getAllCollections()) {
+        const auto& coll = pair.second;
+
+        std::vector<ColPoint> points;
+        for (const auto& p_pair : coll.points) {
+            points.push_back(p_pair.second);
+        }
+
+        std::map<int, std::vector<ColPoint>> winding_groups;
+        for (const auto& p : points) {
+            if (!std::isnan(p.winding_annotation)) {
+                winding_groups[round(p.winding_annotation)].push_back(p);
+            }
+        }
+
+        for (const auto& wg_pair : winding_groups) {
+            const auto& group = wg_pair.second;
+            if (group.size() < 2) {
+                continue;
+            }
+
+            for (size_t i = 0; i < group.size(); ++i) {
+                total_points_for_in_surface_metric++;
+                float min_dist_sq = -1;
+                cv::Vec3f closest_p;
+
+                for (size_t j = 0; j < group.size(); ++j) {
+                    if (i == j) continue;
+                    cv::Vec3f diff = group[i].p - group[j].p;
+                    float d_sq = diff.dot(diff);
+                    if (min_dist_sq < 0 || d_sq < min_dist_sq) {
+                        min_dist_sq = d_sq;
+                        closest_p = group[j].p;
+                    }
+                }
+
+                if (min_dist_sq >= 0) {
+                    float dist_3d = sqrt(min_dist_sq);
+
+                    cv::Vec3f ptr1 = surface->pointer();
+                    surface->pointTo(ptr1, group[i].p, 5.0);
+                    cv::Vec2f loc1(ptr1[0], ptr1[1]);
+
+                    cv::Vec3f ptr2 = surface->pointer();
+                    surface->pointTo(ptr2, closest_p, 5.0);
+                    cv::Vec2f loc2(ptr2[0], ptr2[1]);
+
+                    cv::Vec2f scale = surface->scale();
+                    cv::Vec2f diff_loc = (loc1 - loc2);
+                    diff_loc[0] /= scale[0];
+                    diff_loc[1] /= scale[1];
+                    float dist_surface = cv::norm(diff_loc);
+
+                    std::cout << "P1: " << group[i].p << " P2: " << closest_p
+                              << " L1: " << loc1 << " L2: " << loc2 << " Scale: " << scale
+                              << " D3D: " << dist_3d << " D2D: " << dist_surface << std::endl;
+
+                    if (dist_3d > 1e-6 && dist_surface > 1e-6) {
+                        float ratio = std::max(dist_surface, dist_3d) / std::min(dist_surface, dist_3d);
+                        if (ratio <= 1.5) {
+                            valid_in_surface_points++;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if (total_points_for_in_surface_metric > 0) {
+        results["in_surface_metric"] = (float)valid_in_surface_points / total_points_for_in_surface_metric;
+    }
+
+    return results;
+}
+
+nlohmann::json calc_point_winding_metrics(const VCCollection& collection, QuadSurface* surface, const cv::Mat_<float>& winding)
 {
     nlohmann::json results;
 
