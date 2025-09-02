@@ -102,11 +102,31 @@ private:
     bool _useRandomSeed;
     int _parallelProcesses;  // processes for xargs
     int _iterationCount;     // iterations for xargs
-    
+
+    // Advanced render options
+    int _cropX{0};
+    int _cropY{0};
+    int _cropWidth{0};
+    int _cropHeight{0};
+    QString _affinePath;
+    bool _invertAffine{false};
+    float _scaleSeg{1.0f};
+    double _rotateDeg{0.0};
+    int _flipAxis{-1};
+    bool _includeTifs{false};
+
+    // vc_tifxyz2obj options
+    bool _optNormalizeUV{false};
+    bool _optAlignGrid{false};
+    int  _optDecimateIter{0};
+    bool _optCleanSurface{false};
+    float _optCleanK{5.0f};
+
     Tool _currentTool;
 
     QFile* _logFile;
     QTextStream* _logStream;
-};
 
+    int _ompThreads{-1};
+};
 

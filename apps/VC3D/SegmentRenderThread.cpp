@@ -6,7 +6,7 @@ SegmentRenderThread::SegmentRenderThread(QObject *parent)
     : QThread(parent)
     , m_scale(1.0f)
     , m_resolution(0)
-    , m_layers(21)
+    , m_layers(31)
     , m_process(nullptr)
 {
 }
