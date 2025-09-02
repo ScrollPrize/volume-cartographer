@@ -1,4 +1,4 @@
-#include "vc/core/util/VCCollection.hpp"
+#include "vc/ui/VCCollection.hpp"
 #include "vc/core/util/Surface.hpp"
 #include "vc/core/util/Slicing.hpp"
 #include <opencv2/imgcodecs.hpp>

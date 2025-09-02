@@ -14,6 +14,8 @@
 
 #include <iostream>
 
+#include "vc/tracer/Tracer.hpp"
+
 static float space_trace_dist_w = 1.0;
 float dist_th = 1.5;
 

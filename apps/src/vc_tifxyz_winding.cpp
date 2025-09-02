@@ -298,7 +298,12 @@ int main(int argc, char *argv[])
     cv::Mat_<cv::Vec3b> img(points.size(), 0);
     
     // cv::Vec2i seed = {1145, 168};
-    
+
+    if (std::all_of(points.begin(), points.end(), [](auto &p) {return p == cv::Vec3f{-1, -1, -1};})) {
+        std::cout << "error: surface is empty" << std::endl;
+        return EXIT_FAILURE;
+    }
+
     int num_conn = 500;
     
     std::vector<IntersectVec> intersects(num_conn);
