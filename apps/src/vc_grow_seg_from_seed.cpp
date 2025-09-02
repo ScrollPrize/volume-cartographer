@@ -141,9 +141,7 @@ int main(int argc, char *argv[])
     std::string name_prefix = "auto_grown_";
     int tgt_overlap_count = params.value("tgt_overlap_count", 20);
     float min_area_cm = params.value("min_area_cm", 0.3);
-    float step_size = params.value("step_size", 20);
     int search_effort = params.value("search_effort", 10);
-    int generations = params.value("generations", 100);
     int thread_limit = params.value("thread_limit", 0);
 
     float voxelsize = json::parse(std::ifstream(vol_path/"meta.json"))["voxelsize"];
@@ -153,7 +151,7 @@ int main(int argc, char *argv[])
     std::string mode = params.value("mode", "seed");
     
     std::cout << "mode: " << mode << std::endl;
-    std::cout << "step size: " << step_size << std::endl;
+    std::cout << "step size: " << params.value("step_size", 20.0f) << std::endl;
     std::cout << "min_area_cm: " << min_area_cm << std::endl;
     std::cout << "tgt_overlap_count: " << tgt_overlap_count << std::endl;
 
@@ -342,7 +340,7 @@ int main(int argc, char *argv[])
     if (thread_limit)
         omp_set_num_threads(thread_limit);
 
-    QuadSurface *surf = space_tracing_quad_phys(ds.get(), 1.0, &chunk_cache, origin, generations, step_size, cache_root, voxelsize, direction_fields);
+    QuadSurface *surf = space_tracing_quad_phys(ds.get(), 1.0, &chunk_cache, origin, params, cache_root, voxelsize, direction_fields);
 
     double area_cm2 = (*surf->meta)["area_cm2"].get<double>();
     if (area_cm2 < min_area_cm)

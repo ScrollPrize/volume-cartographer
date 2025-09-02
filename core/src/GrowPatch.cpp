@@ -7,6 +7,7 @@
 #include "vc/core/util/OMPThreadPointCollection.hpp"
 #include "vc/core/util/LifeTime.hpp"
 #include "vc/core/types/ChunkedTensor.hpp"
+#include <nlohmann/json.hpp>
 
 
 #include "vc/core/util/xtensor_include.hpp"
@@ -517,8 +518,10 @@ struct thresholdedDistance
 };
 
 
-QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *cache, cv::Vec3f origin, int stop_gen, float step, const std::string &cache_root, float voxelsize, std::vector<DirectionField> const &direction_fields)
+QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *cache, cv::Vec3f origin, const nlohmann::json &params, const std::string &cache_root, float voxelsize, std::vector<DirectionField> const &direction_fields)
 {
+    int stop_gen = params.value("generations", 100);
+    float step = params.value("step_size", 20.0f);
     ALifeTime f_timer("empty space tracing\n");
     DSReader reader = {ds,scale,cache};
 
