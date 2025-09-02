@@ -120,7 +120,7 @@ static cv::Vec2f find_closest_intersection(QuadSurface* surface, const cv::Vec3f
 }
 
 
-nlohmann::json calc_point_metrics(const VCCollection& collection, QuadSurface* surface)
+nlohmann::json calc_point_metrics(const VCCollection& collection, QuadSurface* surface, int z_min, int z_max)
 {
     nlohmann::json results;
     int total_points_for_in_surface_metric = 0;
@@ -129,13 +129,15 @@ nlohmann::json calc_point_metrics(const VCCollection& collection, QuadSurface* s
     for (const auto& pair : collection.getAllCollections()) {
         const auto& coll = pair.second;
 
-        if (coll.points.empty()) {
-            continue;
-        }
-
         std::vector<ColPoint> points;
         for (const auto& p_pair : coll.points) {
-            points.push_back(p_pair.second);
+            if (p_pair.second.p[2] >= z_min && p_pair.second.p[2] <= z_max) {
+                points.push_back(p_pair.second);
+            }
+        }
+
+        if (points.empty()) {
+            continue;
         }
 
         std::sort(points.begin(), points.end(), [](const auto& a, const auto& b) {
@@ -189,7 +191,7 @@ nlohmann::json calc_point_metrics(const VCCollection& collection, QuadSurface* s
     return results;
 }
 
-nlohmann::json calc_point_winding_metrics(const VCCollection& collection, QuadSurface* surface, const cv::Mat_<float>& winding)
+nlohmann::json calc_point_winding_metrics(const VCCollection& collection, QuadSurface* surface, const cv::Mat_<float>& winding, int z_min, int z_max)
 {
     nlohmann::json results;
 
@@ -205,7 +207,9 @@ nlohmann::json calc_point_winding_metrics(const VCCollection& collection, QuadSu
         std::vector<ColPoint> points_with_winding;
         for (const auto& p_pair : coll.points) {
             if (!std::isnan(p_pair.second.winding_annotation)) {
-                points_with_winding.push_back(p_pair.second);
+                if (p_pair.second.p[2] >= z_min && p_pair.second.p[2] <= z_max) {
+                    points_with_winding.push_back(p_pair.second);
+                }
             }
         }
 
