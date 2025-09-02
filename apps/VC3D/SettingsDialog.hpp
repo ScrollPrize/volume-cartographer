@@ -14,8 +14,6 @@ class SettingsDialog : public QDialog, private Ui_VCSettingsDlg
 
         static std::vector<int> expandSettingToIntRange(const QString& setting);
 
-
     protected slots:
         void accept() override;
 };
-

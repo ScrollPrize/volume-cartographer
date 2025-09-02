@@ -93,13 +93,6 @@ void SettingsDialog::accept()
     settings.setValue("perf/downscale_override", cmbDownscaleOverride->currentIndex());
     settings.setValue("perf/fast_interpolation", chkFastInterpolation->isChecked() ? "1" : "0");
 
-    // Store rendering settings
-    settings.setValue("rendering/default_volume", cmbDefaultVolume->currentText());
-    settings.setValue("rendering/output_path_format", edtOutputFormat->text());
-    settings.setValue("rendering/scale", spinScale->value());
-    settings.setValue("rendering/resolution", spinResolution->value());
-    settings.setValue("rendering/layers", spinLayers->value());
-
     QMessageBox::information(this, tr("Restart required"), tr("Note: Some settings only take effect once you restarted the app."));
 
     close();
@@ -134,21 +127,3 @@ std::vector<int> SettingsDialog::expandSettingToIntRange(const QString& setting)
     return res;
 }
 
-void SettingsDialog::updateVolumeList(const QStringList& volumeIds)
-{
-    QString currentVolume = cmbDefaultVolume->currentText();
-    cmbDefaultVolume->clear();
-    
-    // Always add an empty option
-    cmbDefaultVolume->addItem("");
-    
-    for (const QString& id : volumeIds) {
-        cmbDefaultVolume->addItem(id);
-    }
-    
-    // Try to restore the previous selection
-    int index = cmbDefaultVolume->findText(currentVolume);
-    if (index >= 0) {
-        cmbDefaultVolume->setCurrentIndex(index);
-    }
-}
