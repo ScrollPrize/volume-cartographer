@@ -345,14 +345,12 @@ void QuadSurface::gen(cv::Mat_<cv::Vec3f>* coords,
 
     coords->create(size + cv::Size(8, 8));
 
-    // --- build mapping in double precision, but pass Point2f to OpenCV
+    // --- build mapping  ---------------------------------
     const double sx = static_cast<double>(_scale[0]) / static_cast<double>(scale);
     const double sy = static_cast<double>(_scale[1]) / static_cast<double>(scale);
-
     const double ox = static_cast<double>(ul[0]) - 4.0 * sx;
     const double oy = static_cast<double>(ul[1]) - 4.0 * sy;
 
-    // 3 points in float, as required by OpenCV 4.6
     std::array<cv::Point2f,3> srcf = {
         cv::Point2f(static_cast<float>(ox),                       static_cast<float>(oy)),
         cv::Point2f(static_cast<float>(ox + (w + 8) * sx),        static_cast<float>(oy)),
@@ -366,30 +364,83 @@ void QuadSurface::gen(cv::Mat_<cv::Vec3f>* coords,
 
     cv::Mat A = cv::getAffineTransform(srcf.data(), dstf.data());
 
-    // --- warp with a seam-safe border (replicate), not the default zeros
-    cv::warpAffine(*_points, *coords, A, size + cv::Size(8, 8),
+    // --- build a source validity mask (1 if point is valid) -------------
+    cv::Mat valid_src(_points->size(), CV_8U, cv::Scalar(0));
+    for (int y = 0; y < _points->rows; ++y) {
+        for (int x = 0; x < _points->cols; ++x) {
+            const cv::Vec3f& p = (*_points)(y, x);
+            // treat -1/-1/-1 or NaNs as invalid
+            const bool ok = std::isfinite(p[0]) && std::isfinite(p[1]) && std::isfinite(p[2]) &&
+                            !(p[0] == -1.f && p[1] == -1.f && p[2] == -1.f);
+            valid_src.at<uint8_t>(y, x) = ok ? 255 : 0;
+        }
+    }
+
+    // --- warp coords with seam-safe border (replicate) -------------------
+    cv::Mat_<cv::Vec3f> coords_big;
+    cv::warpAffine(*_points, coords_big, A, size + cv::Size(8, 8),
                 cv::INTER_LINEAR, cv::BORDER_REPLICATE);
 
-    // --- normals: sample on the SOURCE grid (use Vec3f, z=0)
+    // --- warp validity with constant 0 (no replicate leakage) -----------
+    cv::Mat valid_big;
+    cv::warpAffine(valid_src, valid_big, A, size + cv::Size(8, 8),
+                cv::INTER_NEAREST, cv::BORDER_CONSTANT, cv::Scalar(0));
+
+    // --- normals: sample on SOURCE grid -------------------
+    cv::Mat_<cv::Vec3f> normals_big;
     if (need_normals) {
-        normals->create(size);
+        normals_big.create(size + cv::Size(8, 8));
+        normals_big.setTo(cv::Vec3f(std::numeric_limits<float>::quiet_NaN(),
+                                    std::numeric_limits<float>::quiet_NaN(),
+                                    std::numeric_limits<float>::quiet_NaN()));
         for (int j = 0; j < h; ++j) {
             const double y = oy + (j + 4.0) * sy;
             for (int i = 0; i < w; ++i) {
                 const double x = ox + (i + 4.0) * sx;
-                (*normals)(j, i) = grid_normal(*_points,
-                                            cv::Vec3f(static_cast<float>(x),
-                                                        static_cast<float>(y),
-                                                        0.0f));
+                const int jj = j + 4, ii = i + 4;
+                if (valid_big.at<uint8_t>(jj, ii)) {
+                    normals_big(jj, ii) = grid_normal(*_points,
+                        cv::Vec3f(static_cast<float>(x),
+                                static_cast<float>(y),
+                                0.0f));
+                }
             }
         }
     }
 
-    // crop halo
-    *coords = (*coords)(cv::Rect(4, 4, w, h)).clone();
+    // --- crop away the 4px halo ----------------------------------------
+    cv::Rect inner(4, 4, w, h);
+    *coords = coords_big(inner).clone();
+    cv::Mat valid = valid_big(inner).clone();
+    if (need_normals) {
+        *normals = normals_big(inner).clone();
+    }
 
-    if (need_normals && ul[2] != 0.0f)
-        *coords += (*normals) * ul[2];
+    // --- invalidate out-of-footprint pixels (kill GUI leakage) ----------
+    const cv::Vec3f qnan(std::numeric_limits<float>::quiet_NaN(),
+                        std::numeric_limits<float>::quiet_NaN(),
+                        std::numeric_limits<float>::quiet_NaN());
+    for (int j = 0; j < h; ++j) {
+        const uint8_t* mv = valid.ptr<uint8_t>(j);
+        for (int i = 0; i < w; ++i) {
+            if (!mv[i]) {
+                (*coords)(j, i) = qnan;
+                if (need_normals) (*normals)(j, i) = qnan;
+            }
+        }
+    }
+
+    // --- apply offset along normals only where normals are valid --------
+    if (need_normals && ul[2] != 0.0f) {
+        for (int j = 0; j < h; ++j) {
+            for (int i = 0; i < w; ++i) {
+                const cv::Vec3f n = (*normals)(j, i);
+                if (std::isfinite(n[0]) && std::isfinite(n[1]) && std::isfinite(n[2])) {
+                    (*coords)(j, i) += n * ul[2];
+                }
+            }
+        }
+    }
 }
 
 static inline float sdist(const cv::Vec3f &a, const cv::Vec3f &b)
@@ -1305,6 +1356,54 @@ std::string SurfaceMeta::name()
     return path.filename();
 }
 
+void generate_mask(QuadSurface* surf,
+                            cv::Mat_<uint8_t>& mask,
+                            cv::Mat_<uint8_t>& img,
+                            z5::Dataset* ds_high,
+                            z5::Dataset* ds_low,
+                            ChunkCache* cache) {
+    cv::Mat_<cv::Vec3f> points = surf->rawPoints();
+
+    // Choose resolution based on surface size
+    if (points.cols >= 4000) {
+        // Large surface: work at 0.25x scale
+        if (ds_low && cache) {
+            readInterpolated3D(img, ds_low, points * 0.25, cache);
+        } else {
+            img.create(points.size());
+            img.setTo(0);
+        }
+
+        mask.create(img.size());
+        for(int j = 0; j < img.rows; j++) {
+            for(int i = 0; i < img.cols; i++) {
+                mask(j,i) = (points(j,i)[0] == -1) ? 0 : 255;
+            }
+        }
+    } else {
+        // Small surface: resize and downsample
+        cv::Mat_<cv::Vec3f> scaled;
+        cv::Vec2f scale = surf->scale();
+        cv::resize(points, scaled, {0,0}, 1.0/scale[0], 1.0/scale[1], cv::INTER_CUBIC);
+
+        if (ds_high && cache) {
+            readInterpolated3D(img, ds_high, scaled, cache);
+            cv::resize(img, img, {0,0}, 0.25, 0.25, cv::INTER_CUBIC);
+        } else {
+            img.create(cv::Size(points.cols/4.0, points.rows/4.0));
+            img.setTo(0);
+        }
+
+        mask.create(img.size());
+        for(int j = 0; j < img.rows; j++) {
+            for(int i = 0; i < img.cols; i++) {
+                int orig_j = j * 4 * scale[1];
+                int orig_i = i * 4 * scale[0];
+                mask(j,i) = (points(orig_j, orig_i)[0] == -1) ? 0 : 255;
+            }
+        }
+    }
+}
 
 QuadSurface* surface_diff(QuadSurface* a, QuadSurface* b, float tolerance) {
     cv::Mat_<cv::Vec3f>* diff_points = new cv::Mat_<cv::Vec3f>(a->rawPoints().clone());

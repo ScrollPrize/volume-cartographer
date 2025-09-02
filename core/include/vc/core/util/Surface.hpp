@@ -11,10 +11,17 @@
 
 #define Z_DBG_GEN_PREFIX "auto_grown_"
 
+class Chunked3dVec3fFromUint8;
 
 struct Rect3D {
     cv::Vec3f low = {0,0,0};
     cv::Vec3f high = {0,0,0};
+};
+
+struct DirectionField
+{
+    std::string direction;
+    std::unique_ptr<Chunked3dVec3fFromUint8> field_ptr;
 };
 
 bool intersect(const Rect3D &a, const Rect3D &b);
@@ -54,14 +61,14 @@ class PlaneSurface : public Surface
 public:
     //Surface API FIXME
     cv::Vec3f pointer() override;
-    void move(cv::Vec3f &ptr, const cv::Vec3f &offset) override;
+    void move(cv::Vec3f &ptr, const cv::Vec3f &offset);
     bool valid(const cv::Vec3f &ptr, const cv::Vec3f &offset = {0,0,0}) override { return true; };
     cv::Vec3f loc(const cv::Vec3f &ptr, const cv::Vec3f &offset = {0,0,0}) override;
     cv::Vec3f coord(const cv::Vec3f &ptr, const cv::Vec3f &offset = {0,0,0}) override;
     cv::Vec3f normal(const cv::Vec3f &ptr, const cv::Vec3f &offset = {0,0,0}) override;
     float pointTo(cv::Vec3f &ptr, const cv::Vec3f &coord, float th, int max_iters = 1000) override { abort(); };
 
-    PlaneSurface() = default;
+    PlaneSurface() {};
     PlaneSurface(cv::Vec3f origin_, cv::Vec3f normal_);
 
     void gen(cv::Mat_<cv::Vec3f> *coords, cv::Mat_<cv::Vec3f> *normals, cv::Size size, const cv::Vec3f &ptr, float scale, const cv::Vec3f &offset) override;
@@ -206,6 +213,7 @@ public:
 };
 
 QuadSurface *load_quad_from_tifxyz(const std::string &path);
+QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *cache, cv::Vec3f origin, int generations = 100, float step = 10, const std::string &cache_root = "", float voxelsize = 1.0, std::vector<DirectionField> const &direction_fields = {});
 QuadSurface *regularized_local_quad(QuadSurface *src, const cv::Vec3f &ptr, int w, int h, int step_search = 100, int step_out = 5);
 QuadSurface *smooth_vc_segmentation(QuadSurface *src);
 
@@ -219,6 +227,7 @@ void find_intersect_segments(std::vector<std::vector<cv::Vec3f>> &seg_vol, std::
 
 float min_loc(const cv::Mat_<cv::Vec3f> &points, cv::Vec2f &loc, cv::Vec3f &out, const std::vector<cv::Vec3f> &tgts, const std::vector<float> &tds, PlaneSurface *plane, float init_step = 16.0, float min_step = 0.125);
 
+QuadSurface *grow_surf_from_surfs(SurfaceMeta *seed, const std::vector<SurfaceMeta*> &surfs_v, const nlohmann::json &params, float voxelsize = 1.0);
 float pointTo(cv::Vec2f &loc, const cv::Mat_<cv::Vec3d> &points, const cv::Vec3f &tgt, float th, int max_iters, float scale);
 float pointTo(cv::Vec2f &loc, const cv::Mat_<cv::Vec3f> &points, const cv::Vec3f &tgt, float th, int max_iters, float scale);
 
@@ -229,3 +238,9 @@ QuadSurface* surface_diff(QuadSurface* a, QuadSurface* b, float tolerance = 2.0)
 QuadSurface* surface_union(QuadSurface* a, QuadSurface* b, float tolerance = 2.0);
 QuadSurface* surface_intersection(QuadSurface* a, QuadSurface* b, float tolerance = 2.0);
 
+void generate_mask(QuadSurface* surf,
+                            cv::Mat_<uint8_t>& mask,
+                            cv::Mat_<uint8_t>& img,
+                            z5::Dataset* ds_high = nullptr,
+                            z5::Dataset* ds_low = nullptr,
+                            ChunkCache* cache = nullptr);

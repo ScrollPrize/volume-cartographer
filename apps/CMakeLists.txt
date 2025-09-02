@@ -13,7 +13,7 @@ add_executable(vc_render_video src/vc_render_video.cpp)
 target_link_libraries(vc_render_video z5 opencv_core vc_core)
 
 add_executable(vc_render_tifxyz src/vc_render_tifxyz.cpp)
-target_link_libraries(vc_render_tifxyz vc_core Boost::program_options)
+target_link_libraries(vc_render_tifxyz vc_core Boost::program_options tiff)
 
 add_executable(vc_objrefine src/ObjAlphaCompRefinement.cpp)
 target_link_libraries(vc_objrefine vc_core)
@@ -57,8 +57,20 @@ target_link_libraries(vc_tifxyz_gengt vc_core vc_ui Boost::program_options)
 add_executable(vc_render_bench src/ZarrExtract.cpp)
 target_link_libraries(vc_render_bench vc_core)
 
+add_executable(vc_create_segment_mask src/vc_create_segment_mask.cpp)
+target_link_libraries(vc_create_segment_mask vc_core Boost::program_options)
+
 add_executable(vc_surface_diff src/vc_surface_diff.cpp)
 target_link_libraries(vc_surface_diff vc_core Boost::program_options)
+
+add_executable(vc_ced2d src/vc_ced2d.cpp)
+target_link_libraries(vc_ced2d
+    opencv_core
+    opencv_imgcodecs
+    opencv_imgproc
+    Boost::program_options
+    OpenMP::OpenMP_CXX
+)
 
 # Install targets
 if(VC_INSTALL_APPS)
@@ -72,10 +84,12 @@ install(
         vc_seg_add_overlap
         vc_tifxyz2obj
         vc_obj2tifxyz
+        vc_obj2tifxyz_legacy
         vc_tifxyz_winding
         vc_tifxyz_gengt
         vc_fill_quadmesh
         vc_calc_surface_metrics
+        vc_ced2d
         ${extra_apps}
     RUNTIME DESTINATION bin
     COMPONENT Programs

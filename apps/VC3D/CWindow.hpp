@@ -240,8 +240,7 @@ private:
     CSurfaceCollection *_surf_col;
 
     std::unordered_map<std::string, OpChain*> _opchains;
-    std::unordered_map<std::string, SurfaceMeta*> _vol_qsurfs;
-    
+
     // runner for command line tools 
     CommandLineToolRunner* _cmdRunner;
     

@@ -28,14 +28,13 @@ int main(int argc, char** argv)
         return 0;
     }
 
-    if (!vm.count("collection") || !vm.count("surface") || !vm.count("output") || !vm.count("winding")) {
-        std::cerr << "Error: --collection, --surface, --winding, and --output are required." << std::endl;
+    if (!vm.count("collection") || !vm.count("surface") || !vm.count("output")) {
+        std::cerr << "Error: --collection, --surface, and --output are required." << std::endl;
         return 1;
     }
 
     std::string collection_path = vm["collection"].as<std::string>();
     std::string surface_path = vm["surface"].as<std::string>();
-    std::string winding_path = vm["winding"].as<std::string>();
     std::string output_path = vm["output"].as<std::string>();
 
     VCCollection collection;
@@ -50,13 +49,18 @@ int main(int argc, char** argv)
         return 1;
     }
 
-    cv::Mat_<float> winding = cv::imread(winding_path, cv::IMREAD_UNCHANGED);
-    if (winding.empty()) {
-        std::cerr << "Error: Failed to load winding from " << winding_path << std::endl;
-        return 1;
-    }
+    nlohmann::json metrics = calc_point_metrics(collection, surface);
 
-    nlohmann::json metrics = calc_point_metrics(collection, surface, winding);
+    if (vm.count("winding")) {
+        std::string winding_path = vm["winding"].as<std::string>();
+        cv::Mat_<float> winding = cv::imread(winding_path, cv::IMREAD_UNCHANGED);
+        if (winding.empty()) {
+            std::cerr << "Error: Failed to load winding from " << winding_path << std::endl;
+            return 1;
+        }
+        nlohmann::json winding_metrics = calc_point_winding_metrics(collection, surface, winding);
+        metrics.update(winding_metrics);
+    }
 
     delete surface;
 

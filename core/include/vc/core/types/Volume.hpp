@@ -18,6 +18,9 @@ public:
 
     Volume(std::filesystem::path path, std::string uuid, std::string name);
 
+    ~Volume() = default;
+
+
     static std::shared_ptr<Volume> New(std::filesystem::path path);
 
     static std::shared_ptr<Volume> New(std::filesystem::path path, std::string uuid, std::string name);
