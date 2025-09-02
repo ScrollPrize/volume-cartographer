@@ -121,7 +121,11 @@ public:
     friend QuadSurface *smooth_vc_segmentation(QuadSurface *src);
     friend class ControlPointSurface;
     cv::Vec2f _scale;
+
+    void setChannel(const std::string& name, const cv::Mat& channel);
+    cv::Mat channel(const std::string& name);
 protected:
+    std::unordered_map<std::string, cv::Mat> _channels;
     cv::Mat_<cv::Vec3f>* _points = nullptr;
     cv::Rect _bounds;
     cv::Vec3f _center;

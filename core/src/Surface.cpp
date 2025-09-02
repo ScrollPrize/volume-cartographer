@@ -327,6 +327,27 @@ cv::Vec3f QuadSurface::normal(const cv::Vec3f &ptr, const cv::Vec3f &offset)
     return grid_normal((*_points), p);
 }
 
+void QuadSurface::setChannel(const std::string& name, const cv::Mat& channel)
+{
+    _channels[name] = channel;
+}
+
+cv::Mat QuadSurface::channel(const std::string& name)
+{
+    if (_channels.count(name)) {
+        cv::Mat& channel = _channels[name];
+        if (channel.empty()) {
+            // On-demand loading
+            std::filesystem::path channel_path = path / (name + ".tif");
+            if (std::filesystem::exists(channel_path)) {
+                channel = cv::imread(channel_path.string(), cv::IMREAD_UNCHANGED);
+            }
+        }
+        return channel;
+    }
+    return cv::Mat();
+}
+
 void QuadSurface::gen(cv::Mat_<cv::Vec3f>* coords,
                       cv::Mat_<cv::Vec3f>* normals,
                       cv::Size size,
@@ -1073,9 +1094,18 @@ void QuadSurface::save(const std::string &path_, const std::string &uuid)
     cv::imwrite(path/"y.tif", xyz[1]);
     cv::imwrite(path/"z.tif", xyz[2]);
 
+    std::vector<std::string> channel_names;
+    for (auto const& [name, mat] : _channels) {
+        if (!mat.empty()) {
+            cv::imwrite(path / (name + ".tif"), mat);
+            channel_names.push_back(name);
+        }
+    }
+
     if (!meta)
         meta = new nlohmann::json;
 
+    (*meta)["channels"] = channel_names;
     (*meta)["bbox"] = {{bbox().low[0],bbox().low[1],bbox().low[2]},{bbox().high[0],bbox().high[1],bbox().high[2]}};
     (*meta)["type"] = "seg";
     (*meta)["uuid"] = uuid;
@@ -1154,6 +1184,12 @@ QuadSurface *load_quad_from_tifxyz(const std::string &path)
     surf->path = path;
     surf->id   = metadata["uuid"];
     surf->meta = new nlohmann::json(metadata);
+
+    if (metadata.contains("channels")) {
+        for (const auto& name : metadata["channels"]) {
+            surf->setChannel(name.get<std::string>(), cv::Mat());
+        }
+    }
 
     return surf;
 }
