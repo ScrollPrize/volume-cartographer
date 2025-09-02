@@ -142,19 +142,29 @@ nlohmann::json calc_point_metrics(const VCCollection& collection, QuadSurface* s
             }
         }
 
-        if (points_with_winding.size() >= 2) {
-            for (size_t i = 0; i < points_with_winding.size(); ++i) {
+        std::map<int, std::vector<ColPoint>> winding_groups;
+        for (const auto& p : points_with_winding) {
+            winding_groups[round(p.winding_annotation)].push_back(p);
+        }
+
+        for (const auto& wg_pair : winding_groups) {
+            const auto& group = wg_pair.second;
+            if (group.size() < 2) {
+                continue;
+            }
+
+            for (size_t i = 0; i < group.size(); ++i) {
                 total_points_for_in_surface_metric++;
                 float min_dist_sq = -1;
                 cv::Vec3f closest_p;
 
-                for (size_t j = 0; j < points_with_winding.size(); ++j) {
+                for (size_t j = 0; j < group.size(); ++j) {
                     if (i == j) continue;
-                    cv::Vec3f diff = points_with_winding[i].p - points_with_winding[j].p;
+                    cv::Vec3f diff = group[i].p - group[j].p;
                     float d_sq = diff.dot(diff);
                     if (min_dist_sq < 0 || d_sq < min_dist_sq) {
                         min_dist_sq = d_sq;
-                        closest_p = points_with_winding[j].p;
+                        closest_p = group[j].p;
                     }
                 }
 
@@ -162,7 +172,7 @@ nlohmann::json calc_point_metrics(const VCCollection& collection, QuadSurface* s
                     float dist_3d = sqrt(min_dist_sq);
 
                     cv::Vec3f ptr1 = surface->pointer();
-                    surface->pointTo(ptr1, points_with_winding[i].p, 1.0);
+                    surface->pointTo(ptr1, group[i].p, 1.0);
                     cv::Vec2f loc1(ptr1[0], ptr1[1]);
 
                     cv::Vec3f ptr2 = surface->pointer();
@@ -171,9 +181,11 @@ nlohmann::json calc_point_metrics(const VCCollection& collection, QuadSurface* s
 
                     float dist_surface = cv::norm(loc1 - loc2);
 
-                    float ratio = std::max(dist_surface, dist_3d) / std::min(dist_surface, dist_3d);
-                    if (ratio <= 1.5) {
-                        valid_in_surface_points++;
+                    if (dist_3d > 1e-6 && dist_surface > 1e-6) {
+                        float ratio = std::max(dist_surface, dist_3d) / std::min(dist_surface, dist_3d);
+                        if (ratio <= 1.5) {
+                            valid_in_surface_points++;
+                        }
                     }
                 }
             }
