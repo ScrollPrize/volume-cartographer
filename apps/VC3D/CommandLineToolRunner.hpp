@@ -43,10 +43,14 @@ public:
 
     // tool specific params 
     void setRenderParams(float scale, int resolution, int layers);
+    void setRenderAdvanced(int cropX, int cropY, int cropWidth, int cropHeight,
+                           const QString& affinePath, bool invertAffine,
+                           float scaleSegmentation, double rotateDegrees, int flipAxis);
     void setGrowParams(QString volumePath, QString tgtDir, QString jsonParams, int seed_x = 0, int seed_y = 0, int seed_z = 0, bool useExpandMode = false, bool useRandomSeed = false);
     void setTraceParams(QString volumePath, QString srcDir, QString tgtDir, QString jsonParams, QString srcSegment);
     void setAddOverlapParams(QString tgtDir, QString tifxyzPath);
     void setToObjParams(QString tifxyzPath, QString objPath);
+    void setToObjOptions(bool normalizeUV, bool alignGrid, int decimateIterations, bool cleanSurface, float cleanK);
 
     bool execute(Tool tool);
     void cancel();
@@ -57,6 +61,8 @@ public:
     void setAutoShowConsoleOutput(bool autoShow);
     void setParallelProcesses(int count);
     void setIterationCount(int count);
+    void setIncludeTifs(bool include);
+    void setOmpThreads(int threads);
 
 signals:
     void toolStarted(Tool tool, const QString& message);
@@ -102,11 +108,30 @@ private:
     bool _useRandomSeed;
     int _parallelProcesses;  // processes for xargs
     int _iterationCount;     // iterations for xargs
-    
+
+    // Advanced render options
+    int _cropX{0};
+    int _cropY{0};
+    int _cropWidth{0};
+    int _cropHeight{0};
+    QString _affinePath;
+    bool _invertAffine{false};
+    float _scaleSeg{1.0f};
+    double _rotateDeg{0.0};
+    int _flipAxis{-1};
+    bool _includeTifs{false};
+
+    // vc_tifxyz2obj options
+    bool _optNormalizeUV{false};
+    bool _optAlignGrid{false};
+    int  _optDecimateIter{0};
+    bool _optCleanSurface{false};
+    float _optCleanK{5.0f};
+
     Tool _currentTool;
 
     QFile* _logFile;
     QTextStream* _logStream;
+
+    int _ompThreads{-1};
 };
-
-

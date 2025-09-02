@@ -7,10 +7,19 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QCoreApplication>
+#include <QDateTime>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QInputDialog>
+#include <QRegularExpression>
+#include <QRegularExpressionValidator>
+#include <QFile>
+#include <QTextStream>
 
 #include "CommandLineToolRunner.hpp"
 #include "vc/core/types/VolumePkg.hpp"
 #include "vc/core/util/Surface.hpp"
+#include "ToolDialogs.hpp"
 
 
 
@@ -81,29 +90,32 @@ static QString resolveFlatboiScript()
 }
 // ---------------------------------------------------------------------------
 
+
 void CWindow::onRenderSegment(const std::string& segmentId)
 {
-    if (currentVolume == nullptr || !fVpkg) {
-        QMessageBox::warning(this, tr("Error"), tr("Cannot render segment: No volume package loaded"));
-        return;
-    }
-
-    auto surfMeta = fVpkg->getSurface(segmentId);
-    if (!surfMeta) {
-        QMessageBox::warning(this, tr("Error"), tr("Cannot render segment: Invalid segment or segment not loaded"));
+    auto surfMeta = fVpkg ? fVpkg->getSurface(segmentId) : nullptr;
+    if (currentVolume == nullptr || !surfMeta) {
+        QMessageBox::warning(this, tr("Error"), tr("Cannot render segment: No volume or invalid segment selected"));
         return;
     }
 
     QSettings settings("VC.ini", QSettings::IniFormat);
 
-    QString outputFormat = settings.value("rendering/output_path_format", "%s/layers/%02d.tif").toString();
-    float scale = settings.value("rendering/scale", 1.0f).toFloat();
-    int resolution = settings.value("rendering/resolution", 0).toInt();
-    int layers = settings.value("rendering/layers", 31).toInt();
+    const QString volumePath = getCurrentVolumePath();
+    const QString segmentPath = QString::fromStdString(surfMeta->path.string());
+    const QString segmentOutDir = QString::fromStdString(surfMeta->path.string());
+    const QString outputFormat = "%s/layers/%02d.tif";
+    const float scale = 1.0f;
+    const int resolution = 0;
+    const int layers = 31;
+    const QString outputPattern = QString(outputFormat).replace("%s", segmentOutDir);
 
-    QString segmentPath = QString::fromStdString(surfMeta->path.string());
-    QString segmentOutDir = QString::fromStdString(surfMeta->path.string());
-    QString outputPattern = outputFormat.replace("%s", segmentOutDir);
+    // Prompt user for parameters
+    RenderParamsDialog dlg(this, volumePath, segmentPath, outputPattern, scale, resolution, layers);
+    if (dlg.exec() != QDialog::Accepted) {
+        statusBar()->showMessage(tr("Render cancelled"), 3000);
+        return;
+    }
 
     // Initialize command line tool runner if needed
     if (!_cmdRunner) {
@@ -136,9 +148,16 @@ void CWindow::onRenderSegment(const std::string& segmentId)
     }
 
     // Set up parameters and execute the render tool
-    _cmdRunner->setSegmentPath(segmentPath);
-    _cmdRunner->setOutputPattern(outputPattern);
-    _cmdRunner->setRenderParams(scale, resolution, layers);
+    _cmdRunner->setSegmentPath(dlg.segmentPath());
+    _cmdRunner->setOutputPattern(dlg.outputPattern());
+    _cmdRunner->setRenderParams(static_cast<float>(dlg.scale()), dlg.groupIdx(), dlg.numSlices());
+    _cmdRunner->setOmpThreads(dlg.ompThreads());
+    _cmdRunner->setVolumePath(dlg.volumePath());
+    _cmdRunner->setRenderAdvanced(
+        dlg.cropX(), dlg.cropY(), dlg.cropWidth(), dlg.cropHeight(),
+        dlg.affinePath(), dlg.invertAffine(),
+        static_cast<float>(dlg.scaleSegmentation()), dlg.rotateDegrees(), dlg.flipAxis());
+    _cmdRunner->setIncludeTifs(dlg.includeTifs());
 
     _cmdRunner->execute(CommandLineToolRunner::Tool::RenderTifXYZ);
 
@@ -147,17 +166,11 @@ void CWindow::onRenderSegment(const std::string& segmentId)
 
 void CWindow::onSlimFlattenAndRender(const std::string& segmentId)
 {
-    if (currentVolume == nullptr || !fVpkg) {
-        QMessageBox::warning(this, tr("Error"), tr("Cannot SLIM-flatten: No volume package loaded"));
+    auto surfMeta = fVpkg ? fVpkg->getSurface(segmentId) : nullptr;
+    if (currentVolume == nullptr || !surfMeta) {
+        QMessageBox::warning(this, tr("Error"), tr("Cannot SLIM-flatten: No volume or invalid segment selected"));
         return;
     }
-
-    auto surfMeta = fVpkg->getSurface(segmentId);
-    if (!surfMeta) {
-        QMessageBox::warning(this, tr("Error"), tr("Cannot SLIM-flatten: Invalid segment or segment not loaded"));
-        return;
-    }
-
     if (_cmdRunner && _cmdRunner->isRunning()) {
         QMessageBox::warning(this, tr("Warning"), tr("A command line tool is already running."));
         return;
@@ -245,11 +258,10 @@ void CWindow::onSlimFlattenAndRender(const std::string& segmentId)
         return;
     }
     {
-        QSettings settings("VC.ini", QSettings::IniFormat);
-        QString outputFormat = settings.value("rendering/output_path_format", "%s/layers/%02d.tif").toString();
-        float scale = settings.value("rendering/scale", 1.0f).toFloat();
-        int resolution = settings.value("rendering/resolution", 0).toInt();
-        int layers = settings.value("rendering/layers", 31).toInt();
+        QString outputFormat = "%s/layers/%02d.tif";
+        float scale = 1.0f;
+        int resolution = 0;
+        int layers = 31;
         const QString outPattern = outputFormat.replace("%s", outTifxyz);
 
         _cmdRunner->setSegmentPath(outTifxyz);
@@ -259,8 +271,6 @@ void CWindow::onSlimFlattenAndRender(const std::string& segmentId)
         statusBar()->showMessage(tr("Rendering flattened segment…"), 0);
     }
 }
-
-
 
 
 void CWindow::onGrowSegmentFromSegment(const std::string& segmentId)
@@ -314,20 +324,54 @@ void CWindow::onGrowSegmentFromSegment(const std::string& segmentId)
         return;
     }
 
+    // Prompt user for parameters
+    TraceParamsDialog dlg(this,
+                          getCurrentVolumePath(),
+                          QString::fromStdString(pathsDir.string()),
+                          QString::fromStdString(tracesDir.string()),
+                          QString::fromStdString(jsonParamsPath.string()),
+                          srcSegment);
+    if (dlg.exec() != QDialog::Accepted) {
+        statusBar()->showMessage(tr("Run trace cancelled"), 3000);
+        return;
+    }
+
+    // Merge JSON from disk with UI overrides, write to a temp file inside target dir
+    QJsonObject base;
+    {
+        QFile f(dlg.jsonParams());
+        if (f.open(QIODevice::ReadOnly)) {
+            const auto doc = QJsonDocument::fromJson(f.readAll());
+            f.close();
+            if (doc.isObject()) base = doc.object();
+        }
+    }
+    const QJsonObject ui = dlg.makeParamsJson();
+    for (auto it = ui.begin(); it != ui.end(); ++it) base[it.key()] = it.value();
+
+    const QString mergedJsonPath = QDir(dlg.tgtDir()).filePath(QString("trace_params_ui.json"));
+    {
+        QFile f(mergedJsonPath);
+        if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+            QMessageBox::warning(this, tr("Error"), tr("Failed to write params JSON: %1").arg(mergedJsonPath));
+            return;
+        }
+        f.write(QJsonDocument(base).toJson(QJsonDocument::Indented));
+        f.close();
+    }
+
     // Set up parameters and execute the tool
     _cmdRunner->setTraceParams(
-        QString(),  // Volume path will be set automatically in execute()
-        QString::fromStdString(pathsDir.string()),
-        QString::fromStdString(tracesDir.string()),
-        QString::fromStdString(jsonParamsPath.string()),
-        srcSegment
-    );
+        dlg.volumePath(),
+        dlg.srcDir(),
+        dlg.tgtDir(),
+        mergedJsonPath,
+        dlg.srcSegment());
+    _cmdRunner->setOmpThreads(dlg.ompThreads());
 
     // Show console before executing to see any debug output
     _cmdRunner->showConsoleOutput();
-
     _cmdRunner->execute(CommandLineToolRunner::Tool::GrowSegFromSegment);
-
     statusBar()->showMessage(tr("Growing segment from: %1").arg(QString::fromStdString(segmentId)), 5000);
 }
 
@@ -401,14 +445,20 @@ void CWindow::onConvertToObj(const std::string& segmentId)
     // Generate output OBJ path inside the TIFXYZ directory with segment ID as filename
     std::filesystem::path objPath = tifxyzPath / (segmentId + ".obj");
 
+    // Prompt for parameters
+    ConvertToObjDialog dlg(this,
+                           QString::fromStdString(tifxyzPath.string()),
+                           QString::fromStdString(objPath.string()));
+    if (dlg.exec() != QDialog::Accepted) {
+        statusBar()->showMessage(tr("Convert to OBJ cancelled"), 3000);
+        return;
+    }
+
     // Set up parameters and execute the tool
-    _cmdRunner->setToObjParams(
-        QString::fromStdString(tifxyzPath.string()),
-        QString::fromStdString(objPath.string())
-    );
-
+    _cmdRunner->setToObjParams(dlg.tifxyzPath(), dlg.objPath());
+    _cmdRunner->setOmpThreads(dlg.ompThreads());
+    _cmdRunner->setToObjOptions(dlg.normalizeUV(), dlg.alignGrid(), dlg.decimateIterations(), dlg.cleanSurface(), static_cast<float>(dlg.cleanK()));
     _cmdRunner->execute(CommandLineToolRunner::Tool::tifxyz2obj);
-
     statusBar()->showMessage(tr("Converting segment to OBJ: %1").arg(QString::fromStdString(segmentId)), 5000);
 }
 
@@ -482,7 +532,6 @@ void CWindow::onGrowSeeds(const std::string& segmentId, bool isExpand, bool isRa
     statusBar()->showMessage(tr("Growing segment using %1 in %2").arg(jsonFileName).arg(modeDesc), 5000);
 }
 
-
 // Helper method to initialize command line runner
 bool CWindow::initializeCommandLineRunner()
 {
@@ -520,7 +569,6 @@ bool CWindow::initializeCommandLineRunner()
     }
     return true;
 }
-
 
 void CWindow::onDeleteSegments(const std::vector<std::string>& segmentIds)
 {

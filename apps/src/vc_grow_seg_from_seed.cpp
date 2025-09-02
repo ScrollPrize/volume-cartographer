@@ -119,6 +119,12 @@ int main(int argc, char *argv[])
 
     std::ifstream params_f(params_path);
     json params = json::parse(params_f);
+    // Honor optional CUDA toggle from params (default true)
+    if (params.contains("use_cuda")) {
+        set_space_tracing_use_cuda(params.value("use_cuda", true));
+    } else {
+        set_space_tracing_use_cuda(true);
+    }
 
     z5::filesystem::handle::Group group(vol_path, z5::FileMode::FileMode::r);
     z5::filesystem::handle::Dataset ds_handle(group, "0", json::parse(std::ifstream(vol_path/"0/.zarray")).value<std::string>("dimension_separator","."));
