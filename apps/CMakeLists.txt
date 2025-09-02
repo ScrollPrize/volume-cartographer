@@ -156,6 +156,15 @@ target_link_libraries(vc_surface_diff
         Boost::program_options
 )
 
+add_executable(vc_ced2d src/vc_ced2d.cpp)
+target_link_libraries(vc_ced2d
+    opencv_core
+    opencv_imgcodecs
+    opencv_imgproc
+    Boost::program_options
+    OpenMP::OpenMP_CXX
+)
+
 # Install targets
 if(VC_INSTALL_APPS)
 install(
@@ -173,6 +182,7 @@ install(
         vc_tifxyz_gengt
         vc_fill_quadmesh
         vc_calc_surface_metrics
+        vc_ced2d
         ${extra_apps}
     RUNTIME DESTINATION bin
     COMPONENT Programs
