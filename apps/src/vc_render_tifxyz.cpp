@@ -1283,8 +1283,15 @@ int main(int argc, char *argv[])
         // iterate through folders in render_folder_path
         for (const auto& entry : std::filesystem::directory_iterator(render_folder_path)) {
             if (entry.is_directory()) {
-                std::string out_name = entry.path().filename().string();
-                std::string out_arg = (std::filesystem::path(base_output_arg) / out_name).string();
+                std::string out_arg;
+                if (batch_format == "tif") {
+                    // For TIFF, write into a subdirectory named by -o within each segmentation folder
+                    out_arg = (entry.path() / base_output_arg).string();
+                } else {
+                    // For Zarr, keep using a top-level output directory with a subfolder per segmentation name
+                    std::string out_name = entry.path().filename().string();
+                    out_arg = (std::filesystem::path(base_output_arg) / out_name).string();
+                }
                 process_one(entry.path(), out_arg, batch_format == "zarr");
             }
         }
