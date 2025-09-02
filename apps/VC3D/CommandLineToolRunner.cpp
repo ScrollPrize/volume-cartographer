@@ -141,12 +141,13 @@ void CommandLineToolRunner::setToObjParams(QString tifxyzPath, QString objPath)
     _objPath = objPath;
 }
 
-void CommandLineToolRunner::setToObjOptions(bool normalizeUV, bool alignGrid, int decimateIterations, bool cleanSurface)
+void CommandLineToolRunner::setToObjOptions(bool normalizeUV, bool alignGrid, int decimateIterations, bool cleanSurface, float cleanK)
 {
     _optNormalizeUV = normalizeUV;
     _optAlignGrid = alignGrid;
     _optDecimateIter = decimateIterations;
     _optCleanSurface = cleanSurface;
+    _optCleanK = cleanK;
 }
 
 void CommandLineToolRunner::setRenderAdvanced(
@@ -557,7 +558,9 @@ QStringList CommandLineToolRunner::buildArguments(Tool tool)
             if (_optDecimateIter > 0) {
                 args << "--decimate" << QString::number(_optDecimateIter);
             }
-            if (_optCleanSurface) args << "--clean";
+            if (_optCleanSurface) {
+                args << "--clean" << QString::number(_optCleanK);
+            }
             break;
     }
 
@@ -594,4 +597,3 @@ QString CommandLineToolRunner::getOutputPath() const
     QFileInfo outputInfo(_outputPattern);
     return outputInfo.dir().path();
 }
-

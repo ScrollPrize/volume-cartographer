@@ -48,7 +48,7 @@ public:
     void setAddOverlapParams(QString tgtDir, QString tifxyzPath);
     void setToObjParams(QString tifxyzPath, QString objPath);
     // optional parameters for vc_tifxyz2obj
-    void setToObjOptions(bool normalizeUV, bool alignGrid, int decimateIterations, bool cleanSurface);
+    void setToObjOptions(bool normalizeUV, bool alignGrid, int decimateIterations, bool cleanSurface, float cleanK = 5.0f);
 
     // optional parameters for vc_render_tifxyz
     void setRenderAdvanced(
@@ -137,6 +137,7 @@ private:
     bool _optAlignGrid{false};
     int  _optDecimateIter{0};
     bool _optCleanSurface{false};
+    float _optCleanK{5.0f};
 
     Tool _currentTool;
 
@@ -145,5 +146,4 @@ private:
 
     int _ompThreads{-1};
 };
-
 

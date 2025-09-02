@@ -44,6 +44,22 @@ public:
     bool includeTifs() const; // when output is .zarr
 
 private:
+    // Session defaults (optional-only; exclude paths and output pattern)
+    static bool s_haveSession;
+    static bool s_includeTifs;
+    static int  s_cropX, s_cropY, s_cropW, s_cropH;
+    static bool s_invertAffine;
+    static double s_scaleSeg;
+    static double s_rotateDeg;
+    static int  s_flipAxis;
+    static int  s_ompThreads;
+
+    void applyCodeDefaults();
+    void applySavedDefaults();
+    void applySessionDefaults();
+    void saveDefaults() const; // persist optional-only to VC.ini
+    void updateSessionFromUI();
+
     QLineEdit* edtVolume_{nullptr};
     QLineEdit* edtSegment_{nullptr};
     QLineEdit* edtOutput_{nullptr};
@@ -85,6 +101,32 @@ public:
     int ompThreads() const; // -1 if unset
 
 private:
+    // Session defaults (in-memory only; exclude paths)
+    static bool   s_haveSession;
+    static bool   s_flipX;
+    static int    s_globalStepsWin;
+    static double s_srcStep;
+    static double s_step;
+    static int    s_maxWidth;
+    static double s_localCostInlTh;
+    static double s_sameSurfaceTh;
+    static double s_straightW;
+    static double s_straightW3D;
+    static double s_slidingWScale;
+    static double s_zLocLossW;
+    static double s_distLoss2DW;
+    static double s_distLoss3DW;
+    static double s_straightMinCount;
+    static int    s_inlierBaseTh;
+    static int    s_consensusDefaultTh;
+    static bool   s_useZRange;
+    static double s_zMin;
+    static double s_zMax;
+    static int    s_ompThreads;
+
+    void applySessionDefaults();
+    void updateSessionFromUI();
+
     QLineEdit* edtVolume_{nullptr};
     QLineEdit* edtSrcDir_{nullptr};
     QLineEdit* edtTgtDir_{nullptr};
@@ -108,6 +150,7 @@ private:
     QDoubleSpinBox* spDistLoss3DW_{nullptr};
     QDoubleSpinBox* spStraightMinCount_{nullptr};
     QSpinBox* spInlierBaseTh_{nullptr};
+    QSpinBox* spConsensusDefaultTh_{nullptr};
     QCheckBox* chkZRange_{nullptr};
     QDoubleSpinBox* spZMin_{nullptr};
     QDoubleSpinBox* spZMax_{nullptr};
@@ -131,9 +174,25 @@ public:
     bool alignGrid() const;
     int decimateIterations() const;
     bool cleanSurface() const;
+    double cleanK() const;
     int ompThreads() const; // -1 if unset
 
 private:
+    // Session defaults (in-memory only)
+    static bool   s_haveSession;
+    static bool   s_normUV;
+    static bool   s_alignGrid;
+    static int    s_decimate;
+    static bool   s_clean;
+    static double s_cleanK;
+    static int    s_ompThreads; // -1 if unset
+
+    void applyCodeDefaults();
+    void applySavedDefaults();
+    void applySessionDefaults();
+    void saveDefaults() const; // persist optional-only to VC.ini
+    void updateSessionFromUI();
+
     QLineEdit* edtTifxyz_{nullptr};
     QLineEdit* edtObj_{nullptr};
     QLineEdit* edtThreads_{nullptr};
@@ -141,4 +200,5 @@ private:
     QCheckBox* chkAlign_{nullptr};
     QSpinBox* spDecimate_{nullptr};
     QCheckBox* chkClean_{nullptr};
+    QDoubleSpinBox* spCleanK_{nullptr};
 };

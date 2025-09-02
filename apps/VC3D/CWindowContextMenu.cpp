@@ -342,8 +342,7 @@ void CWindow::onGrowSegmentFromSegment(const std::string& segmentId)
     const QJsonObject ui = dlg.makeParamsJson();
     for (auto it = ui.begin(); it != ui.end(); ++it) base[it.key()] = it.value();
 
-    const QString ts = QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss");
-    const QString mergedJsonPath = QDir(dlg.tgtDir()).filePath(QString("trace_params_ui_%1.json").arg(ts));
+    const QString mergedJsonPath = QDir(dlg.tgtDir()).filePath(QString("trace_params_ui.json"));
     {
         QFile f(mergedJsonPath);
         if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
@@ -439,7 +438,7 @@ void CWindow::onConvertToObj(const std::string& segmentId)
     // Set up parameters and execute the tool
     _cmdRunner->setToObjParams(dlg.tifxyzPath(), dlg.objPath());
     _cmdRunner->setOmpThreads(dlg.ompThreads());
-    _cmdRunner->setToObjOptions(dlg.normalizeUV(), dlg.alignGrid(), dlg.decimateIterations(), dlg.cleanSurface());
+    _cmdRunner->setToObjOptions(dlg.normalizeUV(), dlg.alignGrid(), dlg.decimateIterations(), dlg.cleanSurface(), static_cast<float>(dlg.cleanK()));
     _cmdRunner->execute(CommandLineToolRunner::Tool::tifxyz2obj);
     statusBar()->showMessage(tr("Converting segment to OBJ: %1").arg(QString::fromStdString(segmentId)), 5000);
 }
