@@ -129,6 +129,8 @@ nlohmann::json calc_point_metrics(const VCCollection& collection, QuadSurface* s
     int total_correct_winding_inv = 0;
     int total_comparisons = 0;
     int total_segments = 0;
+    int total_points_for_in_surface_metric = 0;
+    int valid_in_surface_points = 0;
 
     for (const auto& pair : collection.getAllCollections()) {
         const auto& coll = pair.second;
@@ -137,6 +139,43 @@ nlohmann::json calc_point_metrics(const VCCollection& collection, QuadSurface* s
         for (const auto& p_pair : coll.points) {
             if (!std::isnan(p_pair.second.winding_annotation)) {
                 points_with_winding.push_back(p_pair.second);
+            }
+        }
+
+        if (points_with_winding.size() >= 2) {
+            for (size_t i = 0; i < points_with_winding.size(); ++i) {
+                total_points_for_in_surface_metric++;
+                float min_dist_sq = -1;
+                cv::Vec3f closest_p;
+
+                for (size_t j = 0; j < points_with_winding.size(); ++j) {
+                    if (i == j) continue;
+                    cv::Vec3f diff = points_with_winding[i].p - points_with_winding[j].p;
+                    float d_sq = diff.dot(diff);
+                    if (min_dist_sq < 0 || d_sq < min_dist_sq) {
+                        min_dist_sq = d_sq;
+                        closest_p = points_with_winding[j].p;
+                    }
+                }
+
+                if (min_dist_sq >= 0) {
+                    float dist_3d = sqrt(min_dist_sq);
+
+                    cv::Vec3f ptr1 = surface->pointer();
+                    surface->pointTo(ptr1, points_with_winding[i].p, 1.0);
+                    cv::Vec2f loc1(ptr1[0], ptr1[1]);
+
+                    cv::Vec3f ptr2 = surface->pointer();
+                    surface->pointTo(ptr2, closest_p, 1.0);
+                    cv::Vec2f loc2(ptr2[0], ptr2[1]);
+
+                    float dist_surface = cv::norm(loc1 - loc2);
+
+                    float ratio = std::max(dist_surface, dist_3d) / std::min(dist_surface, dist_3d);
+                    if (ratio <= 1.5) {
+                        valid_in_surface_points++;
+                    }
+                }
             }
         }
 
@@ -194,6 +233,10 @@ nlohmann::json calc_point_metrics(const VCCollection& collection, QuadSurface* s
 
     if (total_comparisons > 0) {
         results["winding_error_fraction"] = (float)(total_comparisons - std::max(total_correct_winding, total_correct_winding_inv)) / total_comparisons;
+    }
+
+    if (total_points_for_in_surface_metric > 0) {
+        results["in_surface_metric"] = (float)valid_in_surface_points / total_points_for_in_surface_metric;
     }
 
     return results;
