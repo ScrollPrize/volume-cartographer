@@ -40,6 +40,7 @@ target_link_libraries(vc_grow_seg_from_seed
     opencv_highgui
     VC::slicing
     VC::surface
+    Boost::program_options
 )
 
 add_executable(vc_seg_add_overlap src/vc_seg_add_overlap.cpp)
