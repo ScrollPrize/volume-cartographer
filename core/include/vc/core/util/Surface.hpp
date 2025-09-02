@@ -238,6 +238,9 @@ QuadSurface* surface_diff(QuadSurface* a, QuadSurface* b, float tolerance = 2.0)
 QuadSurface* surface_union(QuadSurface* a, QuadSurface* b, float tolerance = 2.0);
 QuadSurface* surface_intersection(QuadSurface* a, QuadSurface* b, float tolerance = 2.0);
 
+// Control CUDA usage in GrowPatch (space_tracing_quad_phys). Default is true.
+void set_space_tracing_use_cuda(bool enable);
+
 void generate_mask(QuadSurface* surf,
                             cv::Mat_<uint8_t>& mask,
                             cv::Mat_<uint8_t>& img,

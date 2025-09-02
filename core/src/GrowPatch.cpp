@@ -21,6 +21,11 @@ float dist_th = 1.5;
 // in the case they have cuda avail, but do not want to use it
 static bool g_use_cuda = true;
 
+// Expose a simple toggle for CUDA usage so tools can honor JSON settings
+void set_space_tracing_use_cuda(bool enable) {
+    g_use_cuda = enable;
+}
+
 
 static int gen_straight_loss(ceres::Problem &problem, const cv::Vec2i &p, const cv::Vec2i &o1, const cv::Vec2i &o2, const cv::Vec2i &o3, cv::Mat_<uint8_t> &state, cv::Mat_<cv::Vec3d> &dpoints, bool optimize_all, float w = 0.5);
 static int gen_dist_loss(ceres::Problem &problem, const cv::Vec2i &p, const cv::Vec2i &off, cv::Mat_<uint8_t> &state, cv::Mat_<cv::Vec3d> &dpoints, float unit, bool optimize_all, ceres::ResidualBlockId *res, float w = 1.0);
@@ -522,7 +527,7 @@ struct thresholdedDistance
 };
 
 
-QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *cache, cv::Vec3f origin, int stop_gen, float step, const std::string &cache_root, const nlohmann::json* params_opt, float voxelsize, std::vector<DirectionField> const &direction_fields)
+QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *cache, cv::Vec3f origin, int stop_gen, float step, const std::string &cache_root, float voxelsize, std::vector<DirectionField> const &direction_fields)
 {
     ALifeTime f_timer("empty space tracing\n");
     DSReader reader = {ds,scale,cache};
