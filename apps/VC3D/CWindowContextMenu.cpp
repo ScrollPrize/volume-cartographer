@@ -93,7 +93,8 @@ static QString resolveFlatboiScript()
 
 void CWindow::onRenderSegment(const std::string& segmentId)
 {
-    if (currentVolume == nullptr || !_vol_qsurfs.count(segmentId)) {
+    auto surfMeta = fVpkg ? fVpkg->getSurface(segmentId) : nullptr;
+    if (currentVolume == nullptr || !surfMeta) {
         QMessageBox::warning(this, tr("Error"), tr("Cannot render segment: No volume or invalid segment selected"));
         return;
     }
@@ -101,8 +102,8 @@ void CWindow::onRenderSegment(const std::string& segmentId)
     QSettings settings("VC.ini", QSettings::IniFormat);
 
     const QString volumePath = getCurrentVolumePath();
-    const QString segmentPath = QString::fromStdString(_vol_qsurfs[segmentId]->path.string());
-    const QString segmentOutDir = QString::fromStdString(_vol_qsurfs[segmentId]->path.string());
+    const QString segmentPath = QString::fromStdString(surfMeta->path.string());
+    const QString segmentOutDir = QString::fromStdString(surfMeta->path.string());
     const QString outputFormat = "%s/layers/%02d.tif";
     const float scale = 1.0f;
     const int resolution = 0;
@@ -165,7 +166,8 @@ void CWindow::onRenderSegment(const std::string& segmentId)
 
 void CWindow::onSlimFlattenAndRender(const std::string& segmentId)
 {
-    if (currentVolume == nullptr || !_vol_qsurfs.count(segmentId)) {
+    auto surfMeta = fVpkg ? fVpkg->getSurface(segmentId) : nullptr;
+    if (currentVolume == nullptr || !surfMeta) {
         QMessageBox::warning(this, tr("Error"), tr("Cannot SLIM-flatten: No volume or invalid segment selected"));
         return;
     }

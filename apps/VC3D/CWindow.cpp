@@ -972,8 +972,6 @@ void CWindow::closeEvent(QCloseEvent* event)
 void CWindow::setWidgetsEnabled(bool state)
 {
     ui.grpVolManager->setEnabled(state);
-    ui.grpSeg->setEnabled(state);
-    ui.grpEditing->setEnabled(state);
 }
 
 auto CWindow::InitializeVolumePkg(const std::string& nVpkgPath) -> bool

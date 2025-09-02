@@ -43,10 +43,14 @@ public:
 
     // tool specific params 
     void setRenderParams(float scale, int resolution, int layers);
+    void setRenderAdvanced(int cropX, int cropY, int cropWidth, int cropHeight,
+                           const QString& affinePath, bool invertAffine,
+                           float scaleSegmentation, double rotateDegrees, int flipAxis);
     void setGrowParams(QString volumePath, QString tgtDir, QString jsonParams, int seed_x = 0, int seed_y = 0, int seed_z = 0, bool useExpandMode = false, bool useRandomSeed = false);
     void setTraceParams(QString volumePath, QString srcDir, QString tgtDir, QString jsonParams, QString srcSegment);
     void setAddOverlapParams(QString tgtDir, QString tifxyzPath);
     void setToObjParams(QString tifxyzPath, QString objPath);
+    void setToObjOptions(bool normalizeUV, bool alignGrid, int decimateIterations, bool cleanSurface, float cleanK);
 
     bool execute(Tool tool);
     void cancel();
@@ -57,6 +61,8 @@ public:
     void setAutoShowConsoleOutput(bool autoShow);
     void setParallelProcesses(int count);
     void setIterationCount(int count);
+    void setIncludeTifs(bool include);
+    void setOmpThreads(int threads);
 
 signals:
     void toolStarted(Tool tool, const QString& message);
@@ -129,4 +135,3 @@ private:
 
     int _ompThreads{-1};
 };
-

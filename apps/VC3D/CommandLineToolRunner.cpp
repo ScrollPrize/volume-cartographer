@@ -141,6 +141,16 @@ void CommandLineToolRunner::setToObjParams(QString tifxyzPath, QString objPath)
     _objPath = objPath;
 }
 
+void CommandLineToolRunner::setIncludeTifs(bool include)
+{
+    _includeTifs = include;
+}
+
+void CommandLineToolRunner::setOmpThreads(int threads)
+{
+    _ompThreads = threads;
+}
+
 void CommandLineToolRunner::setToObjOptions(bool normalizeUV, bool alignGrid, int decimateIterations, bool cleanSurface, float cleanK)
 {
     _optNormalizeUV = normalizeUV;
@@ -597,4 +607,3 @@ QString CommandLineToolRunner::getOutputPath() const
     QFileInfo outputInfo(_outputPattern);
     return outputInfo.dir().path();
 }
-
