@@ -49,18 +49,6 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent)
     chkFastInterpolation->setChecked(settings.value("perf/fast_interpolation", false).toBool());
 
 
-    // Load rendering settings
-    QString defaultVolume = settings.value("rendering/default_volume", "").toString();
-    cmbDefaultVolume->addItem(""); // Empty selection
-    // Note: The combobox will be populated with actual volumes when a volpkg is loaded
-    cmbDefaultVolume->setCurrentText(defaultVolume);
-    
-    edtOutputFormat->setText(settings.value("rendering/output_path_format", "%s/layers/%02d.tif").toString());
-    spinScale->setValue(settings.value("rendering/scale", 1.0).toDouble());
-    spinResolution->setValue(settings.value("rendering/resolution", 0).toInt());
-    spinLayers->setValue(settings.value("rendering/layers", 21).toInt());
-
-
     connect(btnHelpDownscaleOverride, &QPushButton::clicked, this, [this]{ QToolTip::showText(QCursor::pos(), btnHelpDownscaleOverride->toolTip()); });
     connect(btnHelpScrollSpeed, &QPushButton::clicked, this, [this]{ QToolTip::showText(QCursor::pos(), btnHelpScrollSpeed->toolTip()); });
     connect(btnHelpDisplayOpacity, &QPushButton::clicked, this, [this]{ QToolTip::showText(QCursor::pos(), btnHelpDisplayOpacity->toolTip()); });
