@@ -151,6 +151,7 @@ static cv::Mat_<cv::Vec3f> clean_surface_outliers(const cv::Mat_<cv::Vec3f>& poi
     std::cout << "Outlier detection statistics:" << std::endl;
     std::cout << "  Median neighbor distance: " << median_dist << std::endl;
     std::cout << "  MAD: " << mad << std::endl;
+    std::cout << "  K (sigma multiplier): " << distance_threshold << std::endl;
     std::cout << "  Distance threshold: " << threshold << std::endl;
     
     // Second pass: identify and remove outliers
@@ -292,14 +293,14 @@ static cv::Mat_<cv::Vec3f> build_vertex_normals_from_faces(
     return nsum;
 }
 
-static void surf_write_obj(QuadSurface *surf, const std::filesystem::path &out_fn, bool normalize_uv, bool align_grid, int decimate_iterations, bool clean_surface)
+static void surf_write_obj(QuadSurface *surf, const std::filesystem::path &out_fn, bool normalize_uv, bool align_grid, int decimate_iterations, bool clean_surface, float clean_sigma_k)
 {
     cv::Mat_<cv::Vec3f> points = surf->rawPoints();
     
     // Clean surface outliers if requested
     if (clean_surface) {
         std::cout << "Cleaning surface outliers..." << std::endl;
-        points = clean_surface_outliers(points);
+        points = clean_surface_outliers(points, clean_sigma_k);
     }
     
     // If align_grid is enabled, align Z only:
@@ -393,23 +394,24 @@ static void surf_write_obj(QuadSurface *surf, const std::filesystem::path &out_f
 int main(int argc, char *argv[])
 {
     if (argc == 2 && (std::string(argv[1]) == "-h" || std::string(argv[1]) == "--help")) {
-        std::cout << "usage: " << argv[0] << " <tiffxyz> <obj> [--normalize-uv] [--align-grid] [--decimate [iterations]] [--clean]\n"
+        std::cout << "usage: " << argv[0] << " <tiffxyz> <obj> [--normalize-uv] [--align-grid] [--decimate [iterations]] [--clean [K]]\n"
                   << "  --normalize-uv : Normalize UVs to [0,1] range\n"
                   << "  --align-grid   : Align grid Z only (flatten Z per row)\n"
                   << "  --decimate [n] : Reduce points by ~90% per iteration (default n=1)\n"
-                  << "  --clean        : Remove outlier points that lie far from the surface\n";
+                  << "  --clean [K]    : Remove outlier points far from surface using robust distance threshold; K is sigma multiplier (default 5.0)\n";
         return EXIT_SUCCESS;
     }
 
     if (argc < 3) {
-        std::cerr << "error: too few arguments\n"
-                  << "usage: " << argv[0] << " <tiffxyz> <obj> [--normalize-uv] [--align-grid] [--decimate [iterations]] [--clean]\n";
+    std::cerr << "error: too few arguments\n"
+                  << "usage: " << argv[0] << " <tiffxyz> <obj> [--normalize-uv] [--align-grid] [--decimate [iterations]] [--clean [K]]\n";
         return EXIT_FAILURE;
     }
 
     bool normalize_uv = false;
     bool align_grid = false;
     bool clean_surface = false;
+    float clean_sigma_k = 5.0f; // default K
     int decimate_iterations = 0;
     
     // Parse optional arguments
@@ -437,6 +439,20 @@ int main(int argc, char *argv[])
             }
         } else if (arg == "--clean") {
             clean_surface = true;
+            // Optional numeric K argument following --clean
+            if (i + 1 < argc) {
+                std::string next = argv[i + 1];
+                try {
+                    // Allow floats (e.g., 3, 3.5)
+                    float k = std::stof(next);
+                    if (std::isfinite(k) && k >= 0.0f) {
+                        clean_sigma_k = k;
+                        ++i; // consume K
+                    }
+                } catch (...) {
+                    // Next token is not a number; keep default K
+                }
+            }
         } else {
             std::cerr << "error: unknown option '" << arg << "'\n";
             return EXIT_FAILURE;
@@ -455,7 +471,7 @@ int main(int argc, char *argv[])
         return EXIT_FAILURE;
     }
 
-    surf_write_obj(surf, obj_path, normalize_uv, align_grid, decimate_iterations, clean_surface);
+    surf_write_obj(surf, obj_path, normalize_uv, align_grid, decimate_iterations, clean_surface, clean_sigma_k);
 
     delete surf;
     return EXIT_SUCCESS;
