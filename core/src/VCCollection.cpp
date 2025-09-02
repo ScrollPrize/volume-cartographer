@@ -1,4 +1,4 @@
-#include "vc/core/util/VCCollection.hpp"
+#include "vc/ui/VCCollection.hpp"
 #include <QDebug>
 #include <algorithm>
 #include <vector>

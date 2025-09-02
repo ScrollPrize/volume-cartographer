@@ -1,4 +1,4 @@
-#include "vc/core/util/surface_metrics.hpp"
+#include "vc/ui/surface_metrics.hpp"
 #include <iostream>
 #include <vector>
 #include <algorithm>

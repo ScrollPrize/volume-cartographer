@@ -14,7 +14,7 @@
 #include "vc/core/util/Slicing.hpp"
 #include "vc/core/util/Logging.hpp"
 
-#include "vc/core/util/VCCollection.hpp"
+#include "vc/ui/VCCollection.hpp"
 #include "CSurfaceCollection.hpp"
 
 #include <cmath>
