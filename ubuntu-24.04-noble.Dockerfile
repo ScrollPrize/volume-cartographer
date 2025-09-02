@@ -33,7 +33,7 @@ RUN ARCH=$(uname -m) && \
     rm -rf awscliv2.zip aws
 
 ENV MAMBA_ROOT_PREFIX=/opt/micromamba
-SHELL ["/bin/bash", "-lc"]
+
 RUN micromamba create -y -n py310 -c conda-forge python=3.10 pip
 RUN micromamba run -n py310 python -m pip install --upgrade pip
 RUN micromamba run -n py310 pip install --no-cache-dir numpy==1.26.4 pillow tqdm wandb
