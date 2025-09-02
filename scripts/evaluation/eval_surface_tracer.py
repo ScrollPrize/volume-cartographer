@@ -144,7 +144,6 @@ class SurfaceTracerEvaluation:
         
         expansion_params = self.config["vc_grow_seg_from_seed_params"]["expansion"].copy()
         expansion_params["mode"] = "expansion"
-        expansion_params["z_range"] = self.config["z_range"]
         
         expansion_params_file = self.out_dir / "expansion_params.json"
         with open(expansion_params_file, 'w') as f:
@@ -211,7 +210,9 @@ class SurfaceTracerEvaluation:
 
         logger.info(f"Running vc_grow_seg_from_segments for {len(source_patches)} source patches")
         
-        tracer_params = self.config["vc_grow_seg_from_segments_params"]
+        tracer_params = self.config["vc_grow_seg_from_segments_params"].copy()
+        if "z_range" in self.config:
+            tracer_params["z_range"] = self.config["z_range"]
         tracer_params_file = self.out_dir / "tracer_params.json"
         with open(tracer_params_file, 'w') as f:
             json.dump(tracer_params, f, indent=2)
@@ -304,15 +305,16 @@ class SurfaceTracerEvaluation:
     def _run_vc_calc_surface_metrics(self, trace_dir: Path) -> Optional[Dict]:
         
         metrics_file = trace_dir / "metrics.json"
-        
+
+        z_range = self.config.get("z_range", [-1, -1])  # -1 means entire surface bbox is used
         cmd = [
             f"{self.config['bin_path']}/vc_calc_surface_metrics",
             "--collection", self.config["wrap_labels"],
             "--surface", str(trace_dir),
             "--winding", str(trace_dir / "winding.tif"),
             "--output", str(metrics_file),
-            "--z_min", str(self.config["z_range"][0]),
-            "--z_max", str(self.config["z_range"][1]),
+            "--z_min", str(z_range[0]),
+            "--z_max", str(z_range[1]),
         ]
         
         result = subprocess.run(cmd)
