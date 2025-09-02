@@ -626,7 +626,12 @@ int main(int argc, char *argv[])
     }
 
     std::filesystem::path output_path(base_output_arg);
-    std::filesystem::create_directories(output_path.parent_path());
+    {
+        const auto parent = output_path.parent_path();
+        if (!parent.empty()) {
+            std::filesystem::create_directories(parent);
+        }
+    }
 
     const size_t cache_gb = parsed["cache-gb"].as<size_t>();
     const size_t cache_bytes = cache_gb * 1024ull * 1024ull * 1024ull;
