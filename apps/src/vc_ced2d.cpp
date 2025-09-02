@@ -1,9 +1,3 @@
-// Single-file CPU-only Coherence-Enhancing Diffusion for 2D TIFFs
-// Based on the algorithm in scripts/coherence_enhancing_diffusion.py
-// - Reads a single-channel 2D TIFF (uint8/uint16/float32)
-// - Processes fully on CPU with OpenMP parallelization
-// - Prints inline progress on one terminal line
-
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
 #include <opencv2/core.hpp>
@@ -45,12 +39,10 @@ static constexpr float EPS   = static_cast<float>(std::ldexp(1.0, -52)); // 2^-5
 static constexpr float GAMMA = 0.01f;                                     // minimum diffusivity
 static constexpr float CM    = 7.2848f;                                   // exponential constant
 
-// Utility to clamp index to [0, hi]
 static inline int clampi(int v, int lo, int hi) {
     return v < lo ? lo : (v > hi ? hi : v);
 }
 
-// Create 1D Gaussian kernel with replicate-normalization
 static std::vector<float> gaussian_kernel_1d(float sigma) {
     if (sigma <= 0.f) return {1.f};
     int radius = static_cast<int>(std::ceil(3.0f * sigma));
@@ -68,7 +60,6 @@ static std::vector<float> gaussian_kernel_1d(float sigma) {
     return k;
 }
 
-// Fast Gaussian blur via OpenCV (separable, vectorized), replicate borders
 static void gaussian_blur(const std::vector<float>& src, int H, int W, float sigma, std::vector<float>& dst) {
     if (sigma <= 0.f) {
         if (&dst != &src) { dst = src; }
@@ -77,11 +68,9 @@ static void gaussian_blur(const std::vector<float>& src, int H, int W, float sig
     cv::Mat srcM(H, W, CV_32F, const_cast<float*>(src.data()));
     dst.resize(H * W);
     cv::Mat dstM(H, W, CV_32F, dst.data());
-    // Use automatic kernel size with given sigma; BORDER_REPLICATE to match Python
     cv::GaussianBlur(srcM, dstM, cv::Size(0, 0), sigma, sigma, cv::BORDER_REPLICATE);
 }
 
-// Central-difference gradients (replicate at borders)
 static void compute_gradients(const std::vector<float>& img, int H, int W,
                               std::vector<float>& gx, std::vector<float>& gy) {
     gx.assign(H * W, 0.f);
@@ -99,7 +88,6 @@ static void compute_gradients(const std::vector<float>& img, int H, int W,
     }
 }
 
-// Structure tensor components with rho smoothing
 static void compute_structure_tensor(const std::vector<float>& gx, const std::vector<float>& gy, int H, int W, float rho,
                                      std::vector<float>& s11, std::vector<float>& s12, std::vector<float>& s22) {
     std::vector<float> gx2(H * W), gy2(H * W), gxy(H * W);
@@ -152,7 +140,6 @@ static void compute_diffusion_tensor(const std::vector<float>& s11, const std::v
     }
 }
 
-// One diffusion step using vectorized-like stencil with replicate borders
 static void diffusion_step(const std::vector<float>& img, const std::vector<float>& d11, const std::vector<float>& d12, const std::vector<float>& d22,
                            int H, int W, float step_size, std::vector<float>& img_out) {
     img_out.assign(H * W, 0.f);
@@ -232,7 +219,7 @@ static std::mutex g_print_mtx;
 
 static void ced_run(const cv::Mat& input, cv::Mat& output, const Config& cfg,
                     const char* progress_label = nullptr, int progress_mod = 1) {
-    // Convert to float32 buffer
+
     const int H = input.rows;
     const int W = input.cols;
     std::vector<float> img(H * W);
@@ -258,17 +245,14 @@ static void ced_run(const cv::Mat& input, cv::Mat& output, const Config& cfg,
         throw std::runtime_error("Unsupported input image type; use 8U, 16U, or 32F single-channel TIFF");
     }
 
-    // Iterations
-    // Pre-allocate scratch buffers
+
     std::vector<float> img_smooth(H * W), gx(H * W), gy(H * W), s11(H * W), s12(H * W), s22(H * W),
                        alpha(H * W), c2(H * W), d11(H * W), d12(H * W), d22(H * W), img_new(H * W);
     for (int step = 0; step < cfg.num_steps_; ++step) {
         if (cfg.show_progress_) {
             if (progress_label == nullptr) {
-                // Inline single-line progress (single-file mode)
                 std::cout << "\rStep " << (step + 1) << "/" << cfg.num_steps_ << std::flush;
             } else {
-                // Throttled, labeled progress (multi-file mode)
                 bool do_print = (progress_mod <= 1) || ((step % progress_mod) == 0) || (step + 1 == cfg.num_steps_);
                 if (do_print) {
                     std::lock_guard<std::mutex> lock(g_print_mtx);
@@ -278,23 +262,12 @@ static void ced_run(const cv::Mat& input, cv::Mat& output, const Config& cfg,
             }
         }
 
-        // Gaussian pre-smoothing
         gaussian_blur(img, H, W, cfg.sigma_, img_smooth);
-
-        // Gradients
         compute_gradients(img_smooth, H, W, gx, gy);
-
-        // Structure tensor
         compute_structure_tensor(gx, gy, H, W, cfg.rho_, s11, s12, s22);
-
-        // Alpha and diffusivity
         compute_alpha(s11, s12, s22, H * W, alpha);
         compute_c2(alpha, cfg.lambda_, cfg.m_, H * W, c2);
-
-        // Diffusion tensor
         compute_diffusion_tensor(s11, s12, s22, alpha, c2, H * W, d11, d12, d22);
-
-        // Diffusion step
         diffusion_step(img, d11, d12, d22, H, W, cfg.step_size_, img_new);
         img.swap(img_new);
     }
@@ -307,7 +280,6 @@ static void ced_run(const cv::Mat& input, cv::Mat& output, const Config& cfg,
         }
     }
 
-    // Convert back to original dtype range without rescaling
     output.create(H, W, input.type());
     if (input.type() == CV_8UC1) {
         #pragma omp parallel for schedule(static)
@@ -315,7 +287,7 @@ static void ced_run(const cv::Mat& input, cv::Mat& output, const Config& cfg,
             uint8_t* row = output.ptr<uint8_t>(y);
             for (int x = 0; x < W; ++x) {
                 float v = img[y * W + x];
-                if (v < 1.f) v = 0.f; // mimic Python: values below 1 -> 0
+                if (v < 1.f) v = 0.f; // set values below 1 to 0 because there is tons of irritating noise from the CED output at very low vals
                 v = std::min(std::max(v, 0.0f), 255.0f);
                 row[x] = static_cast<uint8_t>(std::lround(v));
             }
@@ -493,7 +465,7 @@ static cv::Mat to_uint8_scaled_and_threshold(const cv::Mat& in, const Config& cf
 int main(int argc, char** argv) {
     std::string in_path, out_path;
     Config cfg;
-    int num_threads = -1; // default: OMP decides
+    int num_threads = -1;
 
     try {
         po::options_description desc("CED2D options");
@@ -525,7 +497,6 @@ int main(int argc, char** argv) {
             ("jobs", po::value<int>(&cfg.jobs_)->default_value(1), "Parallel file jobs in folder mode (>=1)")
         ;
 
-        // Show help when no args are provided
         if (argc == 1) {
             std::cout << desc << std::endl;
             return 0;
@@ -551,7 +522,6 @@ int main(int argc, char** argv) {
             if (!cfg.use_otsu_) cfg.threshold_value_ = threshold_opt;
         }
 
-        // Decide effective per-image compute threads (avoid oversubscription when jobs>1)
         int jobs = std::max(1, cfg.jobs_);
         int compute_threads = 1;
         #ifdef _OPENMP
@@ -562,7 +532,7 @@ int main(int argc, char** argv) {
         }
         omp_set_num_threads(compute_threads);
         #else
-        (void)num_threads; // unused without OpenMP
+        (void)num_threads;
         compute_threads = 1;
         #endif
 
@@ -583,13 +553,11 @@ int main(int argc, char** argv) {
                 return 1;
             }
             std::cout << "Found " << files.size() << " TIFF files in " << in_path << "\n";
-            // Use PackBits (32773) for fast RLE on binary-like images
-            std::vector<int> params = { cv::IMWRITE_TIFF_COMPRESSION, 32773 };
+            std::vector<int> params = { cv::IMWRITE_TIFF_COMPRESSION, 32773 }; // packbits
             jobs = std::max(1, cfg.jobs_);
             bool multi = jobs > 1;
             std::cout << "Folder jobs: " << jobs << " (per-image compute threads: " << compute_threads << ")\n";
 
-            // Overall progress
             const int total = static_cast<int>(files.size());
             std::atomic<int> completed{0};
             {
@@ -598,10 +566,8 @@ int main(int argc, char** argv) {
                           << "\rProgress: 0/" << total << " (0.0%), remaining " << total << std::flush;
             }
 
-            // Process images; parallelize over files when jobs>1
             #ifdef _OPENMP
             if (multi) {
-                // Avoid oversubscription: run per-image compute single-threaded per file
                 #pragma omp parallel for num_threads(jobs) schedule(dynamic)
                 for (int i = 0; i < static_cast<int>(files.size()); ++i) {
                     const auto f = files[i];
@@ -654,8 +620,6 @@ int main(int argc, char** argv) {
             }
             std::cout << std::endl << "Done folder processing." << std::endl;
         } else {
-            // Single file mode
-            // Load image (unchanged scale)
             cv::Mat img = cv::imread(in_path, cv::IMREAD_UNCHANGED);
             if (img.empty()) {
                 std::cerr << "Failed to read input TIFF: " << in_path << std::endl;
@@ -673,8 +637,6 @@ int main(int argc, char** argv) {
             cv::Mat out = process_one_image(img, cfg);
             cv::Mat out_u8 = to_uint8_scaled_and_threshold(out, cfg);
 
-            // Write output TIFF; keep type as input
-            // Use PackBits (32773) for fast RLE on binary-like images
             std::vector<int> params = { cv::IMWRITE_TIFF_COMPRESSION, 32773 };
             if (!cv::imwrite(out_path, out_u8, params)) {
                 std::cerr << "Failed to write output TIFF: " << out_path << std::endl;
