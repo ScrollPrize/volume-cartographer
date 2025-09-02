@@ -11,17 +11,10 @@
 
 #define Z_DBG_GEN_PREFIX "auto_grown_"
 
-class Chunked3dVec3fFromUint8;
 
 struct Rect3D {
     cv::Vec3f low = {0,0,0};
     cv::Vec3f high = {0,0,0};
-};
-
-struct DirectionField
-{
-    std::string direction;
-    std::unique_ptr<Chunked3dVec3fFromUint8> field_ptr;
 };
 
 bool intersect(const Rect3D &a, const Rect3D &b);
