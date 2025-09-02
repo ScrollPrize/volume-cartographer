@@ -203,7 +203,7 @@ class SurfaceTracerEvaluation:
         if len(filtered_patches) <= target_count:
             return filtered_patches
         filtered_patches.sort(key=lambda p: p.area, reverse=True)
-        return filtered_patches[::len(filtered_patches) // target_count]
+        return filtered_patches[::len(filtered_patches) // target_count][:target_count]
     
     def run_tracer(self, source_patches: List[PatchInfo]) -> List[Path]:
 
