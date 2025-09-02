@@ -1160,6 +1160,20 @@ int main(int argc, char *argv[])
                     }
                 };
 
+                // If all expected TIFFs exist, skip this segmentation
+                {
+                    bool all_exist = true;
+                    for (int z = 0; z < num_slices; ++z) {
+                        std::filesystem::path outPath = make_out_path(z);
+                        if (!std::filesystem::exists(outPath)) { all_exist = false; break; }
+                    }
+                    if (all_exist) {
+                        std::cout << "[tif tiled] all slices exist in " << output_path_local.string() << ", skipping." << std::endl;
+                        delete surf;
+                        return;
+                    }
+                }
+
                 for (int z = 0; z < num_slices; ++z) {
                     std::filesystem::path outPath = make_out_path(z);
                     TIFF* tf = TIFFOpen(outPath.string().c_str(), "w8");
