@@ -563,6 +563,7 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *c
     // - state tracks whether each 2D position is part of the patch yet, and whether its 3D position has been found
     cv::Mat_<cv::Vec3d> locs(size,cv::Vec3f(-1,-1,-1));
     cv::Mat_<uint8_t> state(size,0);
+    cv::Mat_<uint16_t> generations(size, (uint16_t)0);
     cv::Mat_<uint8_t> phys_fail(size,0);
     cv::Mat_<float> init_dist(size,0);
     cv::Mat_<uint16_t> loss_status(cv::Size(w,h),0);
@@ -874,6 +875,7 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *c
                 else {
                     // We found a good solution to the local problem; add losses for the new point to the global problem, add the
                     // new point to the fringe, and record as successful
+                    generations(p) = generation;
                     if (global_opt) {
 #pragma omp critical
                         loss_count += emptytrace_create_missing_centered_losses(big_problem, loss_status, p, state, locs,
@@ -1002,6 +1004,7 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *c
 
     locs = locs(used_area);
     state = state(used_area);
+    generations = generations(used_area);
 
     double max_cost = 0;
     double avg_cost = 0;
@@ -1023,6 +1026,7 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *c
     printf("generated approximate surface %f vx^2 (%f cm^2)\n", area_est_vx2, area_est_cm2);
 
     auto surf = new QuadSurface(locs, {1/T, 1/T});
+    surf->setChannel("generations", generations);
 
     surf->meta = new nlohmann::json;
     (*surf->meta)["area_vx2"] = area_est_vx2;
