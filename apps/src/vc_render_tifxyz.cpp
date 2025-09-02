@@ -448,6 +448,8 @@ int main(int argc, char *argv[])
             "Path to a single tifxyz segmentation folder (ignored if --render-folder is set)")
         ("render-folder", po::value<std::string>(),
             "Folder containing tifxyz segmentation folders to batch render")
+        ("cache-gb", po::value<size_t>()->default_value(16),
+            "Zarr chunk cache size in gigabytes (default: 16)")
         ("format", po::value<std::string>(),
             "When using --render-folder, choose 'zarr' or 'tif' output")
         ("num-slices,n", po::value<int>()->default_value(1),
@@ -582,7 +584,11 @@ int main(int argc, char *argv[])
 
     // Prepare dataset handle (volume) shared across renders
     
-    ChunkCache chunk_cache(16ull * 1024 * 1024 * 1024);
+    // Allow tuning the chunk cache to fit machine memory (EC2 often has less RAM)
+    const size_t cache_gb = parsed["cache-gb"].as<size_t>();
+    const size_t cache_bytes = cache_gb * 1024ull * 1024ull * 1024ull;
+    std::cout << "Chunk cache: " << cache_gb << " GB (" << cache_bytes << " bytes)" << std::endl;
+    ChunkCache chunk_cache(cache_bytes);
 
     auto process_one = [&](const fs::path& seg_folder, const std::string& out_arg, bool force_zarr){
         fs::path output_path_local(out_arg);
