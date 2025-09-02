@@ -1208,6 +1208,170 @@ int main(int argc, char *argv[])
         }
     }
     else {
+        // Fast tiled-TIFF path (no rotate/flip) using libtiff similar to --include-tifs
+#ifdef VC_HAVE_TIFF
+        if (std::abs(rotate_angle) < 1e-6 && flip_axis < 0) {
+            try {
+                // Output dimensions (no rotation applied)
+                const int outH = tgt_size.height;
+                const int outW = tgt_size.width;
+
+                // Choose tile size (match Zarr chunks for cache friendliness)
+                const uint32_t tileW = 128;
+                const uint32_t tileH = 128;
+
+                // Pre-open all output TIFFs
+                std::vector<TIFF*> tiffs(static_cast<size_t>(num_slices), nullptr);
+                std::vector<std::mutex> tiffLocks(static_cast<size_t>(num_slices));
+
+                auto make_out_path = [&](int sliceIdx) -> fs::path {
+                    if (output_path_local.string().find('%') == std::string::npos) {
+                        // Directory target with zero-padded names
+                        int pad = 2; int v = std::max(0, num_slices-1);
+                        while (v >= 100) { pad++; v /= 10; }
+                        std::ostringstream fn;
+                        fn << std::setw(pad) << std::setfill('0') << sliceIdx;
+                        return output_path_local / (fn.str() + ".tif");
+                    } else {
+                        char buf[1024];
+                        snprintf(buf, sizeof(buf), output_path_local.string().c_str(), sliceIdx);
+                        return fs::path(buf);
+                    }
+                };
+
+                for (int z = 0; z < num_slices; ++z) {
+                    fs::path outPath = make_out_path(z);
+                    TIFF* tf = TIFFOpen(outPath.string().c_str(), "w8");
+                    if (!tf) throw std::runtime_error(std::string("failed to open TIFF for writing: ") + outPath.string());
+                    TIFFSetField(tf, TIFFTAG_IMAGEWIDTH, static_cast<uint32_t>(outW));
+                    TIFFSetField(tf, TIFFTAG_IMAGELENGTH, static_cast<uint32_t>(outH));
+                    TIFFSetField(tf, TIFFTAG_SAMPLESPERPIXEL, 1);
+                    TIFFSetField(tf, TIFFTAG_BITSPERSAMPLE, 8);
+                    TIFFSetField(tf, TIFFTAG_PHOTOMETRIC, PHOTOMETRIC_MINISBLACK);
+                    TIFFSetField(tf, TIFFTAG_PLANARCONFIG, PLANARCONFIG_CONTIG);
+                    TIFFSetField(tf, TIFFTAG_COMPRESSION, COMPRESSION_LZW);
+                    TIFFSetField(tf, TIFFTAG_PREDICTOR, 2);
+                    TIFFSetField(tf, TIFFTAG_TILEWIDTH, tileW);
+                    TIFFSetField(tf, TIFFTAG_TILELENGTH, tileH);
+                    tiffs[static_cast<size_t>(z)] = tf;
+                }
+
+                // Decide orientation once using a small sample tile
+                {
+                    const int dx0 = std::min<int>(static_cast<int>(tileW), tgt_size.width);
+                    const int dy0 = std::min<int>(static_cast<int>(tileH), tgt_size.height);
+                    const float u0 = -0.5f * (static_cast<float>(tgt_size.width)  - 1.0f);
+                    const float v0 = -0.5f * (static_cast<float>(tgt_size.height) - 1.0f);
+                    cv::Mat_<cv::Vec3f> _tp, _tn;
+                    surf->gen(&_tp, &_tn,
+                              cv::Size(dx0, dy0),
+                              cv::Vec3f(0,0,0),
+                              static_cast<float>(render_scale),
+                              cv::Vec3f(u0, v0, 0.0f));
+                    _tp *= scale_seg;
+                    if (hasAffine) applyAffineTransform(_tp, _tn, affineTransform);
+                    meshCentroid = calculateMeshCentroid(_tp);
+                    globalFlipDecision = shouldFlipNormals(_tp, _tn, meshCentroid);
+                }
+
+                const uint32_t tilesX = (static_cast<uint32_t>(outW) + tileW - 1) / tileW;
+                const uint32_t tilesY = (static_cast<uint32_t>(outH) + tileH - 1) / tileH;
+                const size_t totalTiles = static_cast<size_t>(tilesX) * static_cast<size_t>(tilesY);
+                std::atomic<size_t> tilesDone{0};
+
+                // Process tiles; for each tile, render per-slice and write to corresponding TIFF
+                #pragma omp parallel for schedule(dynamic) collapse(2)
+                for (long long ty = 0; ty < static_cast<long long>(tilesY); ++ty) {
+                    for (long long tx = 0; tx < static_cast<long long>(tilesX); ++tx) {
+                        const uint32_t x0 = static_cast<uint32_t>(tx) * tileW;
+                        const uint32_t y0 = static_cast<uint32_t>(ty) * tileH;
+                        const uint32_t dx = std::min<uint32_t>(tileW, static_cast<uint32_t>(outW) - x0);
+                        const uint32_t dy = std::min<uint32_t>(tileH, static_cast<uint32_t>(outH) - y0);
+
+                        // Generate base coordinates/normals for this tile once
+                        const float u0 = -0.5f * (static_cast<float>(tgt_size.width)  - 1.0f) + static_cast<float>(x0);
+                        const float v0 = -0.5f * (static_cast<float>(tgt_size.height) - 1.0f) + static_cast<float>(y0);
+                        cv::Mat_<cv::Vec3f> tilePoints, tileNormals;
+                        surf->gen(&tilePoints, &tileNormals,
+                                  cv::Size(static_cast<int>(dx), static_cast<int>(dy)),
+                                  cv::Vec3f(0,0,0),
+                                  static_cast<float>(render_scale),
+                                  cv::Vec3f(u0, v0, 0.0f));
+
+                        cv::Mat_<cv::Vec3f> basePoints = tilePoints.clone();
+                        basePoints *= scale_seg;
+                        cv::Mat_<cv::Vec3f> nrm = tileNormals.clone();
+                        if (hasAffine) {
+                            applyAffineTransform(basePoints, nrm, affineTransform);
+                        }
+                        applyNormalOrientation(nrm, globalFlipDecision);
+                        // Normalize normals to get step dirs
+                        cv::Mat_<cv::Vec3f> stepDirs = nrm.clone();
+                        for (int yy = 0; yy < stepDirs.rows; ++yy)
+                            for (int xx = 0; xx < stepDirs.cols; ++xx) {
+                                cv::Vec3f &v = stepDirs(yy,xx);
+                                if (std::isnan(v[0]) || std::isnan(v[1]) || std::isnan(v[2])) continue;
+                                float L = std::sqrt(v[0]*v[0] + v[1]*v[1] + v[2]*v[2]);
+                                if (L > 0) v /= L;
+                            }
+                        basePoints *= ds_scale;
+
+                        // Per-thread pad buffer
+                        std::vector<uint8_t> tileBuf(tileW * tileH, 0);
+                        cv::Mat_<cv::Vec3f> coords(tilePoints.size());
+                        cv::Mat_<uint8_t> tileOut;
+                        for (int zi = 0; zi < num_slices; ++zi) {
+                            const float off = static_cast<float>(static_cast<double>(zi) - 0.5 * (static_cast<double>(num_slices) - 1.0));
+                            for (int yy = 0; yy < coords.rows; ++yy) {
+                                for (int xx = 0; xx < coords.cols; ++xx) {
+                                    const cv::Vec3f& p = basePoints(yy, xx);
+                                    const cv::Vec3f& d = stepDirs(yy, xx);
+                                    coords(yy, xx) = p + off * d * static_cast<float>(ds_scale);
+                                }
+                            }
+                            readInterpolated3D(tileOut, ds.get(), coords, &chunk_cache);
+
+                            // Fill pad buffer
+                            for (uint32_t yy = 0; yy < dy; ++yy) {
+                                uint8_t* dst = tileBuf.data() + yy * tileW;
+                                const uint8_t* src = tileOut.ptr<uint8_t>(static_cast<int>(yy));
+                                std::copy(src, src + dx, dst);
+                            }
+
+                            // Write tile to corresponding slice TIFF
+                            {
+                                std::lock_guard<std::mutex> guard(tiffLocks[static_cast<size_t>(zi)]);
+                                TIFF* tf = tiffs[static_cast<size_t>(zi)];
+                                const uint32_t tileIndex = TIFFComputeTile(tf, x0, y0, 0, 0);
+                                TIFFWriteEncodedTile(tf, tileIndex, tileBuf.data(), static_cast<tmsize_t>(tileBuf.size()));
+                            }
+                        }
+
+                        size_t done = ++tilesDone;
+                        int pct = static_cast<int>(100.0 * double(done) / double(totalTiles));
+                        #pragma omp critical(progress_print)
+                        {
+                            std::cout << "\r[tif tiled] tiles " << done << "/" << totalTiles
+                                      << " (" << pct << "%)" << std::flush;
+                        }
+                    }
+                }
+
+                for (auto* tf : tiffs) {
+                    TIFFClose(tf);
+                }
+                std::cout << std::endl;
+
+                // Done with this segmentation
+                delete surf;
+                return;
+            } catch (const std::exception& e) {
+                std::cerr << "[tif tiled] warning: fallback to cv::imwrite due to: " << e.what() << std::endl;
+                // fall through to original path
+            }
+        }
+#endif // VC_HAVE_TIFF
+
         char buf[1024];
         for(int i=0;i<num_slices;i++) {
             float off = i - 0.5f * (num_slices - 1);
