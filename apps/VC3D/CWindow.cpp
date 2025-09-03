@@ -1961,7 +1961,90 @@ void CWindow::onGenerateAllMasks()
     int done  = 0;
     int saved = 0;
 
-    // Generate grayscale images "<segmentId>_0000.tif"
+    // ----- helpers -----------------------------------------------------------
+    // Build one patch image at Z offset dz (relative to the "center").
+    auto buildPatchImageAtOffset = [this](QuadSurface* surf, int dz, cv::Mat_<uint8_t>& out) -> bool
+    {
+        if (!surf || !currentVolume) return false;
+
+        cv::Mat_<cv::Vec3f> points = surf->rawPoints();
+        if (points.empty()) return false;
+
+        const int depth   = currentVolume->numSlices();
+        const bool use_ds2 = (points.cols >= 4000);
+
+        cv::Mat_<cv::Vec3f> coords;
+        int datasetIdx = 0;
+        float zScale   = 1.0f;
+
+        if (use_ds2) {
+            coords = points * 0.25f;
+            datasetIdx = 2;
+            zScale = 0.25f;
+        } else {
+            cv::resize(points, coords, {0,0},
+                       1.0f / surf->_scale[0],
+                       1.0f / surf->_scale[1],
+                       cv::INTER_CUBIC);
+            datasetIdx = 0;
+            zScale = 1.0f;
+        }
+
+        // Shift Z and clamp in the chosen dataset's coordinate space
+        const float zShift = dz * zScale;
+        const float zMin   = 0.0f;
+        const float zMax   = (depth - 1) * zScale;
+        for (int y = 0; y < coords.rows; ++y) {
+            auto* row = coords.ptr<cv::Vec3f>(y);
+            for (int x = 0; x < coords.cols; ++x) {
+                float z = row[x][2] + zShift;
+                if (z < zMin) z = zMin;
+                if (z > zMax) z = zMax;
+                row[x][2] = z;
+            }
+        }
+
+        cv::Mat_<uint8_t> img8;
+        try {
+            readInterpolated3D(img8, currentVolume->zarrDataset(datasetIdx), coords, chunk_cache);
+        } catch (...) {
+            return false;
+        }
+
+        if (!use_ds2) {
+            cv::Mat_<uint8_t> shrunk;
+            cv::resize(img8, shrunk, {0,0}, 0.25, 0.25, cv::INTER_CUBIC);
+            out = std::move(shrunk);
+        } else {
+            out = std::move(img8);
+        }
+        return true;
+    };
+
+    // Build MAX composite using the 2-arg OpenCV max that returns a Mat
+    auto buildPatchCompositeMax = [&](QuadSurface* surf, int layersBehind, int layersInFront, cv::Mat_<uint8_t>& out) -> bool
+    {
+        cv::Mat_<uint8_t> acc8;
+        if (!buildPatchImageAtOffset(surf, 0, acc8)) return false;
+
+        cv::Mat acc = acc8; // work in generic Mat to match cv::max return type
+
+        for (int dz = -layersBehind; dz <= layersInFront; ++dz) {
+            if (dz == 0) continue;
+            cv::Mat_<uint8_t> layer8;
+            if (!buildPatchImageAtOffset(surf, dz, layer8)) continue;
+            cv::Mat layer = layer8;
+            acc = ::cv::max(acc, layer); // <-- 2-arg OpenCV max; cannot collide with std::max
+        }
+
+        out = acc; // convert back to Mat_<uint8_t>
+        return true;
+    };
+
+    const int layersBehind = 2;
+    const int layersInFront = 2;
+
+    // ----- main loop ---------------------------------------------------------
     for (const auto& kv : _vol_qsurfs) {
         if (progress.wasCanceled()) break;
 
@@ -1975,7 +2058,7 @@ void CWindow::onGenerateAllMasks()
         }
 
         cv::Mat_<uint8_t> img;
-        if (!buildPatchImage(surf, img)) { // uses same sampling/scaling as mask editor
+        if (!buildPatchCompositeMax(surf, layersBehind, layersInFront, img)) {
             progress.setValue(++done);
             qApp->processEvents();
             continue;
@@ -1996,7 +2079,7 @@ void CWindow::onGenerateAllMasks()
         qApp->processEvents();
     }
 
-    // === S3 sync + Argo submit ===
+    // === S3 sync + Argo submit  ===============
     const QString pkg = volpkgNameSafe();
 
     QSettings settings("VC.ini", QSettings::IniFormat);
