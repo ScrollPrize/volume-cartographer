@@ -141,6 +141,47 @@ void CommandLineToolRunner::setToObjParams(QString tifxyzPath, QString objPath)
     _objPath = objPath;
 }
 
+void CommandLineToolRunner::setIncludeTifs(bool include)
+{
+    _includeTifs = include;
+}
+
+void CommandLineToolRunner::setOmpThreads(int threads)
+{
+    _ompThreads = threads;
+}
+
+void CommandLineToolRunner::setToObjOptions(bool normalizeUV, bool alignGrid, int decimateIterations, bool cleanSurface, float cleanK)
+{
+    _optNormalizeUV = normalizeUV;
+    _optAlignGrid = alignGrid;
+    _optDecimateIter = decimateIterations;
+    _optCleanSurface = cleanSurface;
+    _optCleanK = cleanK;
+}
+
+void CommandLineToolRunner::setRenderAdvanced(
+    int cropX,
+    int cropY,
+    int cropWidth,
+    int cropHeight,
+    const QString& affinePath,
+    bool invertAffine,
+    float scaleSegmentation,
+    double rotateDegrees,
+    int flipAxis)
+{
+    _cropX = cropX;
+    _cropY = cropY;
+    _cropWidth = cropWidth;
+    _cropHeight = cropHeight;
+    _affinePath = affinePath;
+    _invertAffine = invertAffine;
+    _scaleSeg = scaleSegmentation;
+    _rotateDeg = rotateDegrees;
+    _flipAxis = flipAxis;
+}
+
 bool CommandLineToolRunner::execute(Tool tool)
 {
     if (_process && _process->state() != QProcess::NotRunning) {
@@ -239,6 +280,19 @@ bool CommandLineToolRunner::execute(Tool tool)
                 this, &CommandLineToolRunner::onProcessFinished);
         connect(_process, &QProcess::errorOccurred, this, &CommandLineToolRunner::onProcessError);
         connect(_process, &QProcess::readyRead, this, &CommandLineToolRunner::onProcessReadyRead);
+    }
+
+    // Apply per-run environment variables (e.g., OMP_NUM_THREADS)
+    {
+        QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+        if (_ompThreads > 0) {
+            env.insert("OMP_NUM_THREADS", QString::number(_ompThreads));
+            if (_logStream) {
+                *_logStream << "ENV: OMP_NUM_THREADS=" << _ompThreads << Qt::endl;
+                _logStream->flush();
+            }
+        }
+        _process->setProcessEnvironment(env);
     }
 
     QStringList args = buildArguments(tool);
@@ -455,6 +509,29 @@ QStringList CommandLineToolRunner::buildArguments(Tool tool)
                  << "--scale" << QString::number(_scale)
                  << "--group-idx" << QString::number(_resolution)
                  << "--num-slices" << QString::number(_layers);
+            // Advanced / optional args
+            if (_cropWidth > 0 && _cropHeight > 0) {
+                args << "--crop-x" << QString::number(_cropX)
+                     << "--crop-y" << QString::number(_cropY)
+                     << "--crop-width" << QString::number(_cropWidth)
+                     << "--crop-height" << QString::number(_cropHeight);
+            }
+            if (!_affinePath.isEmpty()) {
+                args << "--affine-transform" << _affinePath;
+                if (_invertAffine) args << "--invert-affine";
+            }
+            if (std::abs(_scaleSeg - 1.0f) > 1e-6f) {
+                args << "--scale-segmentation" << QString::number(_scaleSeg);
+            }
+            if (std::abs(_rotateDeg) > 1e-6) {
+                args << "--rotate" << QString::number(_rotateDeg);
+            }
+            if (_flipAxis >= 0) {
+                args << "--flip" << QString::number(_flipAxis);
+            }
+            if (_includeTifs) {
+                args << "--include-tifs";
+            }
             break;
 
         case Tool::GrowSegFromSegment:
@@ -486,6 +563,14 @@ QStringList CommandLineToolRunner::buildArguments(Tool tool)
         case Tool::tifxyz2obj:
             args << _tifxyzPath
                  << _objPath;
+            if (_optNormalizeUV) args << "--normalize-uv";
+            if (_optAlignGrid)   args << "--align-grid";
+            if (_optDecimateIter > 0) {
+                args << "--decimate" << QString::number(_optDecimateIter);
+            }
+            if (_optCleanSurface) {
+                args << "--clean" << QString::number(_optCleanK);
+            }
             break;
     }
 
@@ -522,4 +607,3 @@ QString CommandLineToolRunner::getOutputPath() const
     QFileInfo outputInfo(_outputPattern);
     return outputInfo.dir().path();
 }
-

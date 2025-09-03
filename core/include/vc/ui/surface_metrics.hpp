@@ -1,6 +1,6 @@
 #pragma once
 
-#include "vc/core/util/VCCollection.hpp"
+#include "VCCollection.hpp"
 #include "vc/core/util/Surface.hpp"
 
 #include <nlohmann/json.hpp>

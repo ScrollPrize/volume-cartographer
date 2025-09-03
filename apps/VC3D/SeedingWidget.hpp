@@ -16,7 +16,7 @@
 #include "CSurfaceCollection.hpp"
 #include "PathData.hpp"
 #include "vc/core/types/VolumePkg.hpp"
-#include "vc/core/util/VCCollection.hpp"
+#include "vc/ui/VCCollection.hpp"
 
 
 class SeedingWidget : public QWidget {

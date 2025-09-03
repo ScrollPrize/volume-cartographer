@@ -1,9 +1,27 @@
-########
-# Core #
-########
+option(VC_BUILD_JSON "Build in-source JSON library" off)
+option(VC_BUILD_Z5 "Build in-source z5 header only library" on)
 
+if(VC_BUILD_Z5)
+    # Declare the project
+    FetchContent_Declare(
+            z5
+            GIT_REPOSITORY https://github.com/constantinpape/z5.git
+            GIT_TAG ee2081bb974fe0d0d702538400c31c38b09f1629
+    )
 
-### Qt6 ###
+    # Populate the project but exclude from all
+    FetchContent_GetProperties(z5)
+    if(NOT z5_POPULATED)
+        FetchContent_Populate(z5)
+    endif()
+    option(BUILD_Z5PY "" OFF)
+    option(WITH_BLOSC "" ON)
+    add_subdirectory(${z5_SOURCE_DIR} ${z5_BINARY_DIR} EXCLUDE_FROM_ALL)
+    # target_link_libraries(z5 INTERFACE blosc)
+else()
+    find_package(z5 REQUIRED)
+endif()
+
 if((VC_BUILD_APPS OR VC_BUILD_UTILS) AND VC_BUILD_GUI)
     find_package(Qt6 QUIET REQUIRED COMPONENTS Widgets Gui Core Network)
     # qt_standard_project_setup() #NOTE below settings for QT < 6.3, commented command for qt >= 6.3, ubuntu 22.04 has qt 6.2!
@@ -27,8 +45,6 @@ endif()
 ### ceres-solver ###
 find_package(Ceres REQUIRED)
 
-### Z5 ###
-include(BuildZ5)
 
 ### Eigen ###
 find_package(Eigen3 3.3 REQUIRED)
@@ -66,13 +82,26 @@ find_package(xtensor REQUIRED)
 ### spdlog ###
 find_package(spdlog 1.4.2 CONFIG REQUIRED)
 
-### Modern JSON ###
-include(BuildJSON)
+if(VC_BUILD_JSON)
+    FetchContent_Declare(
+            json
+            DOWNLOAD_EXTRACT_TIMESTAMP ON
+            URL https://github.com/nlohmann/json/archive/v3.11.3.tar.gz
+    )
 
-### CURL library (needed for GDAL) ###
-find_package(CURL REQUIRED)
+    FetchContent_GetProperties(json)
+    if(NOT json_POPULATED)
+        set(JSON_BuildTests OFF CACHE INTERNAL "")
+        set(JSON_Install ON CACHE INTERNAL "")
+        FetchContent_Populate(json)
+        add_subdirectory(${json_SOURCE_DIR} ${json_BINARY_DIR} EXCLUDE_FROM_ALL)
+    endif()
+else()
+    find_package(nlohmann_json 3.9.1 REQUIRED)
+endif()
 
-### Boost and indicators (for app use only) ###
+
+### Boost (for app use only) ###
 if(VC_BUILD_APPS OR VC_BUILD_UTILS)
     find_package(Boost 1.58 REQUIRED COMPONENTS system program_options)
 endif()

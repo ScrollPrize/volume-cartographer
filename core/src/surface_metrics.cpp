@@ -1,4 +1,4 @@
-#include "vc/core/util/surface_metrics.hpp"
+#include "vc/ui/surface_metrics.hpp"
 #include <iostream>
 #include <vector>
 #include <algorithm>
@@ -128,6 +128,10 @@ nlohmann::json calc_point_metrics(const VCCollection& collection, QuadSurface* s
 
     for (const auto& pair : collection.getAllCollections()) {
         const auto& coll = pair.second;
+
+        if (coll.points.empty()) {
+            continue;
+        }
 
         std::vector<ColPoint> points;
         for (const auto& p_pair : coll.points) {

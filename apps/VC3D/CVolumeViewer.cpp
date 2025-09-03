@@ -1,12 +1,12 @@
 #include "CVolumeViewer.hpp"
-#include "UDataManipulateUtils.hpp"
+#include "vc/ui/UDataManipulateUtils.hpp"
 
 #include <QGraphicsView>
 #include <QGraphicsScene>
 
 #include "CVolumeViewerView.hpp"
 #include "CSurfaceCollection.hpp"
-#include "vc/core/util/VCCollection.hpp"
+#include "vc/ui/VCCollection.hpp"
 #include "COutlinedTextItem.hpp"
 
 #include "vc/core/types/VolumePkg.hpp"

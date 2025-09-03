@@ -1,7 +1,7 @@
 #pragma once
 
 #include <QDockWidget>
-#include "vc/core/util/VCCollection.hpp"
+#include "vc/ui/VCCollection.hpp"
 #include <QTreeView>
 #include <QStandardItemModel>
 #include <QPushButton>

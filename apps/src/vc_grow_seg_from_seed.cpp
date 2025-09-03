@@ -4,6 +4,7 @@
 #include "vc/core/util/Surface.hpp"
 #include "vc/core/types/ChunkedTensor.hpp"
 #include "vc/core/util/StreamOperators.hpp"
+#include "vc/tracer/Tracer.hpp"
 
 
 #include "z5/factory.hxx"
@@ -175,6 +176,13 @@ int main(int argc, char *argv[])
     if (params.empty()) {
         std::ifstream params_f(params_path.string());
         params = json::parse(params_f);
+    }
+
+    // Honor optional CUDA toggle from params (default true)
+    if (params.contains("use_cuda")) {
+        set_space_tracing_use_cuda(params.value("use_cuda", true));
+    } else {
+        set_space_tracing_use_cuda(true);
     }
 
     z5::filesystem::handle::Group group(vol_path, z5::FileMode::FileMode::r);
