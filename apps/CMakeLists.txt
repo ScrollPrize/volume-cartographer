@@ -72,6 +72,10 @@ target_link_libraries(vc_ced2d
     OpenMP::OpenMP_CXX
 )
 
+# Apply affine + scale to OBJ or TIFXYZ
+add_executable(vc_transform_geom src/vc_transform_geom.cpp)
+target_link_libraries(vc_transform_geom vc_core Boost::program_options)
+
 # Install targets
 if(VC_INSTALL_APPS)
 install(
@@ -90,6 +94,7 @@ install(
         vc_fill_quadmesh
         vc_calc_surface_metrics
         vc_ced2d
+        vc_transform_geom
         ${extra_apps}
     RUNTIME DESTINATION bin
     COMPONENT Programs
