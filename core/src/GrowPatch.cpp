@@ -7,6 +7,7 @@
 #include "vc/core/util/OMPThreadPointCollection.hpp"
 #include "vc/core/util/LifeTime.hpp"
 #include "vc/core/types/ChunkedTensor.hpp"
+#include <nlohmann/json.hpp>
 
 
 #include "vc/core/util/xtensor_include.hpp"
@@ -529,15 +530,29 @@ struct thresholdedDistance
 };
 
 
-QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *cache, cv::Vec3f origin, int stop_gen, float step, const std::string &cache_root, float voxelsize, std::vector<DirectionField> const &direction_fields)
+QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *cache, cv::Vec3f origin, const nlohmann::json &params, const std::string &cache_root, float voxelsize, std::vector<DirectionField> const &direction_fields, QuadSurface* resume_surf)
 {
+    int stop_gen = params.value("generations", 100);
+    float step = params.value("step_size", 20.0f);
+    int rewind_gen = params.value("rewind_gen", -1);
     ALifeTime f_timer("empty space tracing\n");
     DSReader reader = {ds,scale,cache};
 
-    // Calculate the maximum possible size the patch might grow to
-    //FIXME show and handle area edge!
-    int w = 2*stop_gen+50;
-    int h = w;
+    int w, h;
+    if (resume_surf) {
+        cv::Mat resume_generations = resume_surf->channel("generations");
+        double min_val, max_val;
+        cv::minMaxLoc(resume_generations, &min_val, &max_val);
+        int start_gen = (rewind_gen == -1) ? static_cast<int>(max_val) : rewind_gen;
+        int gen_diff = stop_gen - start_gen;
+        w = resume_generations.cols + 2 * gen_diff + 50;
+        h = resume_generations.rows + 2 * gen_diff + 50;
+    } else {
+        // Calculate the maximum possible size the patch might grow to
+        //FIXME show and handle area edge!
+        w = 2*stop_gen+50;
+        h = w;
+    }
     cv::Size size = {w,h};
     cv::Rect bounds(0,0,w,h);
 
@@ -572,6 +587,7 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *c
     // - state tracks whether each 2D position is part of the patch yet, and whether its 3D position has been found
     cv::Mat_<cv::Vec3d> locs(size,cv::Vec3f(-1,-1,-1));
     cv::Mat_<uint8_t> state(size,0);
+    cv::Mat_<uint16_t> generations(size, (uint16_t)0);
     cv::Mat_<uint8_t> phys_fail(size,0);
     cv::Mat_<float> init_dist(size,0);
     cv::Mat_<uint16_t> loss_status(cv::Size(w,h),0);
@@ -579,31 +595,81 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *c
     cv::Vec3f vx = {1,0,0};
     cv::Vec3f vy = {0,1,0};
 
-    // Initialise the trace at the center of the available area, as a tiny single-quad patch at the seed point
-    cv::Rect used_area(x0,y0,2,2);
-    //these are locations in the local volume!
-    locs(y0,x0) = origin;
-    locs(y0,x0+1) = origin+vx*0.1;
-    locs(y0+1,x0) = origin+vy*0.1;
-    locs(y0+1,x0+1) = origin+vx*0.1 + vy*0.1;
-
-    state(y0,x0) = STATE_LOC_VALID | STATE_COORD_VALID;
-    state(y0+1,x0) = STATE_LOC_VALID | STATE_COORD_VALID;
-    state(y0,x0+1) = STATE_LOC_VALID | STATE_COORD_VALID;
-    state(y0+1,x0+1) = STATE_LOC_VALID | STATE_COORD_VALID;
-
-    // This Ceres problem is parameterised by locs; residuals are progressively added as the patch grows enforcing that
-    // all points in the patch are correct distance in 2D vs 3D space, not too high curvature, near surface prediction, etc.
+    cv::Rect used_area;
     ceres::Problem big_problem;
-
-    // Add losses for every 'active' surface point (just the four currently) that doesn't yet have them
     int loss_count = 0;
-    loss_count += emptytrace_create_missing_centered_losses(big_problem, loss_status, {y0,x0}, state, locs, interp_global, proc_tensor, direction_fields, Ts);
-    loss_count += emptytrace_create_missing_centered_losses(big_problem, loss_status, {y0+1,x0}, state, locs,  interp_global, proc_tensor, direction_fields, Ts);
-    loss_count += emptytrace_create_missing_centered_losses(big_problem, loss_status, {y0,x0+1}, state, locs,  interp_global, proc_tensor, direction_fields, Ts);
-    loss_count += emptytrace_create_missing_centered_losses(big_problem, loss_status, {y0+1,x0+1}, state, locs,  interp_global, proc_tensor, direction_fields, Ts);
+    int generation = 0;
+    int succ = 0;  // number of quads successfully added to the patch (each of size approx. step**2)
 
-    std::cout << "init loss count " << loss_count << std::endl;
+    if (resume_surf) {
+        float resume_step = 1.0 / resume_surf->scale()[0];
+        if (std::abs(resume_step - step) > 1e-6) {
+            throw std::runtime_error("Step size parameter mismatch between new trace and resume surface.");
+        }
+
+        cv::Mat_<cv::Vec3f> resume_points = resume_surf->rawPoints();
+        cv::Mat resume_generations = resume_surf->channel("generations");
+
+        int pad_x = (w - resume_points.cols) / 2;
+        int pad_y = (h - resume_points.rows) / 2;
+
+        used_area = cv::Rect(pad_x, pad_y, resume_points.cols, resume_points.rows);
+
+        double min_val, max_val;
+        cv::minMaxLoc(resume_generations, &min_val, &max_val);
+        int start_gen = (rewind_gen == -1) ? static_cast<int>(max_val) : rewind_gen;
+        generation = start_gen;
+
+        for (int j = 0; j < resume_points.rows; ++j) {
+            for (int i = 0; i < resume_points.cols; ++i) {
+                int target_y = pad_y + j;
+                int target_x = pad_x + i;
+                uint16_t gen = resume_generations.at<uint16_t>(j, i);
+                if (gen > 0 && gen <= start_gen) {
+                    locs(target_y, target_x) = resume_points(j, i);
+                    generations(target_y, target_x) = gen;
+                    state(target_y, target_x) = STATE_LOC_VALID | STATE_COORD_VALID;
+                    fringe.push_back({target_y, target_x});
+                }
+            }
+        }
+
+        for (const auto& p : fringe) {
+            loss_count += emptytrace_create_missing_centered_losses(big_problem, loss_status, p, state, locs, interp_global, proc_tensor, direction_fields, Ts);
+            succ++;
+        }
+        std::cout << "Resuming from generation " << generation << " with " << fringe.size() << " points. Initial loss count: " << loss_count << std::endl;
+
+    } else {
+        // Initialise the trace at the center of the available area, as a tiny single-quad patch at the seed point
+        used_area = cv::Rect(x0,y0,2,2);
+        //these are locations in the local volume!
+        locs(y0,x0) = origin;
+        locs(y0,x0+1) = origin+vx*0.1;
+        locs(y0+1,x0) = origin+vy*0.1;
+        locs(y0+1,x0+1) = origin+vx*0.1 + vy*0.1;
+
+        state(y0,x0) = STATE_LOC_VALID | STATE_COORD_VALID;
+        state(y0+1,x0) = STATE_LOC_VALID | STATE_COORD_VALID;
+        state(y0,x0+1) = STATE_LOC_VALID | STATE_COORD_VALID;
+        state(y0+1,x0+1) = STATE_LOC_VALID | STATE_COORD_VALID;
+
+        // This Ceres problem is parameterised by locs; residuals are progressively added as the patch grows enforcing that
+        // all points in the patch are correct distance in 2D vs 3D space, not too high curvature, near surface prediction, etc.
+
+        // Add losses for every 'active' surface point (just the four currently) that doesn't yet have them
+        loss_count += emptytrace_create_missing_centered_losses(big_problem, loss_status, {y0,x0}, state, locs, interp_global, proc_tensor, direction_fields, Ts);
+        loss_count += emptytrace_create_missing_centered_losses(big_problem, loss_status, {y0+1,x0}, state, locs,  interp_global, proc_tensor, direction_fields, Ts);
+        loss_count += emptytrace_create_missing_centered_losses(big_problem, loss_status, {y0,x0+1}, state, locs,  interp_global, proc_tensor, direction_fields, Ts);
+        loss_count += emptytrace_create_missing_centered_losses(big_problem, loss_status, {y0+1,x0+1}, state, locs,  interp_global, proc_tensor, direction_fields, Ts);
+
+        fringe.push_back({y0,x0});
+        fringe.push_back({y0+1,x0});
+        fringe.push_back({y0,x0+1});
+        fringe.push_back({y0+1,x0+1});
+
+        std::cout << "init loss count " << loss_count << std::endl;
+    }
 
     ceres::Solver::Options options_big;
     options_big.linear_solver_type = ceres::SPARSE_SCHUR;
@@ -628,8 +694,11 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *c
 
     // Solve the initial optimisation problem, just placing the first four vertices around the seed
     ceres::Solver::Summary big_summary;
-    ceres::Solve(options_big, &big_problem, &big_summary);
-    std::cout << big_summary.BriefReport() << "\n";
+    //just continue on resume no additional global opt
+    if (!resume_surf) {
+        ceres::Solve(options_big, &big_problem, &big_summary);
+        std::cout << big_summary.BriefReport() << "\n";
+    }
 
     // Prepare a new set of Ceres options used later during local solves
     ceres::Solver::Options options;
@@ -638,17 +707,9 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *c
     options.max_num_iterations = 200;
     options.function_tolerance = 1e-3;
 
-    // Record the four vertices in the (previously empty) fringe, i.e. the current edge of the patch
-    fringe.push_back({y0,x0});
-    fringe.push_back({y0+1,x0});
-    fringe.push_back({y0,x0+1});
-    fringe.push_back({y0+1,x0+1});
 
     std::vector<cv::Vec2i> neighs = {{1,0},{0,1},{-1,0},{0,-1}};
 
-    int succ = 0;  // number of quads successfully added to the patch (each of size approx. step**2)
-
-    int generation = 0;  // each generation considers expanding by one step at every fringe point
     int phys_fail_count = 0;
 
     int max_local_opt_r = 4;
@@ -884,6 +945,7 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *c
                 else {
                     // We found a good solution to the local problem; add losses for the new point to the global problem, add the
                     // new point to the fringe, and record as successful
+                    generations(p) = generation;
                     if (global_opt) {
 #pragma omp critical
                         loss_count += emptytrace_create_missing_centered_losses(big_problem, loss_status, p, state, locs,
@@ -1012,6 +1074,7 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *c
 
     locs = locs(used_area);
     state = state(used_area);
+    generations = generations(used_area);
 
     double max_cost = 0;
     double avg_cost = 0;
@@ -1033,6 +1096,7 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *c
     printf("generated approximate surface %f vx^2 (%f cm^2)\n", area_est_vx2, area_est_cm2);
 
     auto surf = new QuadSurface(locs, {1/T, 1/T});
+    surf->setChannel("generations", generations);
 
     surf->meta = new nlohmann::json;
     (*surf->meta)["area_vx2"] = area_est_vx2;

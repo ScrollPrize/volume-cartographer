@@ -9,9 +9,11 @@
 
 #include "z5/factory.hxx"
 #include <nlohmann/json.hpp>
-
+#include <boost/program_options.hpp>
+ 
 #include <omp.h>
-
+ 
+namespace po = boost::program_options;
 using shape = z5::types::ShapeType;
 
 
@@ -107,18 +109,75 @@ static auto load_direction_fields(json const&params, ChunkCache *chunk_cache, st
 
 int main(int argc, char *argv[])
 {
-    if (argc != 7 && argc != 4) {
-        std::cout << "usage: " << argv[0] << " <ome-zarr-volume> <tgt-dir> <json-params> <seed-x> <seed-y> <seed-z>" << std::endl;
-        std::cout << "or:    " << argv[0] << " <ome-zarr-volume> <tgt-dir> <json-params>" << std::endl;
-        return EXIT_SUCCESS;
+    std::filesystem::path vol_path, tgt_dir, params_path, resume_path;
+    cv::Vec3d origin;
+    json params;
+
+    bool use_old_args = (argc == 4 || argc == 7) && argv[1][0] != '-' && argv[2][0] != '-' && argv[3][0] != '-';
+
+    if (use_old_args) {
+        vol_path = argv[1];
+        tgt_dir = argv[2];
+        params_path = argv[3];
+        if (argc == 7) {
+            origin = {atof(argv[4]), atof(argv[5]), atof(argv[6])};
+        }
+    } else {
+        po::options_description desc("Allowed options");
+        desc.add_options()
+            ("help,h", "produce help message")
+            ("volume,v", po::value<std::string>()->required(), "OME-Zarr volume path")
+            ("target-dir,t", po::value<std::string>()->required(), "Target directory for output")
+            ("params,p", po::value<std::string>()->required(), "JSON parameters file")
+            ("seed,s", po::value<std::vector<float>>()->multitoken(), "Seed coordinates (x y z)")
+            ("resume", po::value<std::string>(), "Path to a tifxyz surface to resume from")
+            ("rewind-gen", po::value<int>(), "Generation to rewind to");
+
+        po::variables_map vm;
+        try {
+            po::store(po::parse_command_line(argc, argv, desc), vm);
+
+            if (vm.count("help")) {
+                std::cout << desc << std::endl;
+                return EXIT_SUCCESS;
+            }
+
+            po::notify(vm);
+        } catch (const po::error &e) {
+            std::cerr << "ERROR: " << e.what() << std::endl << std::endl;
+            std::cerr << desc << std::endl;
+            return EXIT_FAILURE;
+        }
+
+        vol_path = vm["volume"].as<std::string>();
+        tgt_dir = vm["target-dir"].as<std::string>();
+        params_path = vm["params"].as<std::string>();
+
+        if (vm.count("seed")) {
+            auto seed_coords = vm["seed"].as<std::vector<float>>();
+            if (seed_coords.size() != 3) {
+                std::cerr << "ERROR: --seed requires exactly 3 coordinates (x y z)" << std::endl;
+                return EXIT_FAILURE;
+            }
+            origin = {seed_coords[0], seed_coords[1], seed_coords[2]};
+        }
+        if (vm.count("resume")) {
+            resume_path = vm["resume"].as<std::string>();
+        }
+        
+        std::ifstream params_f(params_path.string());
+        params = json::parse(params_f);
+
+        if (vm.count("rewind-gen")) {
+            params["rewind_gen"] = vm["rewind-gen"].as<int>();
+        }
     }
 
-    std::filesystem::path vol_path = argv[1];
-    std::filesystem::path tgt_dir = argv[2];
-    const char *params_path = argv[3];
+    if (params.empty()) {
+        std::ifstream params_f(params_path.string());
+        params = json::parse(params_f);
+    }
 
-    std::ifstream params_f(params_path);
-    json params = json::parse(params_f);
     // Honor optional CUDA toggle from params (default true)
     if (params.contains("use_cuda")) {
         set_space_tracing_use_cuda(params.value("use_cuda", true));
@@ -143,14 +202,10 @@ int main(int argc, char *argv[])
 
     srand(clock());
 
-    cv::Vec3d origin;
-
     std::string name_prefix = "auto_grown_";
     int tgt_overlap_count = params.value("tgt_overlap_count", 20);
     float min_area_cm = params.value("min_area_cm", 0.3);
-    float step_size = params.value("step_size", 20);
     int search_effort = params.value("search_effort", 10);
-    int generations = params.value("generations", 100);
     int thread_limit = params.value("thread_limit", 0);
 
     float voxelsize = json::parse(std::ifstream(vol_path/"meta.json"))["voxelsize"];
@@ -160,7 +215,7 @@ int main(int argc, char *argv[])
     std::string mode = params.value("mode", "seed");
     
     std::cout << "mode: " << mode << std::endl;
-    std::cout << "step size: " << step_size << std::endl;
+    std::cout << "step size: " << params.value("step_size", 20.0f) << std::endl;
     std::cout << "min_area_cm: " << min_area_cm << std::endl;
     std::cout << "tgt_overlap_count: " << tgt_overlap_count << std::endl;
 
@@ -291,9 +346,15 @@ int main(int argc, char *argv[])
         std::cout << "found potential overlapping starting seed " << origin << " with overlap " << count_overlap << std::endl;
     }
     else {
-        if (argc == 7) {
+        if (!resume_path.empty()) {
+            mode = "resume";
+        } else if (use_old_args && argc == 7) {
             mode = "explicit_seed";
-            origin = {atof(argv[4]), atof(argv[5]), atof(argv[6])};
+            double v;
+            interpolator.Evaluate(origin[2], origin[1], origin[0], &v);
+            std::cout << "seed location " << origin << " value is " << v << std::endl;
+        } else if (!use_old_args && origin[0] != 0 && origin[1] != 0 && origin[2] != 0) {
+            mode = "explicit_seed";
             double v;
             interpolator.Evaluate(origin[2], origin[1], origin[0], &v);
             std::cout << "seed location " << origin << " value is " << v << std::endl;
@@ -349,7 +410,17 @@ int main(int argc, char *argv[])
     if (thread_limit)
         omp_set_num_threads(thread_limit);
 
-    QuadSurface *surf = space_tracing_quad_phys(ds.get(), 1.0, &chunk_cache, origin, generations, step_size, cache_root, voxelsize, direction_fields);
+    QuadSurface* resume_surf = nullptr;
+    if (mode == "resume") {
+        resume_surf = load_quad_from_tifxyz(resume_path);
+        origin = {0,0,0}; // Not used in resume mode, but needs to be initialized
+    }
+
+    QuadSurface *surf = space_tracing_quad_phys(ds.get(), 1.0, &chunk_cache, origin, params, cache_root, voxelsize, direction_fields, resume_surf);
+ 
+    if (resume_surf) {
+        delete resume_surf;
+    }
 
     double area_cm2 = (*surf->meta)["area_cm2"].get<double>();
     if (area_cm2 < min_area_cm)
