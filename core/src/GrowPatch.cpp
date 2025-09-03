@@ -16,6 +16,7 @@
 #include <iostream>
 #include <algorithm>
 #include <vector>
+#include <cmath>
 
 #include "vc/tracer/Tracer.hpp"
 
@@ -542,6 +543,7 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *c
     const float sanity_k = params.value("sanity_k", 5.0f);
     const bool bend_check = params.value("bend_check", true);
     const float bend_max_angle_deg = params.value("bend_max_angle_deg", 80.0f);
+    const float bend_min_length_cm = params.value("bend_min_length_cm", 0.1f);
     ALifeTime f_timer("empty space tracing\n");
     DSReader reader = {ds,scale,cache};
 
@@ -952,6 +954,10 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *c
                 // Extreme-bend check: ensure the new edge directions align with established local axes.
                 bool is_extreme_bend = false;
                 if (bend_check) {
+                    // Only enable bend check once the surface has grown to a minimum linear extent
+                    double max_dim_px = std::max(used_area.width, used_area.height);
+                    double length_cm = max_dim_px * step * voxelsize / 1e4; // microns->cm
+                    if (length_cm < bend_min_length_cm) goto skip_bend_check;
                     const double PI = 3.14159265358979323846;
                     const double cos_min = std::cos((double)bend_max_angle_deg * PI / 180.0);
                     for (auto &off : neighs) {
@@ -969,6 +975,7 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *c
                         if (cosang < 0.0) { is_extreme_bend = true; break; }       // backwards
                         if (cosang < cos_min) { is_extreme_bend = true; break; }    // near-90 deg
                     }
+                skip_bend_check: ;
                 }
 
                 if (dist >= dist_th || summary.final_cost >= 0.1 || is_neighbor_outlier || is_extreme_bend) {

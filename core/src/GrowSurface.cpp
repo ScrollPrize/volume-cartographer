@@ -19,6 +19,7 @@
 #include <iostream>
 #include <algorithm>
 #include <vector>
+#include <cmath>
 
 int static dbg_counter = 0;
 // Default values for thresholds Will be configurable through JSON
@@ -1098,6 +1099,7 @@ QuadSurface *grow_surf_from_surfs(SurfaceMeta *seed, const std::vector<SurfaceMe
     // Extreme bend guard: reject candidates that would cause ~90° or backward bends
     const bool bend_check = params.value("bend_check", true);
     const float bend_max_angle_deg = params.value("bend_max_angle_deg", 80.0f);
+    const float bend_min_length_cm = params.value("bend_min_length_cm", 0.1f);
 
     local_cost_inl_th = params.value("local_cost_inl_th", 0.2f);
     same_surface_th = params.value("same_surface_th", 2.0f);
@@ -1534,6 +1536,10 @@ QuadSurface *grow_surf_from_surfs(SurfaceMeta *seed, const std::vector<SurfaceMe
 
                 // Extreme-bend check against existing local axis directions
                 if (bend_check) {
+                    // Enable only after the grown surface has enough linear extent
+                    double max_dim_px = std::max(used_area.width, used_area.height);
+                    double length_cm = max_dim_px * step * src_step * voxelsize / 1e4; // microns->cm
+                    if (length_cm < bend_min_length_cm) goto skip_bend_check_surface;
                     const double PI = 3.14159265358979323846;
                     const double cos_min = std::cos((double)bend_max_angle_deg * PI / 180.0);
                     bool extreme = false;
@@ -1562,6 +1568,7 @@ QuadSurface *grow_surf_from_surfs(SurfaceMeta *seed, const std::vector<SurfaceMe
                         best_inliers_gen = std::max(best_inliers_gen, best_inliers);
                         continue;
                     }
+                skip_bend_check_surface: ;
                 }
                 if (best_coord[0] == -1)
                     throw std::runtime_error("oops best_cord[0]");

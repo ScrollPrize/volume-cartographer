@@ -129,6 +129,7 @@ private:
     // New: extreme bend guard
     static bool   s_bendCheck;
     static double s_bendMaxAngleDeg;
+    static double s_bendMinLengthCm;
 
     void applySessionDefaults();
     void updateSessionFromUI();
@@ -164,6 +165,7 @@ private:
     QDoubleSpinBox* spSanityK_{nullptr};
     QCheckBox* chkBend_{nullptr};
     QDoubleSpinBox* spBendMaxAngle_{nullptr};
+    QDoubleSpinBox* spBendMinLenCm_{nullptr};
 
     // Defaults helpers
     void applyCodeDefaults();
