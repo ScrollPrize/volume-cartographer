@@ -123,6 +123,9 @@ private:
     static double s_zMin;
     static double s_zMax;
     static int    s_ompThreads;
+    // New: robust neighbor-distance sanity check
+    static bool   s_sanityCheck;
+    static double s_sanityK;
 
     void applySessionDefaults();
     void updateSessionFromUI();
@@ -154,6 +157,8 @@ private:
     QCheckBox* chkZRange_{nullptr};
     QDoubleSpinBox* spZMin_{nullptr};
     QDoubleSpinBox* spZMax_{nullptr};
+    QCheckBox* chkSanity_{nullptr};
+    QDoubleSpinBox* spSanityK_{nullptr};
 
     // Defaults helpers
     void applyCodeDefaults();

@@ -348,6 +348,11 @@ TraceParamsDialog::TraceParamsDialog(QWidget* parent,
     chkZRange_ = new QCheckBox("Enforce Z range", this);
     spZMin_ = new QDoubleSpinBox(this); spZMin_->setRange(-1e9, 1e9); spZMin_->setDecimals(3);
     spZMax_ = new QDoubleSpinBox(this); spZMax_->setRange(-1e9, 1e9); spZMax_->setDecimals(3);
+    // Sanity check (neighbor outlier guard)
+    chkSanity_ = new QCheckBox("Enable neighbor-distance sanity check", this);
+    chkSanity_->setChecked(true);
+    spSanityK_ = new QDoubleSpinBox(this); spSanityK_->setRange(0.0, 1000.0); spSanityK_->setDecimals(2); spSanityK_->setSingleStep(0.25); spSanityK_->setValue(5.0);
+    spSanityK_->setToolTip("Sigma multiplier for robust MAD threshold");
 
     adv->addRow("Flip X:", chkFlipX_);
     adv->addRow("Global steps/window:", spGlobalStepsWin_);
@@ -368,6 +373,8 @@ TraceParamsDialog::TraceParamsDialog(QWidget* parent,
     adv->addRow("Use Z range:", chkZRange_);
     adv->addRow("Z min:", spZMin_);
     adv->addRow("Z max:", spZMax_);
+    adv->addRow("Sanity check:", chkSanity_);
+    adv->addRow("Sanity K (sigma):", spSanityK_);
 
     // Apply saved defaults (overrides code defaults), then overlay JSON if present
     applySavedDefaults();
@@ -396,6 +403,11 @@ TraceParamsDialog::TraceParamsDialog(QWidget* parent,
                 spStraightMinCount_->setValue(o.value("straight_min_count").toDouble(1.0));
                 spInlierBaseTh_->setValue(o.value("inlier_base_threshold").toInt(20));
                 spConsensusDefaultTh_->setValue(o.value("consensus_default_th").toInt(spConsensusDefaultTh_->value()));
+                // Prefill sanity options if present
+                if (o.contains("sanity_check"))
+                    chkSanity_->setChecked(o.value("sanity_check").toBool());
+                if (o.contains("sanity_k"))
+                    spSanityK_->setValue(o.value("sanity_k").toDouble(5.0));
                 if (o.contains("z_range") && o.value("z_range").isArray()) {
                     const auto a = o.value("z_range").toArray();
                     if (a.size() == 2) {
@@ -468,6 +480,8 @@ QJsonObject TraceParamsDialog::makeParamsJson() const {
     o["straight_min_count"] = spStraightMinCount_->value();
     o["inlier_base_threshold"] = spInlierBaseTh_->value();
     o["consensus_default_th"] = spConsensusDefaultTh_->value();
+    o["sanity_check"] = chkSanity_->isChecked();
+    o["sanity_k"] = spSanityK_->value();
 
     if (chkZRange_->isChecked()) {
         QJsonArray zr; zr.append(spZMin_->value()); zr.append(spZMax_->value());
@@ -497,6 +511,8 @@ void TraceParamsDialog::applyCodeDefaults() {
     chkZRange_->setChecked(false);
     spZMin_->setValue(0.0);
     spZMax_->setValue(0.0);
+    chkSanity_->setChecked(true);
+    spSanityK_->setValue(5.0);
 }
 
 void TraceParamsDialog::applySavedDefaults() {
@@ -524,6 +540,9 @@ void TraceParamsDialog::applySavedDefaults() {
     chkZRange_->setChecked(useZR);
     spZMin_->setValue(s.value("z_min", spZMin_->value()).toDouble());
     spZMax_->setValue(s.value("z_max", spZMax_->value()).toDouble());
+    // Sanity defaults
+    chkSanity_->setChecked(s.value("sanity_check", chkSanity_->isChecked()).toBool());
+    spSanityK_->setValue(s.value("sanity_k", spSanityK_->value()).toDouble());
     s.endGroup();
 }
 
@@ -549,6 +568,8 @@ bool   TraceParamsDialog::s_useZRange = false;
 double TraceParamsDialog::s_zMin = 0.0;
 double TraceParamsDialog::s_zMax = 0.0;
 int    TraceParamsDialog::s_ompThreads = -1;
+bool   TraceParamsDialog::s_sanityCheck = true;
+double TraceParamsDialog::s_sanityK = 5.0;
 
 void TraceParamsDialog::applySessionDefaults() {
     if (!s_haveSession) return;
@@ -571,6 +592,8 @@ void TraceParamsDialog::applySessionDefaults() {
     chkZRange_->setChecked(s_useZRange);
     spZMin_->setValue(s_zMin);
     spZMax_->setValue(s_zMax);
+    chkSanity_->setChecked(s_sanityCheck);
+    spSanityK_->setValue(s_sanityK);
     if (s_ompThreads > 0) edtThreads_->setText(QString::number(s_ompThreads)); else edtThreads_->setText("");
 }
 
@@ -595,6 +618,8 @@ void TraceParamsDialog::updateSessionFromUI() {
     s_useZRange = chkZRange_->isChecked();
     s_zMin = spZMin_->value();
     s_zMax = spZMax_->value();
+    s_sanityCheck = chkSanity_->isChecked();
+    s_sanityK = spSanityK_->value();
     const QString t = edtThreads_->text().trimmed();
     bool ok=false; const int v = t.toInt(&ok); s_ompThreads = (ok && v>0) ? v : -1;
 }
@@ -619,6 +644,8 @@ void TraceParamsDialog::saveDefaults() const {
     s.setValue("straight_min_count", spStraightMinCount_->value());
     s.setValue("inlier_base_threshold", spInlierBaseTh_->value());
     s.setValue("consensus_default_th", spConsensusDefaultTh_->value());
+    s.setValue("sanity_check", chkSanity_->isChecked());
+    s.setValue("sanity_k", spSanityK_->value());
 
     s.setValue("use_z_range", chkZRange_->isChecked());
     s.setValue("z_min", spZMin_->value());
