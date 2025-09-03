@@ -31,6 +31,8 @@ set(srcs
     ProgressUtil.hpp
     CommandLineToolRunner.cpp
     CommandLineToolRunner.hpp
+    ToolDialogs.cpp
+    ToolDialogs.hpp
     ConsoleOutputWidget.cpp
     ConsoleOutputWidget.hpp
     CPointCollectionWidget.cpp

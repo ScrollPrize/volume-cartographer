@@ -24,8 +24,8 @@ signals:
 
 private:
     Ui::OpsSettings* ui;
-    QGroupBox *_box;
-    QCheckBox *_enable;
+    QGroupBox *_box = nullptr;
+    QCheckBox *_enable = nullptr;
 
     Surface *_op = nullptr;
     OpChain *_chain = nullptr;

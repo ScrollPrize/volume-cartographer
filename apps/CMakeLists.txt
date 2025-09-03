@@ -19,7 +19,7 @@ add_executable(vc_objrefine src/ObjAlphaCompRefinement.cpp)
 target_link_libraries(vc_objrefine vc_core)
 
 add_executable(vc_grow_seg_from_seed src/vc_grow_seg_from_seed.cpp)
-target_link_libraries(vc_grow_seg_from_seed vc_core vc_ui vc_tracer)
+target_link_libraries(vc_grow_seg_from_seed vc_core vc_ui vc_tracer Boost::program_options)
 
 add_executable(vc_seg_add_overlap src/vc_seg_add_overlap.cpp)
 target_link_libraries(vc_seg_add_overlap vc_core)
@@ -72,6 +72,10 @@ target_link_libraries(vc_ced2d
     OpenMP::OpenMP_CXX
 )
 
+# Apply affine + scale to OBJ or TIFXYZ
+add_executable(vc_transform_geom src/vc_transform_geom.cpp)
+target_link_libraries(vc_transform_geom vc_core Boost::program_options)
+
 # Install targets
 if(VC_INSTALL_APPS)
 install(
@@ -90,6 +94,7 @@ install(
         vc_fill_quadmesh
         vc_calc_surface_metrics
         vc_ced2d
+        vc_transform_geom
         ${extra_apps}
     RUNTIME DESTINATION bin
     COMPONENT Programs

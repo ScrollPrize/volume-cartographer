@@ -8,11 +8,15 @@ OpsSettings::OpsSettings(QWidget* parent)
     : QWidget(parent), ui(new Ui::OpsSettings)
 {
     ui->setupUi(this);
-    _box = this->findChild<QGroupBox*>("groupBox");
-    _box->setVisible(false); // start invisible until a layer is selected
-    _enable = this->findChild<QCheckBox*>("chkEnableLayer");    
+    // Prefer direct UI pointers over findChild and guard for nulls
+    _box = ui->groupBox;
+    _enable = ui->chkEnableLayer;
 
-    connect(_enable, &QCheckBox::stateChanged, this, &OpsSettings::onEnabledChanged);
+    if (_box)
+        _box->setVisible(false); // start invisible until a layer is selected
+
+    if (_enable)
+        connect(_enable, &QCheckBox::stateChanged, this, &OpsSettings::onEnabledChanged);
 }
 
 OpsSettings::~OpsSettings() { delete ui; }
@@ -50,25 +54,31 @@ void OpsSettings::onOpSelected(Surface *op, OpChain *chain)
     // display which resets the layer selection), hide the box until a
     // layer actually is selected.
     if(!_op) {
-        _box->setVisible(false);
+        if (_box)
+            _box->setVisible(false);
         return;
     }
 
-    _box->setTitle(tr("Selected Layer: %1").arg(QString(op_name(op))));    
+    if (_box)
+        _box->setTitle(tr("Selected Layer: %1").arg(QString(op_name(op))));
 
-    if (!dynamic_cast<DeltaSurface*>(_op))
-        _enable->setEnabled(false);
-    else {
-        _enable->setEnabled(true);
-        QSignalBlocker blocker(_enable);
-        _enable->setChecked(_chain->enabled((DeltaSurface*)_op));
+    if (_enable) {
+        if (!dynamic_cast<DeltaSurface*>(_op)) {
+            _enable->setEnabled(false);
+        } else if (_chain) {
+            _enable->setEnabled(true);
+            QSignalBlocker blocker(_enable);
+            _enable->setChecked(_chain->enabled((DeltaSurface*)_op));
+        } else {
+            _enable->setEnabled(false);
+        }
     }
     
     if (_form)
         delete _form;
     
     _form = op_form_widget(op, this);
-    if (_form) {
+    if (_form && _box && _box->layout()) {
         _box->layout()->addWidget(_form);
         _box->setVisible(true);
     }

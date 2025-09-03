@@ -114,7 +114,11 @@ public:
     friend QuadSurface *smooth_vc_segmentation(QuadSurface *src);
     friend class ControlPointSurface;
     cv::Vec2f _scale;
+
+    void setChannel(const std::string& name, const cv::Mat& channel);
+    cv::Mat channel(const std::string& name);
 protected:
+    std::unordered_map<std::string, cv::Mat> _channels;
     cv::Mat_<cv::Vec3f>* _points = nullptr;
     cv::Rect _bounds;
     cv::Vec3f _center;
@@ -228,6 +232,9 @@ std::set<std::string> read_overlapping_json(const std::filesystem::path& seg_pat
 QuadSurface* surface_diff(QuadSurface* a, QuadSurface* b, float tolerance = 2.0);
 QuadSurface* surface_union(QuadSurface* a, QuadSurface* b, float tolerance = 2.0);
 QuadSurface* surface_intersection(QuadSurface* a, QuadSurface* b, float tolerance = 2.0);
+
+// Control CUDA usage in GrowPatch (space_tracing_quad_phys). Default is true.
+void set_space_tracing_use_cuda(bool enable);
 
 void generate_mask(QuadSurface* surf,
                             cv::Mat_<uint8_t>& mask,
