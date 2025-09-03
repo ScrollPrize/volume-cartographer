@@ -587,6 +587,7 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *c
     ceres::Problem big_problem;
     int loss_count = 0;
     int generation = 0;
+    int succ = 0;  // number of quads successfully added to the patch (each of size approx. step**2)
 
     if (resume_surf) {
         float resume_step = 1.0 / resume_surf->scale()[0];
@@ -623,6 +624,7 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *c
 
         for (const auto& p : fringe) {
             loss_count += emptytrace_create_missing_centered_losses(big_problem, loss_status, p, state, locs, interp_global, proc_tensor, direction_fields, Ts);
+            succ++;
         }
         std::cout << "Resuming from generation " << generation << " with " << fringe.size() << " points. Initial loss count: " << loss_count << std::endl;
 
@@ -692,7 +694,6 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *c
 
     std::vector<cv::Vec2i> neighs = {{1,0},{0,1},{-1,0},{0,-1}};
 
-    int succ = 0;  // number of quads successfully added to the patch (each of size approx. step**2)
     int phys_fail_count = 0;
 
     int max_local_opt_r = 4;
