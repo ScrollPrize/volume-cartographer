@@ -270,6 +270,15 @@ void CWindow::setVolume(std::shared_ptr<Volume> newvol)
 
     sendVolumeChanged(currentVolume, currentVolumeId);
 
+    // Keep the combobox selection in sync if it differs
+    if (volSelect && !currentVolumeId.empty()) {
+        int idx = volSelect->findData(QString::fromStdString(currentVolumeId));
+        if (idx >= 0 && volSelect->currentIndex() != idx) {
+            const QSignalBlocker blocker{volSelect};
+            volSelect->setCurrentIndex(idx);
+        }
+    }
+
     if (currentVolume->numScales() >= 2)
         wOpsList->setDataset(currentVolume->zarrDataset(1), chunk_cache, 0.5);
     else
@@ -489,6 +498,8 @@ void CWindow::CreateWidgets(void)
             const auto id = volSelect->currentData().toString();
             if (id.isEmpty())
                 return;
+            if (QString::fromStdString(currentVolumeId) == id)
+                return; // no-op if selecting the already active volume
             std::shared_ptr<Volume> newVolume;
             try {
                 newVolume = fVpkg->volume(id.toStdString());
@@ -1018,7 +1029,8 @@ void CWindow::UpdateView(void)
     // show volume package name
     UpdateVolpkgLabel(0);    
 
-    volSelect->setEnabled(can_change_volume_());
+    // Keep in sync with actual count; prefer direct check to avoid stale state
+    volSelect->setEnabled(fVpkg && fVpkg->numberOfVolumes() > 1);
 
     update();
 }
@@ -1110,6 +1122,8 @@ void CWindow::OpenVolume(const QString& path)
             QString("%1 (%2)").arg(QString::fromStdString(id)).arg(QString::fromStdString(fVpkg->volume(id)->name())),
             QVariant(QString::fromStdString(id)));
     }
+    // Enable/disable volume selector according to number of volumes
+    volSelect->setEnabled(fVpkg->numberOfVolumes() > 1);
     // Sync selection to the current volume id, if present
     if (!currentVolumeId.empty()) {
         int idx = volSelect->findData(QString::fromStdString(currentVolumeId));
