@@ -126,6 +126,9 @@ private:
     // New: robust neighbor-distance sanity check
     static bool   s_sanityCheck;
     static double s_sanityK;
+    // New: extreme bend guard
+    static bool   s_bendCheck;
+    static double s_bendMaxAngleDeg;
 
     void applySessionDefaults();
     void updateSessionFromUI();
@@ -159,6 +162,8 @@ private:
     QDoubleSpinBox* spZMax_{nullptr};
     QCheckBox* chkSanity_{nullptr};
     QDoubleSpinBox* spSanityK_{nullptr};
+    QCheckBox* chkBend_{nullptr};
+    QDoubleSpinBox* spBendMaxAngle_{nullptr};
 
     // Defaults helpers
     void applyCodeDefaults();

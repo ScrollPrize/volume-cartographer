@@ -353,6 +353,11 @@ TraceParamsDialog::TraceParamsDialog(QWidget* parent,
     chkSanity_->setChecked(true);
     spSanityK_ = new QDoubleSpinBox(this); spSanityK_->setRange(0.0, 1000.0); spSanityK_->setDecimals(2); spSanityK_->setSingleStep(0.25); spSanityK_->setValue(5.0);
     spSanityK_->setToolTip("Sigma multiplier for robust MAD threshold");
+    // Bend check (extreme bends guard)
+    chkBend_ = new QCheckBox("Enable extreme-bend check", this);
+    chkBend_->setChecked(true);
+    spBendMaxAngle_ = new QDoubleSpinBox(this); spBendMaxAngle_->setRange(0.0, 180.0); spBendMaxAngle_->setDecimals(1); spBendMaxAngle_->setSingleStep(1.0); spBendMaxAngle_->setValue(80.0);
+    spBendMaxAngle_->setToolTip("Maximum allowed bend angle relative to local axis (deg)");
 
     adv->addRow("Flip X:", chkFlipX_);
     adv->addRow("Global steps/window:", spGlobalStepsWin_);
@@ -375,6 +380,8 @@ TraceParamsDialog::TraceParamsDialog(QWidget* parent,
     adv->addRow("Z max:", spZMax_);
     adv->addRow("Sanity check:", chkSanity_);
     adv->addRow("Sanity K (sigma):", spSanityK_);
+    adv->addRow("Bend check:", chkBend_);
+    adv->addRow("Bend max angle (deg):", spBendMaxAngle_);
 
     // Apply saved defaults (overrides code defaults), then overlay JSON if present
     applySavedDefaults();
@@ -408,6 +415,10 @@ TraceParamsDialog::TraceParamsDialog(QWidget* parent,
                     chkSanity_->setChecked(o.value("sanity_check").toBool());
                 if (o.contains("sanity_k"))
                     spSanityK_->setValue(o.value("sanity_k").toDouble(5.0));
+                if (o.contains("bend_check"))
+                    chkBend_->setChecked(o.value("bend_check").toBool());
+                if (o.contains("bend_max_angle_deg"))
+                    spBendMaxAngle_->setValue(o.value("bend_max_angle_deg").toDouble(80.0));
                 if (o.contains("z_range") && o.value("z_range").isArray()) {
                     const auto a = o.value("z_range").toArray();
                     if (a.size() == 2) {
@@ -482,6 +493,8 @@ QJsonObject TraceParamsDialog::makeParamsJson() const {
     o["consensus_default_th"] = spConsensusDefaultTh_->value();
     o["sanity_check"] = chkSanity_->isChecked();
     o["sanity_k"] = spSanityK_->value();
+    o["bend_check"] = chkBend_->isChecked();
+    o["bend_max_angle_deg"] = spBendMaxAngle_->value();
 
     if (chkZRange_->isChecked()) {
         QJsonArray zr; zr.append(spZMin_->value()); zr.append(spZMax_->value());
@@ -513,6 +526,8 @@ void TraceParamsDialog::applyCodeDefaults() {
     spZMax_->setValue(0.0);
     chkSanity_->setChecked(true);
     spSanityK_->setValue(5.0);
+    chkBend_->setChecked(true);
+    spBendMaxAngle_->setValue(80.0);
 }
 
 void TraceParamsDialog::applySavedDefaults() {
@@ -543,6 +558,9 @@ void TraceParamsDialog::applySavedDefaults() {
     // Sanity defaults
     chkSanity_->setChecked(s.value("sanity_check", chkSanity_->isChecked()).toBool());
     spSanityK_->setValue(s.value("sanity_k", spSanityK_->value()).toDouble());
+    // Bend defaults
+    chkBend_->setChecked(s.value("bend_check", chkBend_->isChecked()).toBool());
+    spBendMaxAngle_->setValue(s.value("bend_max_angle_deg", spBendMaxAngle_->value()).toDouble());
     s.endGroup();
 }
 
@@ -570,6 +588,8 @@ double TraceParamsDialog::s_zMax = 0.0;
 int    TraceParamsDialog::s_ompThreads = -1;
 bool   TraceParamsDialog::s_sanityCheck = true;
 double TraceParamsDialog::s_sanityK = 5.0;
+bool   TraceParamsDialog::s_bendCheck = true;
+double TraceParamsDialog::s_bendMaxAngleDeg = 80.0;
 
 void TraceParamsDialog::applySessionDefaults() {
     if (!s_haveSession) return;
@@ -594,6 +614,8 @@ void TraceParamsDialog::applySessionDefaults() {
     spZMax_->setValue(s_zMax);
     chkSanity_->setChecked(s_sanityCheck);
     spSanityK_->setValue(s_sanityK);
+    chkBend_->setChecked(s_bendCheck);
+    spBendMaxAngle_->setValue(s_bendMaxAngleDeg);
     if (s_ompThreads > 0) edtThreads_->setText(QString::number(s_ompThreads)); else edtThreads_->setText("");
 }
 
@@ -620,6 +642,8 @@ void TraceParamsDialog::updateSessionFromUI() {
     s_zMax = spZMax_->value();
     s_sanityCheck = chkSanity_->isChecked();
     s_sanityK = spSanityK_->value();
+    s_bendCheck = chkBend_->isChecked();
+    s_bendMaxAngleDeg = spBendMaxAngle_->value();
     const QString t = edtThreads_->text().trimmed();
     bool ok=false; const int v = t.toInt(&ok); s_ompThreads = (ok && v>0) ? v : -1;
 }
@@ -646,6 +670,8 @@ void TraceParamsDialog::saveDefaults() const {
     s.setValue("consensus_default_th", spConsensusDefaultTh_->value());
     s.setValue("sanity_check", chkSanity_->isChecked());
     s.setValue("sanity_k", spSanityK_->value());
+    s.setValue("bend_check", chkBend_->isChecked());
+    s.setValue("bend_max_angle_deg", spBendMaxAngle_->value());
 
     s.setValue("use_z_range", chkZRange_->isChecked());
     s.setValue("z_min", spZMin_->value());

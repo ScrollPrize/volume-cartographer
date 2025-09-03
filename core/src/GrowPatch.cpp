@@ -540,6 +540,8 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *c
     // Robust neighbor-distance outlier guard (similar to vc_tifxyz2obj --clean)
     const bool sanity_check = params.value("sanity_check", true);
     const float sanity_k = params.value("sanity_k", 5.0f);
+    const bool bend_check = params.value("bend_check", true);
+    const float bend_max_angle_deg = params.value("bend_max_angle_deg", 80.0f);
     ALifeTime f_timer("empty space tracing\n");
     DSReader reader = {ds,scale,cache};
 
@@ -947,7 +949,29 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *c
                     }
                 }
 
-                if (dist >= dist_th || summary.final_cost >= 0.1 || is_neighbor_outlier) {
+                // Extreme-bend check: ensure the new edge directions align with established local axes.
+                bool is_extreme_bend = false;
+                if (bend_check) {
+                    const double PI = 3.14159265358979323846;
+                    const double cos_min = std::cos((double)bend_max_angle_deg * PI / 180.0);
+                    for (auto &off : neighs) {
+                        cv::Vec2i q = p + off;
+                        if (!(q[0] >= 0 && q[0] < locs.rows && q[1] >= 0 && q[1] < locs.cols)) continue;
+                        if ((state(q) & STATE_LOC_VALID) == 0) continue;
+                        cv::Vec2i r = q - off; // previous along the same axis
+                        if (!(r[0] >= 0 && r[0] < locs.rows && r[1] >= 0 && r[1] < locs.cols)) continue;
+                        if ((state(r) & STATE_LOC_VALID) == 0) continue;
+                        cv::Vec3d e = locs(q) - locs(r);
+                        cv::Vec3d v = locs(p) - locs(q);
+                        double Le = cv::norm(e); double Lv = cv::norm(v);
+                        if (!(Le > 0 && Lv > 0)) continue;
+                        double cosang = e.dot(v) / (Le * Lv);
+                        if (cosang < 0.0) { is_extreme_bend = true; break; }       // backwards
+                        if (cosang < cos_min) { is_extreme_bend = true; break; }    // near-90 deg
+                    }
+                }
+
+                if (dist >= dist_th || summary.final_cost >= 0.1 || is_neighbor_outlier || is_extreme_bend) {
                     // The solution to the local problem is bad -- large loss, or too far from the surface; still add to the global
                     // problem (as below) but don't mark the point location as valid
                     locs(p) = phys_only_loc;

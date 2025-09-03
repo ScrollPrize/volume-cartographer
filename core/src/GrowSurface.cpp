@@ -1095,6 +1095,9 @@ QuadSurface *grow_surf_from_surfs(SurfaceMeta *seed, const std::vector<SurfaceMe
     // Robust neighbor-distance outlier guard when adding new points
     const bool sanity_check = params.value("sanity_check", true);
     const float sanity_k = params.value("sanity_k", 5.0f);
+    // Extreme bend guard: reject candidates that would cause ~90° or backward bends
+    const bool bend_check = params.value("bend_check", true);
+    const float bend_max_angle_deg = params.value("bend_max_angle_deg", 80.0f);
 
     local_cost_inl_th = params.value("local_cost_inl_th", 0.2f);
     same_surface_th = params.value("same_surface_th", 2.0f);
@@ -1526,6 +1529,38 @@ QuadSurface *grow_surf_from_surfs(SurfaceMeta *seed, const std::vector<SurfaceMe
                             best_inliers_gen = std::max(best_inliers_gen, best_inliers);
                             continue; // go to next candidate
                         }
+                    }
+                }
+
+                // Extreme-bend check against existing local axis directions
+                if (bend_check) {
+                    const double PI = 3.14159265358979323846;
+                    const double cos_min = std::cos((double)bend_max_angle_deg * PI / 180.0);
+                    bool extreme = false;
+                    for (auto &off : neighs) {
+                        cv::Vec2i q = p + off;
+                        if (!(q[0] >= 0 && q[0] < h && q[1] >= 0 && q[1] < w)) continue;
+                        if ((state(q) & STATE_LOC_VALID) == 0) continue;
+                        cv::Vec2i r = q - off; // previous along same axis
+                        if (!(r[0] >= 0 && r[0] < h && r[1] >= 0 && r[1] < w)) continue;
+                        if ((state(r) & STATE_LOC_VALID) == 0) continue;
+                        const cv::Vec3d &q3 = points(q);
+                        const cv::Vec3d &r3 = points(r);
+                        if (q3[0] == -1 || r3[0] == -1) continue;
+                        cv::Vec3d e = q3 - r3;
+                        cv::Vec3d v = best_coord - q3;
+                        double Le = cv::norm(e); double Lv = cv::norm(v);
+                        if (!(Le > 0 && Lv > 0)) continue;
+                        double cosang = e.dot(v) / (Le * Lv);
+                        if (cosang < 0.0 || cosang < cos_min) { extreme = true; break; }
+                    }
+                    if (extreme) {
+                        state(p) = 0;
+                        points(p) = {-1,-1,-1};
+                        // track best_inliers for diagnostics like above
+#pragma omp critical
+                        best_inliers_gen = std::max(best_inliers_gen, best_inliers);
+                        continue;
                     }
                 }
                 if (best_coord[0] == -1)
