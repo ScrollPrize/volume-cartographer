@@ -11,7 +11,6 @@
   "num_expansion_patches": 250,
   "num_trace_starting_patches": 3,
   "min_trace_starting_patch_size": 7.0,
-  "min_valid_trace_area": 15.0,
   "num_best_traces_to_average": 2,
   "trace_ranking_metric": "winding_valid_fraction",
   "wandb_project": "surface-tracer-evaluation-debug",

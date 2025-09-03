@@ -357,6 +357,7 @@ class SurfaceTracerEvaluation:
                 project=self.config["wandb_project"],
                 config=self.config,
                 name=f"surface_tracer_{int(time.time())}",
+                dir=self.out_dir,
             )
             wandb.summary.update(metric_to_mean)
             wandb.finish()
