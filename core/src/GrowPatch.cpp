@@ -14,6 +14,8 @@
 #include XTENSORINCLUDE(views, xview.hpp)
 
 #include <iostream>
+#include <algorithm>
+#include <vector>
 
 #include "vc/tracer/Tracer.hpp"
 
@@ -535,6 +537,9 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *c
     int stop_gen = params.value("generations", 100);
     float step = params.value("step_size", 20.0f);
     int rewind_gen = params.value("rewind_gen", -1);
+    // Robust neighbor-distance outlier guard (similar to vc_tifxyz2obj --clean)
+    const bool sanity_check = params.value("sanity_check", true);
+    const float sanity_k = params.value("sanity_k", 5.0f);
     ALifeTime f_timer("empty space tracing\n");
     DSReader reader = {ds,scale,cache};
 
@@ -911,8 +916,38 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *c
                 }
 
                 init_dist(p) = dist;
+                // Optional neighbor-distance sanity check: reject points whose nearest-neighbor
+                // distance is a robust outlier compared to their local neighbor distances.
+                bool is_neighbor_outlier = false;
+                if (sanity_check) {
+                    std::vector<float> ndists;
+                    ndists.reserve(8);
+                    for (auto &off : neighs) {
+                        if (state(p+off) & STATE_LOC_VALID) {
+                            float d = static_cast<float>(cv::norm(locs(p) - locs(p+off)));
+                            if (std::isfinite(d) && d > 0.f)
+                                ndists.push_back(d);
+                        }
+                    }
+                    if (ndists.size() >= 2) {
+                        std::sort(ndists.begin(), ndists.end());
+                        float median = ndists[ndists.size()/2];
+                        std::vector<float> dev; dev.reserve(ndists.size());
+                        for (float d : ndists) dev.push_back(std::abs(d - median));
+                        std::sort(dev.begin(), dev.end());
+                        float mad = dev[dev.size()/2];
+                        float thr = median + sanity_k * (mad / 0.6745f);
+                        float mind = ndists.front();
+                        if (mad == 0.f) {
+                            // Fallback when all neighbors are almost equal distance
+                            thr = median * 1.5f;
+                        }
+                        if (mind > thr && thr > 0.f)
+                            is_neighbor_outlier = true;
+                    }
+                }
 
-                if (dist >= dist_th || summary.final_cost >= 0.1) {
+                if (dist >= dist_th || summary.final_cost >= 0.1 || is_neighbor_outlier) {
                     // The solution to the local problem is bad -- large loss, or too far from the surface; still add to the global
                     // problem (as below) but don't mark the point location as valid
                     locs(p) = phys_only_loc;

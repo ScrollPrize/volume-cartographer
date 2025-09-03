@@ -17,6 +17,8 @@
 
 #include <fstream>
 #include <iostream>
+#include <algorithm>
+#include <vector>
 
 int static dbg_counter = 0;
 // Default values for thresholds Will be configurable through JSON
@@ -1090,6 +1092,10 @@ QuadSurface *grow_surf_from_surfs(SurfaceMeta *seed, const std::vector<SurfaceMe
     float step = params.value("step", 10);
     int max_width = params.value("max_width", 80000);
 
+    // Robust neighbor-distance outlier guard when adding new points
+    const bool sanity_check = params.value("sanity_check", true);
+    const float sanity_k = params.value("sanity_k", 5.0f);
+
     local_cost_inl_th = params.value("local_cost_inl_th", 0.2f);
     same_surface_th = params.value("same_surface_th", 2.0f);
     straight_weight = params.value("straight_weight", 0.7f);            // Weight for 2D straight line constraints
@@ -1485,6 +1491,43 @@ QuadSurface *grow_surf_from_surfs(SurfaceMeta *seed, const std::vector<SurfaceMe
             }
 
             if (best_inliers >= curr_best_inl_th || best_ref_seed) {
+                // Optional neighbor-distance sanity check: ensure the candidate point is not a
+                // robust outlier in 3D distance relative to its already-placed neighbors.
+                if (sanity_check) {
+                    std::vector<float> ndists; ndists.reserve(8);
+                    for (auto &off : neighs) {
+                        cv::Vec2i q = p + off;
+                        if (q[0] >= 0 && q[0] < h && q[1] >= 0 && q[1] < w) {
+                            if (state(q) & STATE_LOC_VALID) {
+                                const cv::Vec3d &pn = points(q);
+                                if (pn[0] != -1) {
+                                    float d = static_cast<float>(cv::norm(best_coord - pn));
+                                    if (std::isfinite(d) && d > 0.f)
+                                        ndists.push_back(d);
+                                }
+                            }
+                        }
+                    }
+                    if (ndists.size() >= 2) {
+                        std::sort(ndists.begin(), ndists.end());
+                        float median = ndists[ndists.size()/2];
+                        std::vector<float> dev; dev.reserve(ndists.size());
+                        for (float d : ndists) dev.push_back(std::abs(d - median));
+                        std::sort(dev.begin(), dev.end());
+                        float mad = dev[dev.size()/2];
+                        float thr = median + sanity_k * (mad / 0.6745f);
+                        if (mad == 0.f) thr = median * 1.5f; // fallback if distances are uniform
+                        float mind = ndists.front();
+                        if (mind > thr && thr > 0.f) {
+                            // Reject this candidate as a clear outlier relative to neighbors
+                            state(p) = 0;
+                            points(p) = {-1,-1,-1};
+#pragma omp critical
+                            best_inliers_gen = std::max(best_inliers_gen, best_inliers);
+                            continue; // go to next candidate
+                        }
+                    }
+                }
                 if (best_coord[0] == -1)
                     throw std::runtime_error("oops best_cord[0]");
 
