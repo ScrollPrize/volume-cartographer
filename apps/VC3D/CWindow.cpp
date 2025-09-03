@@ -22,6 +22,7 @@
 #include <QRegularExpressionValidator>
 #include <QDockWidget>
 #include <QHeaderView>
+#include <QTimer>
 
 #include <atomic>
 #include <omp.h>
@@ -313,6 +314,8 @@ void CWindow::CreateWidgets(void)
     mdiArea->tileSubWindows();
 
     treeWidgetSurfaces = ui.treeWidgetSurfaces;
+    // Defer filtering until the widget is actually visible
+    treeWidgetSurfaces->installEventFilter(this);
     treeWidgetSurfaces->setContextMenuPolicy(Qt::CustomContextMenu);
     treeWidgetSurfaces->setSelectionMode(QAbstractItemView::ExtendedSelection);
     connect(treeWidgetSurfaces, &QWidget::customContextMenuRequested, this, &CWindow::onSurfaceContextMenuRequested);
@@ -1636,6 +1639,8 @@ void CWindow::onSurfaceSelected()
 void CWindow::FillSurfaceTree()
 {
     const QSignalBlocker blocker{treeWidgetSurfaces};
+    const bool wasSorting = treeWidgetSurfaces->isSortingEnabled();
+    treeWidgetSurfaces->setSortingEnabled(false);
     treeWidgetSurfaces->clear();
 
     // VolumePkg now only returns surfaces from the current directory
@@ -1663,6 +1668,8 @@ void CWindow::FillSurfaceTree()
         headerView->setSectionResizeMode(3, QHeaderView::ResizeToContents);
     }
 
+    // Restore sorting state and apply initial sort (once at app startup)
+    treeWidgetSurfaces->setSortingEnabled(wasSorting);
     if (!appInitComplete) {
         // Apply initial sorting during apps tartup, but afterwards keep
         // whatever the user chose
@@ -1689,6 +1696,16 @@ void CWindow::onSegFilterChanged(int index)
     if (!fVpkg) {
         return;
     }
+
+    // If the tree is not visible yet, defer filtering until it is shown
+    if (!treeWidgetSurfaces || !treeWidgetSurfaces->isVisible()) {
+        _deferFilterUntilShown = true;
+        return;
+    }
+
+    // Disable sorting while iterating/mutating to avoid Qt triggering a pending sort
+    const bool wasSorting = treeWidgetSurfaces->isSortingEnabled();
+    treeWidgetSurfaces->setSortingEnabled(false);
 
     // Check if ANY filters are actually active
     bool hasActiveFilters = chkFilterFocusPoints->isChecked() ||
@@ -1733,6 +1750,8 @@ void CWindow::onSegFilterChanged(int index)
         }
 
         UpdateVolpkgLabel(0);
+        // Restore sorting state before returning
+        treeWidgetSurfaces->setSortingEnabled(wasSorting);
         return;
     }
 
@@ -1890,6 +1909,27 @@ void CWindow::onSegFilterChanged(int index)
             viewer->setIntersects(dbg_intersects);
         }
     }
+    // Restore sorting state
+    treeWidgetSurfaces->setSortingEnabled(wasSorting);
+}
+
+bool CWindow::eventFilter(QObject* obj, QEvent* event)
+{
+    if (obj == treeWidgetSurfaces) {
+        switch (event->type()) {
+        case QEvent::Show:
+        case QEvent::ShowToParent:
+            if (_deferFilterUntilShown) {
+                _deferFilterUntilShown = false;
+                // Call after the show event completes
+                QTimer::singleShot(0, this, [this]() { onSegFilterChanged(0); });
+            }
+            break;
+        default:
+            break;
+        }
+    }
+    return QMainWindow::eventFilter(obj, event);
 }
 
 

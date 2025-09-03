@@ -80,6 +80,7 @@ public:
 
 protected:
     void keyPressEvent(QKeyEvent* event) override;
+    bool eventFilter(QObject* obj, QEvent* event) override;
 
 private:
     void CreateWidgets(void);
@@ -150,6 +151,7 @@ private slots:
 
 private:
     bool appInitComplete{false};
+    bool _deferFilterUntilShown{false};
     std::shared_ptr<VolumePkg> fVpkg;
     Surface *_seg_surf;
     QString fVpkgPath;
@@ -254,4 +256,3 @@ private:
 
 
 };  // class CWindow
-
