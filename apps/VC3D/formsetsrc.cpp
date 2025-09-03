@@ -7,13 +7,14 @@ FormSetSrc::FormSetSrc(Surface *op, QWidget* parent)
     ui->setupUi(this);
     
     _chain = dynamic_cast<OpChain*>(op);
-    assert(_chain);
-    
-    _combo = this->findChild<QComboBox*>("comboBox");
-    
-    _combo->setCurrentIndex(int(_chain->_src_mode));
-    
-    connect(_combo, &QComboBox::currentIndexChanged, this, &FormSetSrc::onAlgoIdxChanged);
+    // Prefer direct UI access over findChild and guard for nulls
+    _combo = ui->comboBox;
+
+    if (_combo) {
+        if (_chain)
+            _combo->setCurrentIndex(int(_chain->_src_mode));
+        connect(_combo, &QComboBox::currentIndexChanged, this, &FormSetSrc::onAlgoIdxChanged);
+    }
 }
 
 FormSetSrc::~FormSetSrc() { delete ui; }

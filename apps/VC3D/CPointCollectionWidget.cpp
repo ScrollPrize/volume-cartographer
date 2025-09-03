@@ -41,13 +41,15 @@ void CPointCollectionWidget::setupUi()
     QVBoxLayout *layout = new QVBoxLayout(main_widget);
 
     _tree_view = new QTreeView(main_widget);
-    _model = new QStandardItemModel(this);
+    _model = new QStandardItemModel(_tree_view);
     _tree_view->setModel(_model);
     _tree_view->setSelectionBehavior(QAbstractItemView::SelectRows);
     _tree_view->setSelectionMode(QAbstractItemView::SingleSelection);
     layout->addWidget(_tree_view);
 
-    connect(_tree_view->selectionModel(), &QItemSelectionModel::selectionChanged, this, &CPointCollectionWidget::onSelectionChanged);
+    if (_tree_view && _tree_view->selectionModel()) {
+        connect(_tree_view->selectionModel(), &QItemSelectionModel::selectionChanged, this, &CPointCollectionWidget::onSelectionChanged);
+    }
     connect(_tree_view, &QTreeView::doubleClicked, this, [this](const QModelIndex &index) {
         // Get the index for the first column in the same row
         QModelIndex id_index = index.sibling(index.row(), 0);
@@ -205,13 +207,15 @@ void CPointCollectionWidget::refreshTree()
         }
     }
 
-    _tree_view->expandAll();
+    if (_tree_view)
+        _tree_view->expandAll();
 }
 
 void CPointCollectionWidget::onResetClicked()
 {
     if (_point_collection) {
-        _tree_view->selectionModel()->clear();
+        if (_tree_view && _tree_view->selectionModel())
+            _tree_view->selectionModel()->clear();
         _point_collection->clearAll();
     }
 }
@@ -328,7 +332,9 @@ void CPointCollectionWidget::onSelectionChanged(const QItemSelection &selected, 
     _selected_collection_id = 0;
     _selected_point_id = 0;
 
-    QModelIndexList selected_indexes = _tree_view->selectionModel()->selectedIndexes();
+    QModelIndexList selected_indexes;
+    if (_tree_view && _tree_view->selectionModel())
+        selected_indexes = _tree_view->selectionModel()->selectedIndexes();
     if (!selected_indexes.isEmpty()) {
         QModelIndex selected_index = selected_indexes.first();
         QStandardItem *item = _model->itemFromIndex(selected_index);
@@ -543,9 +549,12 @@ void CPointCollectionWidget::selectCollection(uint64_t collectionId)
 {
     QStandardItem* item = findCollectionItem(collectionId);
     if (item) {
-        _tree_view->selectionModel()->clearSelection();
-        _tree_view->selectionModel()->select(item->index(), QItemSelectionModel::Select | QItemSelectionModel::Rows);
-        _tree_view->scrollTo(item->index());
+        if (_tree_view && _tree_view->selectionModel()) {
+            _tree_view->selectionModel()->clearSelection();
+            _tree_view->selectionModel()->select(item->index(), QItemSelectionModel::Select | QItemSelectionModel::Rows);
+        }
+        if (_tree_view)
+            _tree_view->scrollTo(item->index());
     }
 }
 
@@ -573,10 +582,14 @@ void CPointCollectionWidget::selectPoint(uint64_t pointId)
             for (int j = 0; j < collection_item->rowCount(); ++j) {
                 QStandardItem *point_item = collection_item->child(j);
                 if (point_item && point_item->data().toULongLong() == pointId) {
-                    _tree_view->selectionModel()->clearSelection();
-                    _tree_view->selectionModel()->select(point_item->index(), QItemSelectionModel::Select | QItemSelectionModel::Rows);
-                    _tree_view->scrollTo(point_item->index());
-                    _tree_view->setFocus();
+                    if (_tree_view && _tree_view->selectionModel()) {
+                        _tree_view->selectionModel()->clearSelection();
+                        _tree_view->selectionModel()->select(point_item->index(), QItemSelectionModel::Select | QItemSelectionModel::Rows);
+                    }
+                    if (_tree_view) {
+                        _tree_view->scrollTo(point_item->index());
+                        _tree_view->setFocus();
+                    }
                     return;
                 }
             }
@@ -605,5 +618,3 @@ CPointCollectionWidget::~CPointCollectionWidget() {
         _model->clear();
     }
 }
-
-
