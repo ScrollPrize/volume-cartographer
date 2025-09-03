@@ -21,6 +21,7 @@
 #include <QFutureWatcher>
 #include <QRegularExpressionValidator>
 #include <QDockWidget>
+#include <QHeaderView>
 
 #include <atomic>
 #include <omp.h>
@@ -1655,10 +1656,12 @@ void CWindow::FillSurfaceTree()
         UpdateSurfaceTreeIcon(item);
     }
 
-    treeWidgetSurfaces->resizeColumnToContents(0);
-    treeWidgetSurfaces->resizeColumnToContents(1);
-    treeWidgetSurfaces->resizeColumnToContents(2);
-    treeWidgetSurfaces->resizeColumnToContents(3);
+    if (auto headerView = treeWidgetSurfaces->header()) {
+        headerView->setSectionResizeMode(0, QHeaderView::ResizeToContents);
+        headerView->setSectionResizeMode(SURFACE_ID_COLUMN, QHeaderView::Interactive);
+        headerView->setSectionResizeMode(2, QHeaderView::ResizeToContents);
+        headerView->setSectionResizeMode(3, QHeaderView::ResizeToContents);
+    }
 
     if (!appInitComplete) {
         // Apply initial sorting during apps tartup, but afterwards keep
