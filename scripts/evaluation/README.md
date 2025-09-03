@@ -19,7 +19,7 @@ python eval_surface_tracer.py <config_file>
 
 ### Patch growing
 - `use_existing_patches`: Skip seed/expansion phases, use existing patches from `out_path/patches`
-- `existing_patches_for_seeds`: Path to existing patches whose seeds will be re-used here
+- `existing_patches_for_seeds`: Path to existing patches whose seeds will be re-used here; or json file produced by get_seeds_from_paths
 - `max_num_seeds`: Maximum number of seed points to process
 - `num_expansion_patches`: Number of expansion runs to perform
 - `seeding_parallel_processes`: Number of parallel processes for seeding

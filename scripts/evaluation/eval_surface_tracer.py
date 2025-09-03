@@ -37,34 +37,51 @@ class SurfaceTracerEvaluation:
 
     def find_seed_points(self) -> List[Tuple[float, float, float]]:
         # Find seed points from existing patches, filtering by z-range and vc_gsfs_mode = explicit_seed
-        patches_folder = Path(self.config["existing_patches_for_seeds"])
+        patches_path = Path(self.config["existing_patches_for_seeds"])
         z_min, z_max = self.config["z_range"]
         
-        seed_points = []
-        failed_count = 0
-        
-        for patch_dir in patches_folder.iterdir():
-            if not patch_dir.is_dir():
-                continue
-            try:
-                meta_file = patch_dir / "meta.json"
-                with open(meta_file, 'r') as f:
-                    meta = json.load(f)
-                if meta.get("vc_gsfs_mode") != "explicit_seed":
+        if patches_path.is_file() and patches_path.suffix == '.json':
+
+            with open(patches_path, 'r') as f:
+                seeds_by_mode = json.load(f)
+            seed_points = [
+                (x, y, z)
+                for (x, y, z) in seeds_by_mode.get("explicit_seed", [])
+                if z_min <= z <= z_max
+            ]
+            logger.info(f"Loaded {len(seed_points)} seeds from JSON")
+            return seed_points
+                
+        elif patches_path.is_dir():
+
+            seed_points = []
+            failed_count = 0
+            for patch_dir in patches_path.iterdir():
+                if not patch_dir.is_dir():
                     continue
-                seed = meta.get("seed")
-                if not seed or len(seed) != 3:
+                try:
+                    meta_file = patch_dir / "meta.json"
+                    with open(meta_file, 'r') as f:
+                        meta = json.load(f)
+                    if meta.get("vc_gsfs_mode") != "explicit_seed":
+                        continue
+                    seed = meta.get("seed")
+                    if not seed or len(seed) != 3:
+                        continue
+                    x, y, z = seed
+                    if z_min <= z <= z_max:
+                        seed_points.append((x, y, z))
+                except Exception as e:
+                    failed_count += 1
                     continue
-                x, y, z = seed
-                if z_min <= z <= z_max:
-                    seed_points.append((x, y, z))
-            except Exception as e:
-                failed_count += 1
-                continue
+            
+            logger.warning(f"Failed to read meta.json from {failed_count} patches")
+            logger.info(f"Found {len(seed_points)} explicit_seed seed points in z-range [{z_min}, {z_max}]")
+            return seed_points
         
-        logger.warning(f"Failed to read meta.json from {failed_count} patches")
-        logger.info(f"Found {len(seed_points)} explicit_seed seed points in z-range [{z_min}, {z_max}]")
-        return seed_points
+        else:
+            logger.error(f"existing_patches_for_seeds path {patches_path} is neither a valid JSON file nor a directory")
+            return []
     
     def _run_vc_grow_seg_from_seed(self, mode: str, params_file: Path, seed_point: Tuple[float, float, float] = None) -> bool:
         
