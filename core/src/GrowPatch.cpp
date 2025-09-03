@@ -541,7 +541,8 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *c
     // Robust neighbor-distance outlier guard (similar to vc_tifxyz2obj --clean)
     const bool sanity_check = params.value("sanity_check", true);
     const float sanity_k = params.value("sanity_k", 5.0f);
-    const bool bend_check = params.value("bend_check", true);
+    // Default: bend check disabled for GrowPatch unless explicitly enabled
+    const bool bend_check = params.value("bend_check", false);
     const float bend_max_angle_deg = params.value("bend_max_angle_deg", 80.0f);
     const float bend_min_length_cm = params.value("bend_min_length_cm", 0.1f);
     ALifeTime f_timer("empty space tracing\n");
