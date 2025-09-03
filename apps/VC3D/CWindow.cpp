@@ -101,7 +101,11 @@ CWindow::CWindow() :
             "QWidget#dockWidgetAnnotationsContent { background: rgb(55, 55, 55); }"
             "QDockWidget::title { padding-top: 6px; background: rgb(60, 60, 75); }"
             "QTabBar::tab { background: rgb(60, 60, 75); }"
-            "QWidget#tabSegment { background: rgb(55, 55, 55); }";
+            "QWidget#tabSegment { background: rgb(55, 55, 55); }"
+            // Ensure combo box text is visible across Qt versions
+            "QComboBox { color: rgb(240, 240, 240); background-color: rgb(60, 60, 75); }"
+            "QComboBox:disabled { color: rgb(160, 160, 160); }"
+            "QComboBox QAbstractItemView { color: rgb(240, 240, 240); background-color: rgb(60, 60, 75); selection-background-color: rgb(80, 80, 95); selection-color: white; }";
         setStyleSheet(style);
     } else
 #endif
@@ -116,7 +120,11 @@ CWindow::CWindow() :
             "QDockWidget::title { padding-top: 6px; background: rgb(205, 210, 240); }"
             "QTabBar::tab { background: rgb(205, 210, 240); }"
             "QWidget#tabSegment { background: rgb(245, 245, 255); }"
-            "QRadioButton:disabled { color: gray; }";
+            "QRadioButton:disabled { color: gray; }"
+            // Ensure combo box text is visible across Qt versions
+            "QComboBox { color: black; background-color: rgb(245, 245, 255); }"
+            "QComboBox:disabled { color: gray; }"
+            "QComboBox QAbstractItemView { color: black; background-color: white; selection-background-color: rgb(205, 210, 240); selection-color: black; }";
         setStyleSheet(style);
     }
 
