@@ -483,11 +483,16 @@ void CWindow::CreateWidgets(void)
     // TODO CHANGE VOLUME LOADING; FIRST CHECK FOR OTHER VOLUMES IN THE STRUCTS
     volSelect = ui.volSelect;
     connect(
-        volSelect, &QComboBox::currentIndexChanged, [this](const int& index) {
+        volSelect, &QComboBox::currentIndexChanged, [this](int index) {
+            if (!fVpkg || index < 0)
+                return;
+            const auto id = volSelect->currentData().toString();
+            if (id.isEmpty())
+                return;
             std::shared_ptr<Volume> newVolume;
             try {
-                newVolume = fVpkg->volume(volSelect->currentData().toString().toStdString());
-            } catch (const std::out_of_range& e) {
+                newVolume = fVpkg->volume(id.toStdString());
+            } catch (const std::out_of_range&) {
                 QMessageBox::warning(this, "Error", "Could not load volume.");
                 return;
             }
@@ -1104,6 +1109,14 @@ void CWindow::OpenVolume(const QString& path)
         volSelect->addItem(
             QString("%1 (%2)").arg(QString::fromStdString(id)).arg(QString::fromStdString(fVpkg->volume(id)->name())),
             QVariant(QString::fromStdString(id)));
+    }
+    // Sync selection to the current volume id, if present
+    if (!currentVolumeId.empty()) {
+        int idx = volSelect->findData(QString::fromStdString(currentVolumeId));
+        if (idx >= 0) {
+            const QSignalBlocker blocker{volSelect};
+            volSelect->setCurrentIndex(idx);
+        }
     }
 
     // Populate the segmentation directory dropdown
