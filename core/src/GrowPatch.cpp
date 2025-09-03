@@ -957,25 +957,25 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *c
                     // Only enable bend check once the surface has grown to a minimum linear extent
                     double max_dim_px = std::max(used_area.width, used_area.height);
                     double length_cm = max_dim_px * step * voxelsize / 1e4; // microns->cm
-                    if (length_cm < bend_min_length_cm) goto skip_bend_check;
-                    const double PI = 3.14159265358979323846;
-                    const double cos_min = std::cos((double)bend_max_angle_deg * PI / 180.0);
-                    for (auto &off : neighs) {
-                        cv::Vec2i q = p + off;
-                        if (!(q[0] >= 0 && q[0] < locs.rows && q[1] >= 0 && q[1] < locs.cols)) continue;
-                        if ((state(q) & STATE_LOC_VALID) == 0) continue;
-                        cv::Vec2i r = q - off; // previous along the same axis
-                        if (!(r[0] >= 0 && r[0] < locs.rows && r[1] >= 0 && r[1] < locs.cols)) continue;
-                        if ((state(r) & STATE_LOC_VALID) == 0) continue;
-                        cv::Vec3d e = locs(q) - locs(r);
-                        cv::Vec3d v = locs(p) - locs(q);
-                        double Le = cv::norm(e); double Lv = cv::norm(v);
-                        if (!(Le > 0 && Lv > 0)) continue;
-                        double cosang = e.dot(v) / (Le * Lv);
-                        if (cosang < 0.0) { is_extreme_bend = true; break; }       // backwards
-                        if (cosang < cos_min) { is_extreme_bend = true; break; }    // near-90 deg
+                    if (length_cm >= bend_min_length_cm) {
+                        const double PI = 3.14159265358979323846;
+                        const double cos_min = std::cos((double)bend_max_angle_deg * PI / 180.0);
+                        for (auto &off : neighs) {
+                            cv::Vec2i q = p + off;
+                            if (!(q[0] >= 0 && q[0] < locs.rows && q[1] >= 0 && q[1] < locs.cols)) continue;
+                            if ((state(q) & STATE_LOC_VALID) == 0) continue;
+                            cv::Vec2i r = q - off; // previous along the same axis
+                            if (!(r[0] >= 0 && r[0] < locs.rows && r[1] >= 0 && r[1] < locs.cols)) continue;
+                            if ((state(r) & STATE_LOC_VALID) == 0) continue;
+                            cv::Vec3d e = locs(q) - locs(r);
+                            cv::Vec3d v = locs(p) - locs(q);
+                            double Le = cv::norm(e); double Lv = cv::norm(v);
+                            if (!(Le > 0 && Lv > 0)) continue;
+                            double cosang = e.dot(v) / (Le * Lv);
+                            if (cosang < 0.0) { is_extreme_bend = true; break; }       // backwards
+                            if (cosang < cos_min) { is_extreme_bend = true; break; }    // near-90 deg
+                        }
                     }
-                skip_bend_check: ;
                 }
 
                 if (dist >= dist_th || summary.final_cost >= 0.1 || is_neighbor_outlier || is_extreme_bend) {

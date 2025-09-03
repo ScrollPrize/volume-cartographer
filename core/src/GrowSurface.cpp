@@ -1539,26 +1539,27 @@ QuadSurface *grow_surf_from_surfs(SurfaceMeta *seed, const std::vector<SurfaceMe
                     // Enable only after the grown surface has enough linear extent
                     double max_dim_px = std::max(used_area.width, used_area.height);
                     double length_cm = max_dim_px * step * src_step * voxelsize / 1e4; // microns->cm
-                    if (length_cm < bend_min_length_cm) goto skip_bend_check_surface;
-                    const double PI = 3.14159265358979323846;
-                    const double cos_min = std::cos((double)bend_max_angle_deg * PI / 180.0);
                     bool extreme = false;
-                    for (auto &off : neighs) {
-                        cv::Vec2i q = p + off;
-                        if (!(q[0] >= 0 && q[0] < h && q[1] >= 0 && q[1] < w)) continue;
-                        if ((state(q) & STATE_LOC_VALID) == 0) continue;
-                        cv::Vec2i r = q - off; // previous along same axis
-                        if (!(r[0] >= 0 && r[0] < h && r[1] >= 0 && r[1] < w)) continue;
-                        if ((state(r) & STATE_LOC_VALID) == 0) continue;
-                        const cv::Vec3d &q3 = points(q);
-                        const cv::Vec3d &r3 = points(r);
-                        if (q3[0] == -1 || r3[0] == -1) continue;
-                        cv::Vec3d e = q3 - r3;
-                        cv::Vec3d v = best_coord - q3;
-                        double Le = cv::norm(e); double Lv = cv::norm(v);
-                        if (!(Le > 0 && Lv > 0)) continue;
-                        double cosang = e.dot(v) / (Le * Lv);
-                        if (cosang < 0.0 || cosang < cos_min) { extreme = true; break; }
+                    if (length_cm >= bend_min_length_cm) {
+                        const double PI = 3.14159265358979323846;
+                        const double cos_min = std::cos((double)bend_max_angle_deg * PI / 180.0);
+                        for (auto &off : neighs) {
+                            cv::Vec2i q = p + off;
+                            if (!(q[0] >= 0 && q[0] < h && q[1] >= 0 && q[1] < w)) continue;
+                            if ((state(q) & STATE_LOC_VALID) == 0) continue;
+                            cv::Vec2i r = q - off; // previous along same axis
+                            if (!(r[0] >= 0 && r[0] < h && r[1] >= 0 && r[1] < w)) continue;
+                            if ((state(r) & STATE_LOC_VALID) == 0) continue;
+                            const cv::Vec3d &q3 = points(q);
+                            const cv::Vec3d &r3 = points(r);
+                            if (q3[0] == -1 || r3[0] == -1) continue;
+                            cv::Vec3d e = q3 - r3;
+                            cv::Vec3d v = best_coord - q3;
+                            double Le = cv::norm(e); double Lv = cv::norm(v);
+                            if (!(Le > 0 && Lv > 0)) continue;
+                            double cosang = e.dot(v) / (Le * Lv);
+                            if (cosang < 0.0 || cosang < cos_min) { extreme = true; break; }
+                        }
                     }
                     if (extreme) {
                         state(p) = 0;
@@ -1568,7 +1569,6 @@ QuadSurface *grow_surf_from_surfs(SurfaceMeta *seed, const std::vector<SurfaceMe
                         best_inliers_gen = std::max(best_inliers_gen, best_inliers);
                         continue;
                     }
-                skip_bend_check_surface: ;
                 }
                 if (best_coord[0] == -1)
                     throw std::runtime_error("oops best_cord[0]");
