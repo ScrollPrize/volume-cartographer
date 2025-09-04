@@ -77,6 +77,21 @@ target_link_libraries(vc_ced2d
 add_executable(vc_transform_geom src/vc_transform_geom.cpp)
 target_link_libraries(vc_transform_geom vc_core Boost::program_options)
 
+add_executable(vc_tifxyz2rgb src/vc_tifxyz2rgb.cpp)
+target_link_libraries(vc_tifxyz2rgb
+    vc_core
+    opencv_core
+    opencv_imgcodecs
+)
+
+add_executable(vc_rgb2tifxyz src/vc_rgb2tifxyz.cpp)
+target_link_libraries(vc_rgb2tifxyz
+    vc_core
+    opencv_core
+    opencv_imgcodecs
+    # nlohmann_json::nlohmann_json  # if you use the package target; header-only otherwise
+)
+
 # Install targets
 if(VC_INSTALL_APPS)
 install(
@@ -90,6 +105,8 @@ install(
         vc_tifxyz2obj
         vc_obj2tifxyz
         vc_obj2tifxyz_legacy
+        vc_tifxyz2rgb
+        vc_rgb2tifxyz
         vc_tifxyz_winding
         vc_tifxyz_gengt
         vc_fill_quadmesh
