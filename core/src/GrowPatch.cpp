@@ -252,6 +252,9 @@ static int emptytrace_create_centered_losses(ceres::Problem &problem, const cv::
     //generate losses for point p
     int count = 0;
 
+    if (p[0] < 2 || p[1] < 2 || p[1] >= state.cols-2 || p[0] >= state.rows-2)
+        throw std::runtime_error("point too close to problem border!");
+
     //horizontal
     count += gen_straight_loss(problem, p, {0,-2},{0,-1},{0,0}, state, loc, flags & OPTIMIZE_ALL);
     count += gen_straight_loss(problem, p, {0,-1},{0,0},{0,1}, state, loc, flags & OPTIMIZE_ALL);
@@ -1043,13 +1046,18 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *c
         cands.resize(0);
 
         // Record the cost of the current patch, by re-evaluating all losses within the patch bbox region
-        cv::Mat_<cv::Vec3d> locs_crop = locs(used_area);
-        cv::Mat_<uint8_t> state_crop = state(used_area);
+        cv::Rect used_area_safe = used_area;
+        used_area_safe.x -= 2;
+        used_area_safe.y -= 2;
+        used_area_safe.width += 4;
+        used_area_safe.height += 4;
+        cv::Mat_<cv::Vec3d> locs_crop = locs(used_area_safe);
+        cv::Mat_<uint8_t> state_crop = state(used_area_safe);
         double max_cost = 0;
         double avg_cost = 0;
         int cost_count = 0;
-        for(int j=0;j<locs_crop.rows;j++)
-            for(int i=0;i<locs_crop.cols;i++) {
+        for(int j=2;j<locs_crop.rows-2;j++)
+            for(int i=2;i<locs_crop.cols-2;i++) {
                 ceres::Problem problem;
                 emptytrace_create_centered_losses(problem, {j,i}, state_crop, locs_crop, interp_global, proc_tensor, direction_fields, Ts);
                 double cost = 0.0;
@@ -1072,15 +1080,20 @@ QuadSurface *space_tracing_quad_phys(z5::Dataset *ds, float scale, ChunkCache *c
     }  // end while fringe is non-empty
     delete timer;
 
-    locs = locs(used_area);
-    state = state(used_area);
-    generations = generations(used_area);
+    cv::Rect used_area_safe = used_area;
+    used_area_safe.x -= 2;
+    used_area_safe.y -= 2;
+    used_area_safe.width += 4;
+    used_area_safe.height += 4;
+    locs = locs(used_area_safe);
+    state = state(used_area_safe);
+    generations = generations(used_area_safe);
 
     double max_cost = 0;
     double avg_cost = 0;
     int count = 0;
-    for(int j=0;j<locs.rows;j++)
-        for(int i=0;i<locs.cols;i++) {
+    for(int j=2;j<locs.rows-2;j++)
+        for(int i=2;i<locs.cols-2;i++) {
             ceres::Problem problem;
             emptytrace_create_centered_losses(problem, {j,i}, state, locs, interp_global, proc_tensor, direction_fields, Ts);
             double cost = 0.0;
