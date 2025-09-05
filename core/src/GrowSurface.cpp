@@ -1207,9 +1207,12 @@ QuadSurface *grow_surf_from_surfs(SurfaceMeta *seed, const std::vector<SurfaceMe
 
     cv::Vec2i seed_loc = {seed_points.rows/2, seed_points.cols/2};
 
-    while (seed_points(seed_loc)[0] == -1) {
+    int tries = 0;
+    while (seed_points(seed_loc)[0] == -1 || (enforce_z_range && (seed_points(seed_loc)[2] < z_min || seed_points(seed_loc)[2] > z_max))) {
         seed_loc = {rand() % seed_points.rows, rand() % seed_points.cols };
         std::cout << "try loc " << seed_loc << std::endl;
+        if (++tries > 10000)
+            break;
     }
 
     data.loc(seed,{y0,x0}) = {seed_loc[0], seed_loc[1]};

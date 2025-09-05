@@ -21,7 +21,7 @@ option(VC_USE_OPENMP "Enable OpenMP support" ON)
 option(VC_USE_VALGRIND "Enable Valgrind support" off)
 
 set(CMAKE_CXX_FLAGS " ${CMAKE_CXX_FLAGS} -fPIC -Wno-narrowing -std=c++23 -DWITH_BLOSC=1 -DWITH_ZLIB=1 " )
-set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fPIE")
+set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ")
 include_directories(core/include)
 
 if(NOT CMAKE_BUILD_TYPE)
