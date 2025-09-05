@@ -639,7 +639,7 @@ struct Chunked3dFloatFromUint8
         p *= _scale;
         cv::Vec3i i{lround(p[0]), lround(p[1]), lround(p[2])};
         uint8_t x = _x(i) ;
-        return (float{x} - 128.f) / 127.f;
+        return float{x} / 255.f;
     }
 
     float operator()(double z, double y, double x)
