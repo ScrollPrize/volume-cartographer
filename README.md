@@ -1,3 +1,6 @@
+> [!NOTE]
+> This repository is archived and active development is continuing in the [Vesuvius Challenge `villa` repository](https://github.com/ScrollPrize/villa/tree/main/volume-cartographer)
+
 [![Volume Cartographer](docs/images/banner.svg)](https://github.com/educelab/volume-cartographer)
 
 **Volume Cartographer** is a toolkit and set of cross-platform C++ libraries for
