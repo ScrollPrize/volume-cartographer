@@ -1296,14 +1296,27 @@ int main(int argc, char *argv[])
     if (has_render_folder) {
         // iterate through folders in render_folder_path
         for (const auto& entry : std::filesystem::directory_iterator(render_folder_path)) {
-            if (entry.is_directory()) {
-                std::string out_arg;
-                // For both TIFF and Zarr, write inside each segmentation folder
-                // using the -o value as the subdirectory/basename.
-                // Zarr path will get ".zarr" appended in process_one when force_zarr=true.
-                out_arg = (entry.path() / base_output_arg).string();
-                process_one(entry.path(), out_arg, batch_format == "zarr");
+            if (!entry.is_directory()) continue;
+
+            const std::string seg_name = entry.path().filename().string();
+            const std::filesystem::path base(base_output_arg);
+
+            std::filesystem::path out_arg_path;
+
+            if (batch_format == "zarr") {
+                // Always make a unique zarr per segmentation:
+                // <parent-of(-o)>/<stem-of(-o)>_<seg-name>
+                const auto parent = base.has_parent_path() ? base.parent_path()
+                                                        : std::filesystem::current_path();
+                const std::string stem = base.filename().string(); // “2um_111kev_1.2m”
+                out_arg_path = parent / (stem + "_" + seg_name);
+            } else {
+                // For TIFF, keep old behavior but handle absolute -o correctly
+                out_arg_path = base.is_absolute() ? (base / seg_name)
+                                                : (entry.path() / base);
             }
+
+            process_one(entry.path(), out_arg_path.string(), batch_format == "zarr");
         }
     } else {
         process_one(seg_path, base_output_arg, false);
