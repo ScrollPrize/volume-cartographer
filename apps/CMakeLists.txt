@@ -89,8 +89,18 @@ target_link_libraries(vc_rgb2tifxyz
     vc_core
     opencv_core
     opencv_imgcodecs
-    # nlohmann_json::nlohmann_json  # if you use the package target; header-only otherwise
+    # nlohmann_json::nlohmann_json
 )
+
+add_executable(vc_telea_inpaint src/vc_telea_inpaint.cpp)
+target_link_libraries(vc_telea_inpaint
+    vc_core
+    opencv_core
+    opencv_imgcodecs
+    opencv_imgproc
+    opencv_photo
+)
+
 
 # Install targets
 if(VC_INSTALL_APPS)
@@ -113,6 +123,7 @@ install(
         vc_calc_surface_metrics
         vc_ced2d
         vc_transform_geom
+        vc_telea_inpaint
         ${extra_apps}
     RUNTIME DESTINATION bin
     COMPONENT Programs

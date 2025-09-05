@@ -21,6 +21,10 @@
 #include <QFutureWatcher>
 #include <QRegularExpressionValidator>
 #include <QDockWidget>
+#include <QProcess>
+#include <QTemporaryDir>
+#include <QToolBar>
+#include <QFileInfo>
 
 #include <atomic>
 #include <omp.h>
@@ -822,6 +826,12 @@ void CWindow::CreateMenus(void)
     fSelectionMenu->addAction(fSelectionSurfaceFromAct);
     fSelectionMenu->addAction(fSelectionClearAct);
 
+    // Add Telea pipeline to menus
+    fActionsMenu->addSeparator();
+    fActionsMenu->addAction(fInpaintTeleaAct);
+    fSelectionMenu->addSeparator();
+    fSelectionMenu->addAction(fInpaintTeleaAct);
+
     fHelpMenu = new QMenu(tr("&Help"), this);
     fHelpMenu->addAction(fKeybinds);
     fFileMenu->addSeparator();
@@ -889,6 +899,14 @@ void CWindow::CreateActions(void)
     connect(fSelectionSurfaceFromAct, &QAction::triggered, this, &CWindow::onSurfaceFromSelection);
     fSelectionClearAct = new QAction(tr("Clear"), this);
     connect(fSelectionClearAct, &QAction::triggered, this, &CWindow::onSelectionClear);
+
+    // Inpaint (Telea) -> rebuild segment
+    fInpaintTeleaAct = new QAction(tr("Inpaint (Telea) && Rebuild Segment"), this);
+    fInpaintTeleaAct->setToolTip(tr("Generate RGB, Telea-inpaint it, then convert back to tifxyz into a new segment"));
+    #if (QT_VERSION >= QT_VERSION_CHECK(5, 10, 0))
+        fInpaintTeleaAct->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_I));
+    #endif
+    connect(fInpaintTeleaAct, &QAction::triggered, this, &CWindow::onInpaintTeleaSelected);
 }
 
 void CWindow::UpdateRecentVolpkgActions()
@@ -2067,6 +2085,12 @@ void CWindow::onSurfaceContextMenuRequested(const QPoint& pos)
     contextMenu.addAction(convertToObjAction);
     contextMenu.addAction(slimFlattenAction);
     contextMenu.addSeparator();
+    // Telea pipeline (RGB -> inpaint -> back to tifxyz)
+    QAction* inpaintTeleaAction = new QAction(tr("Inpaint (Telea) && Rebuild Segment"), this);
+    connect(inpaintTeleaAction, &QAction::triggered, [this]() {
+        onInpaintTeleaSelected();
+    });
+    contextMenu.addAction(inpaintTeleaAction);
     contextMenu.addAction(deleteAction);
     
     contextMenu.exec(treeWidgetSurfaces->mapToGlobal(pos));
@@ -2113,6 +2137,157 @@ void CWindow::onSegmentationDirChanged(int index)
         statusBar()->showMessage(tr("Switched to %1 directory").arg(QString::fromStdString(newDir)), 3000);
     }
 }
+
+// ===== Telea inpaint pipeline implementation =====
+namespace {
+
+// Run a CLI tool and collect its merged stdout/stderr; show error box on failure
+static bool run_cli(QWidget* parent, const QString& program, const QStringList& args, QString* outLog = nullptr) {
+    QProcess p;
+    p.setProcessChannelMode(QProcess::MergedChannels);
+    p.start(program, args);
+    if (!p.waitForStarted()) {
+        QMessageBox::critical(parent, QObject::tr("Error"),
+                              QObject::tr("Failed to start %1").arg(program));
+        return false;
+    }
+    p.waitForFinished(-1);
+    const QString log = p.readAll();
+    if (outLog) *outLog = log;
+    if (p.exitStatus() != QProcess::NormalExit || p.exitCode() != 0) {
+        QMessageBox::critical(parent, QObject::tr("Command Failed"),
+                              QObject::tr("%1 exited with code %2.\n\n%3")
+                              .arg(program).arg(p.exitCode()).arg(log));
+        return false;
+    }
+    return true;
+}
+
+// Resolve a tool located next to the application; otherwise fall back to PATH
+static QString find_tool(const char* baseName) {
+#ifdef _WIN32
+    const QString exe = QString::fromLatin1(baseName) + ".exe";
+#else
+    const QString exe = QString::fromLatin1(baseName);
+#endif
+    const QString appDir = QCoreApplication::applicationDirPath();
+    const QString local  = appDir + QDir::separator() + exe;
+    if (QFileInfo::exists(local)) return local;
+    return exe; // rely on PATH
+}
+} // namespace
+
+void CWindow::onInpaintTeleaSelected()
+{
+    if (!fVpkg) {
+        QMessageBox::warning(this, tr("Error"), tr("No volume package loaded."));
+        return;
+    }
+
+    // Use all selected segments (patches/traces)
+    QList<QTreeWidgetItem*> selectedItems = treeWidgetSurfaces->selectedItems();
+    if (selectedItems.isEmpty()) {
+        QMessageBox::information(this, tr("Info"), tr("Select a patch/trace first in the Surfaces list."));
+        return;
+    }
+
+    // Locate tools (next to app or PATH)
+    const QString vc_tifxyz2rgb    = find_tool("vc_tifxyz2rgb");
+    const QString vc_telea_inpaint = find_tool("vc_telea_inpaint");
+    const QString vc_rgb2tifxyz    = find_tool("vc_rgb2tifxyz");
+
+    int successCount = 0, failCount = 0;
+
+    for (QTreeWidgetItem* item : selectedItems) {
+        const std::string id = item->data(SURFACE_ID_COLUMN, Qt::UserRole).toString().toStdString();
+        auto surfMeta = fVpkg->getSurface(id);
+        if (!surfMeta) { ++failCount; continue; }
+
+        const std::filesystem::path segDir    = surfMeta->path;              // .../paths/<id> or .../traces/<id>
+        const std::filesystem::path parentDir = segDir.parent_path();        // .../paths or .../traces
+        const std::filesystem::path metaJson  = segDir / "meta.json";
+
+        if (!std::filesystem::exists(metaJson)) {
+            QMessageBox::warning(this, tr("Error"),
+                                 tr("Missing meta.json for %1").arg(QString::fromStdString(id)));
+            ++failCount; continue;
+        }
+
+        // Time-stamped names and temp dirs
+        const QString stamp  = QDateTime::currentDateTime().toString("yyyyMMdd_HHmmsszzz");
+        const QString rgbPngName = QString::fromStdString(id) + "_xyz_rgb_" + stamp + ".png";
+        const QString newSegName = QString::fromStdString(id) + "_telea_" + stamp;
+
+        QTemporaryDir tmpInDir;   // for RGB input to inpaint
+        QTemporaryDir tmpOutDir;  // for inpainted output
+        if (!tmpInDir.isValid() || !tmpOutDir.isValid()) {
+            QMessageBox::warning(this, tr("Error"), tr("Failed to create temporary directories."));
+            ++failCount; continue;
+        }
+
+        // 1) tifxyz -> RGB (explicit path in temp)
+        const QString rgbPng = QDir(tmpInDir.path()).filePath(rgbPngName);
+        {
+            QStringList args;
+            // Pass the segment directory (contains x.tif, y.tif, z.tif, meta.json)
+            args << QString::fromStdString(segDir.string())
+                 << rgbPng;
+            QString log;
+            if (!run_cli(this, vc_tifxyz2rgb, args, &log)) { ++failCount; continue; }
+        }
+
+        // 2) Telea inpaint (non-recursive, single file)
+        QString inpaintedPng;
+        {
+            QStringList args;
+            args << tmpInDir.path()     // input dir
+                 << tmpOutDir.path()    // output dir
+                 << QString::number(3)  // radius
+                 << QString::number(8)  // black_threshold
+                 << QString::number(1)  // min_area
+                 << QString::number(0); // recursive
+            QString log;
+            if (!run_cli(this, vc_telea_inpaint, args, &log)) { ++failCount; continue; }
+
+            // Expect exactly one PNG out
+            QDir d(tmpOutDir.path());
+            const QStringList outs = d.entryList(QStringList() << "*.png", QDir::Files);
+            if (outs.isEmpty()) {
+                QMessageBox::warning(this, tr("Error"), tr("Telea inpaint produced no PNG."));
+                ++failCount; continue;
+            }
+            inpaintedPng = d.absoluteFilePath(outs.first());
+        }
+
+        // 3) RGB -> tifxyz (new segment beside the original)
+        {
+            QStringList args;
+            args << inpaintedPng
+                 << QString::fromStdString(metaJson.string())   // bounds/scale source
+                 << QString::fromStdString(parentDir.string())  // out_dir
+                 << newSegName
+                 << "--invalid-black";
+            QString log;
+            if (!run_cli(this, vc_rgb2tifxyz, args, &log)) { ++failCount; continue; }
+        }
+
+        ++successCount;
+    }
+
+    // Reload surfaces so new segments appear
+    if (successCount > 0) {
+        try {
+            fVpkg->refreshSegmentations();
+            LoadSurfacesIncremental();
+        } catch (...) {
+            // best effort
+        }
+    }
+
+    statusBar()->showMessage(tr("Telea inpaint pipeline complete. Success: %1, Failed: %2")
+                             .arg(successCount).arg(failCount), 6000);
+}
+
 CWindow::SurfaceChanges CWindow::DetectSurfaceChanges()
 {
     SurfaceChanges changes;

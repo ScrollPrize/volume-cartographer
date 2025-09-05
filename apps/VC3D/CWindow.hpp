@@ -138,6 +138,7 @@ private slots:
     void onSegFilterChanged(int index);
     void onSegmentationDirChanged(int index);
     void onEditMaskPressed();
+    void onInpaintTeleaSelected();
     void onRefreshSurfaces();
     void onGenerateReviewReport();
     void onDrawBBoxToggled(bool enabled);
@@ -184,6 +185,7 @@ private:
     QAction* fDrawBBoxAct;
     QAction* fSelectionSurfaceFromAct;
     QAction* fSelectionClearAct;
+    QAction* fInpaintTeleaAct = nullptr;
 
     // Selection dock
     QDockWidget* _dockSelection = nullptr;
